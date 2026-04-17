@@ -17,4 +17,4 @@ COPY --from=build /src/bin/server /app/bin/server
 
 EXPOSE 8080
 
-CMD ["/app/bin/server", "-models", "fr:/app/models/fr.crf.gz", "-gazetteers", "/app/models/firstnames:data/firstnames_fr.txt"]
+CMD ["/app/bin/server", "-models", "fr:/app/models/fr.crf.gz", "-gazetteers", "firstnames:/app/models/gazetteers/fr_prenoms.txt"]
