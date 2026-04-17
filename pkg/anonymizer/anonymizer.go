@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/bornholm/go-anon/pkg/ner"
 )
@@ -20,13 +21,22 @@ const (
 	Consistent                 // même entity fuzzy → même placeholder
 )
 
+// AnonymizePass est une fonction de post-traitement appliquée après le
+// remplacement principal des entités. Elle reçoit le texte original et le
+// résultat courant, et retourne le texte mis à jour.
+type AnonymizePass func(original string, result *Result) string
+
 // Config configure l'anonymiseur.
 type Config struct {
 	Strategy        Strategy
 	EntityTypes     []ner.EntityType // nil = toutes les entités
-	ConsistentMap   bool             // même texte → même placeholder
-	ConsistencyPass bool             // passe post-traitement pour cohérence des occurrences
+	ConsistentMap   bool
 	CustomReplacers map[ner.EntityType]ReplacerFunc
+	// Passes liste les passes de post-traitement appliquées dans l'ordre après
+	// le remplacement des entités. nil déclenche les passes par défaut :
+	// ConsistencyPass() puis SurnameCompletionPass().
+	// Passer une slice vide désactive tout post-traitement.
+	Passes []AnonymizePass
 }
 
 // ReplacerFunc permet un remplacement personnalisé.
@@ -34,7 +44,6 @@ type Config struct {
 type ReplacerFunc func(entity ner.Entity, index int) string
 
 // Recognizer définit l'interface pour la reconnaissance d'entités.
-// Permite l'injection de mock ou implémentation réelle.
 type Recognizer interface {
 	Recognize(text string) ([]ner.Entity, error)
 }
@@ -53,10 +62,11 @@ type Result struct {
 	OriginalToPlaceholder map[string]string // "Jean Dupont" → "[PERSON_1]"
 }
 
-// New crée un nouvel Anonymizer.
+// New crée un nouvel Anonymizer. Si config.Passes est nil, les passes par
+// défaut (ConsistencyPass + SurnameCompletionPass) sont activées.
 func New(recognizer Recognizer, config Config) *Anonymizer {
-	if !config.ConsistencyPass {
-		config.ConsistencyPass = true
+	if config.Passes == nil {
+		config.Passes = []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}
 	}
 	return &Anonymizer{
 		recognizer: recognizer,
@@ -86,6 +96,9 @@ func (a *Anonymizer) Anonymize(text string) (*Result, error) {
 	}
 
 	sort.Slice(entities, func(i, j int) bool {
+		if typePriority(entities[i].Type) != typePriority(entities[j].Type) {
+			return typePriority(entities[i].Type) > typePriority(entities[j].Type)
+		}
 		return entities[i].Start > entities[j].Start
 	})
 
@@ -98,13 +111,6 @@ func (a *Anonymizer) Anonymize(text string) (*Result, error) {
 
 	counters := make(map[ner.EntityType]int)
 	consistentCache := make(map[string]string)
-
-	sort.Slice(entities, func(i, j int) bool {
-		if typePriority(entities[i].Type) != typePriority(entities[j].Type) {
-			return typePriority(entities[i].Type) > typePriority(entities[j].Type)
-		}
-		return entities[i].Start > entities[j].Start
-	})
 
 	shift := 0
 	for _, ent := range entities {
@@ -139,8 +145,8 @@ func (a *Anonymizer) Anonymize(text string) (*Result, error) {
 		}
 	}
 
-	if a.config.ConsistencyPass {
-		result.Text = a.EnsureConsistency(text, result)
+	for _, pass := range a.config.Passes {
+		result.Text = pass(text, result)
 	}
 
 	return result, nil
@@ -178,6 +184,192 @@ func (a *Anonymizer) Deanonymize(text string, mapping map[string]string) (string
 		result = strings.ReplaceAll(result, placeholder, original)
 	}
 	return result, nil
+}
+
+// ConsistencyPass retourne une AnonymizePass qui remplace dans le texte anonymisé
+// les occurrences résiduelles de texte d'entité connue par leur placeholder.
+// Utile quand le NER n'a pas détecté toutes les occurrences d'une même entité.
+func ConsistencyPass() AnonymizePass {
+	return func(original string, result *Result) string {
+		if len(result.Entities) == 0 {
+			return result.Text
+		}
+
+		// Construire le canonical depuis les entités triées par priorité de type.
+		canonicalMap := make(map[string]string)
+		sortedByType := make([]ner.Entity, len(result.Entities))
+		copy(sortedByType, result.Entities)
+		sort.Slice(sortedByType, func(i, j int) bool {
+			return typePriority(sortedByType[i].Type) > typePriority(sortedByType[j].Type)
+		})
+		for _, ent := range sortedByType {
+			cacheKey := normalizeForFuzzy(ent.Text)
+			if _, exists := canonicalMap[cacheKey]; !exists {
+				canonicalMap[cacheKey] = result.OriginalToPlaceholder[ent.Text]
+			}
+		}
+
+		// Convertir en slice triée : matchs longs d'abord (greedy), puis
+		// lexicographique pour garantir un ordre déterministe.
+		type canonicalEntry struct {
+			substr      string
+			placeholder string
+		}
+		canonical := make([]canonicalEntry, 0, len(canonicalMap))
+		for substr, placeholder := range canonicalMap {
+			canonical = append(canonical, canonicalEntry{substr, placeholder})
+		}
+		sort.Slice(canonical, func(i, j int) bool {
+			if len(canonical[i].substr) != len(canonical[j].substr) {
+				return len(canonical[i].substr) > len(canonical[j].substr)
+			}
+			return canonical[i].substr < canonical[j].substr
+		})
+
+		text := result.Text
+
+		covered := make([]bool, len(text))
+		for _, ent := range result.Entities {
+			placeholder := result.OriginalToPlaceholder[ent.Text]
+			if placeholder == "" {
+				continue
+			}
+			pos := 0
+			for {
+				idx := strings.Index(text[pos:], placeholder)
+				if idx < 0 {
+					break
+				}
+				abs := pos + idx
+				for i := abs; i < abs+len(placeholder) && i < len(covered); i++ {
+					covered[i] = true
+				}
+				pos = abs + 1
+			}
+		}
+
+		for pos := len(text) - 1; pos >= 0; pos-- {
+			if covered[pos] {
+				continue
+			}
+
+			for _, entry := range canonical {
+				if pos+len(entry.substr) > len(text) {
+					continue
+				}
+				candidate := text[pos : pos+len(entry.substr)]
+				if normalizeForFuzzy(candidate) != entry.substr {
+					continue
+				}
+
+				text = text[:pos] + entry.placeholder + text[pos+len(entry.substr):]
+
+				newCovered := make([]bool, pos)
+				copy(newCovered, covered[:pos])
+				covered = newCovered
+				break
+			}
+		}
+
+		return text
+	}
+}
+
+// SurnameCompletionPass retourne une AnonymizePass qui, pour chaque placeholder
+// PER dans le texte anonymisé, vérifie si le token suivant dans le texte original
+// est un nom de famille non encore anonymisé, et le remplace par le même placeholder.
+func SurnameCompletionPass() AnonymizePass {
+	return func(original string, result *Result) string {
+		if len(result.Entities) == 0 {
+			return result.Text
+		}
+
+		text := result.Text
+
+		covered := make([]bool, len(text))
+		for _, e := range result.Entities {
+			for i := e.Start; i < e.End && i < len(covered); i++ {
+				covered[i] = true
+			}
+		}
+
+		placeholderToEntity := make(map[string]ner.Entity)
+		for _, e := range result.Entities {
+			placeholder := result.OriginalToPlaceholder[e.Text]
+			if placeholder != "" {
+				placeholderToEntity[placeholder] = e
+			}
+		}
+
+		for pos := len(text) - 1; pos >= 0; pos-- {
+			if pos+1 < len(text) && text[pos] == ']' {
+				bracketStart := pos
+				for bracketStart > 0 && text[bracketStart] != '[' {
+					bracketStart--
+				}
+				if bracketStart > 0 && text[bracketStart] == '[' {
+					placeholder := text[bracketStart : pos+1]
+					ent, ok := placeholderToEntity[placeholder]
+					if !ok || ent.Type != ner.TypePER {
+						continue
+					}
+
+					origEnd := ent.End
+					for origEnd < len(original) && original[origEnd] == ' ' {
+						origEnd++
+					}
+
+					if origEnd >= len(original) {
+						continue
+					}
+
+					candidateEnd := origEnd
+					for candidateEnd < len(original) {
+						r := rune(original[candidateEnd])
+						if unicode.IsLetter(r) || r == '\'' || r == '-' {
+							candidateEnd++
+						} else {
+							break
+						}
+					}
+
+					candidate := original[origEnd:candidateEnd]
+					if len(candidate) < 2 {
+						continue
+					}
+
+					candidateStart := pos + 1
+					if candidateStart >= len(text) {
+						continue
+					}
+
+					alreadyCovered := false
+					for i := candidateStart; i < candidateStart+len(candidate) && i < len(covered); i++ {
+						if covered[i] {
+							alreadyCovered = true
+							break
+						}
+					}
+					if alreadyCovered {
+						continue
+					}
+
+					if candidateStart+len(candidate) <= len(text) {
+						curr := text[candidateStart : candidateStart+len(candidate)]
+						if curr == candidate {
+							text = text[:candidateStart] + placeholder + text[candidateStart+len(candidate):]
+
+							newCovered := make([]bool, candidateStart)
+							copy(newCovered, covered[:candidateStart])
+							covered = newCovered
+						}
+					}
+				}
+			}
+		}
+
+		return text
+	}
 }
 
 func typeToLabel(t ner.EntityType) string {
@@ -229,68 +421,3 @@ func filterByType(entities []ner.Entity, types []ner.EntityType) []ner.Entity {
 	return result
 }
 
-func (a *Anonymizer) EnsureConsistency(original string, result *Result) string {
-	if len(result.Entities) == 0 {
-		return result.Text
-	}
-
-	canonical := make(map[string]string)
-	sortedByType := make([]ner.Entity, len(result.Entities))
-	copy(sortedByType, result.Entities)
-	sort.Slice(sortedByType, func(i, j int) bool {
-		return typePriority(sortedByType[i].Type) > typePriority(sortedByType[j].Type)
-	})
-	for _, ent := range sortedByType {
-		cacheKey := normalizeForFuzzy(ent.Text)
-		if _, exists := canonical[cacheKey]; !exists {
-			canonical[cacheKey] = result.OriginalToPlaceholder[ent.Text]
-		}
-	}
-
-	text := result.Text
-
-	covered := make([]bool, len(text))
-	for _, ent := range result.Entities {
-		placeholder := result.OriginalToPlaceholder[ent.Text]
-		if placeholder == "" {
-			continue
-		}
-		pos := 0
-		for {
-			idx := strings.Index(text[pos:], placeholder)
-			if idx < 0 {
-				break
-			}
-			abs := pos + idx
-			for i := abs; i < abs+len(placeholder) && i < len(covered); i++ {
-				covered[i] = true
-			}
-			pos = abs + 1
-		}
-	}
-
-	for pos := len(text) - 1; pos >= 0; pos-- {
-		if covered[pos] {
-			continue
-		}
-
-		for substr, placeholder := range canonical {
-			if pos+len(substr) > len(text) {
-				continue
-			}
-			candidate := text[pos : pos+len(substr)]
-			if normalizeForFuzzy(candidate) != substr {
-				continue
-			}
-
-			text = text[:pos] + placeholder + text[pos+len(substr):]
-
-			newCovered := make([]bool, pos)
-			copy(newCovered, covered[:pos])
-			covered = newCovered
-			break
-		}
-	}
-
-	return text
-}

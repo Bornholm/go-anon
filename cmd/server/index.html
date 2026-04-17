@@ -605,6 +605,20 @@
               />
             </div>
           </div>
+
+          <div class="config-section">
+            <h3>Post-traitement NER</h3>
+            <div class="checkbox-group">
+              <label class="checkbox-item">
+                <input type="checkbox" id="merge" checked />
+                <span>Fusion (PER+LOC → PER)</span>
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" id="name-completion" checked />
+                <span>Complétion des noms</span>
+              </label>
+            </div>
+          </div>
         </section>
 
         <section class="mapping-section" id="mapping-section">
@@ -642,6 +656,8 @@
         );
         const maxTokensInput = document.getElementById("max-tokens");
         const blocklistInput = document.getElementById("blocklist");
+        const mergeCheckbox = document.getElementById("merge");
+        const nameCompletionCheckbox = document.getElementById("name-completion");
         const anonymizeBtn = document.getElementById("anonymize-btn");
         const deanonymizeBtn = document.getElementById("deanonymize-btn");
 
@@ -787,6 +803,8 @@
                 maxTokens: parseInt(maxTokensInput.value) || 0,
                 blocklist: parseBlocklist(),
                 skipTypes: getSkipTypes(),
+                merge: mergeCheckbox.checked,
+                nameCompletion: nameCompletionCheckbox.checked,
               }),
             });
 

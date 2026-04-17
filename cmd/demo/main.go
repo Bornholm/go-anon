@@ -39,6 +39,8 @@ func main() {
 	flag.Var(&blocklistEntries, "blocklist", `supprimer les entités dont tous les tokens sont dans la liste.
 	Format : "TYPE:mot1,mot2,mot3" — répétable pour plusieurs types.
 	Exemple : -blocklist "PER:Monsieur,Madame" -blocklist "ORG:SA,SARL,Inc"`)
+	mergePass := flag.Bool("merge", false, "activer la fusion des entités fragmentées (PER+LOC adjacents)")
+	nameCompletion := flag.Bool("name-completion", false, "activer la complétion des noms incomplets (prénom seul)")
 
 	// Anonymisation sélective
 	var skipTypes entityTypeFlag
@@ -93,6 +95,13 @@ func main() {
 	}
 
 	// --- Post-filtres ---
+	if *mergePass {
+		opts = append(opts, goanon.WithMergePass())
+	}
+	if *nameCompletion {
+		opts = append(opts, goanon.WithNameCompletionPass())
+	}
+
 	var filters []goanon.EntityFilter
 
 	if *minConfidence > 0 {

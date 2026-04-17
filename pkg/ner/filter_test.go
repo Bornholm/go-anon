@@ -10,6 +10,43 @@ func entity(text string, typ EntityType, confidence float64) Entity {
 	return Entity{Text: text, Type: typ, Start: 0, End: len(text), Confidence: confidence}
 }
 
+func entityWithSpan(text string, typ EntityType, start, end int, confidence float64) Entity {
+	return Entity{Text: text, Type: typ, Start: start, End: end, Confidence: confidence}
+}
+
+func buildEntities(text string, specs []struct {
+	substr string
+	typ    EntityType
+	conf   float64
+}) []Entity {
+	entities := make([]Entity, 0, len(specs))
+	pos := 0
+	for _, spec := range specs {
+		idx := findSubstr(text, spec.substr, pos)
+		if idx < 0 {
+			panic("buildEntities: " + spec.substr + " not found in " + text)
+		}
+		entities = append(entities, Entity{
+			Text:       spec.substr,
+			Type:       spec.typ,
+			Start:      idx,
+			End:        idx + len(spec.substr),
+			Confidence: spec.conf,
+		})
+		pos = idx + len(spec.substr)
+	}
+	return entities
+}
+
+func findSubstr(s, substr string, from int) int {
+	for i := from; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
 // --- MinConfidenceFilter ---
 
 func TestMinConfidenceFilter_RemovesBelow(t *testing.T) {
@@ -46,7 +83,7 @@ func TestMinConfidenceFilter_EmptyInput(t *testing.T) {
 
 func TestMaxTokensFilter_RemovesLong(t *testing.T) {
 	entities := []Entity{
-		entity("Jean Dupont", TypePER, 1.0),                   // 2 tokens — OK
+		entity("Jean Dupont", TypePER, 1.0),                      // 2 tokens — OK
 		entity("EOLE Hâpy Hâpy-Master Hâpy-Node", TypeMISC, 1.0), // 4 tokens — trop long
 	}
 	got := MaxTokensFilter(3)(entities)
@@ -158,5 +195,221 @@ func TestCountTokens(t *testing.T) {
 		if got != c.want {
 			t.Errorf("countTokens(%q) = %d, want %d", c.s, got, c.want)
 		}
+	}
+}
+
+// --- MergePass ---
+
+func TestMergePass_PerLoc_AdjacentFusesIntoPer(t *testing.T) {
+	text := "BenjaminGaude"
+	entities := buildEntities(text, []struct {
+		substr string
+		typ    EntityType
+		conf   float64
+	}{
+		{"Benjamin", TypePER, 0.9},
+		{"Gaude", TypeLOC, 0.7},
+	})
+	got := MergePass(func() string { return text })(entities)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité fusionnée, got %d", len(got))
+	}
+	if got[0].Text != "BenjaminGaude" {
+		t.Errorf("texte fusionné incorrect : %q", got[0].Text)
+	}
+	if got[0].Type != TypePER {
+		t.Errorf("type должен быть PER, got %s", got[0].Type)
+	}
+	if got[0].Confidence != 0.9 {
+		t.Errorf("confiance devrait être celle de l'entité dominante (0.9), got %.2f", got[0].Confidence)
+	}
+}
+
+func TestMergePass_PerPer_AdjacentFusesIntoPer(t *testing.T) {
+	text := "BenjaminBohard"
+	entities := buildEntities(text, []struct {
+		substr string
+		typ    EntityType
+		conf   float64
+	}{
+		{"Benjamin", TypePER, 0.9},
+		{"Bohard", TypePER, 0.8},
+	})
+	got := MergePass(func() string { return text })(entities)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité fusionnée, got %d", len(got))
+	}
+	if got[0].Text != "BenjaminBohard" {
+		t.Errorf("texte fusionné incorrect : %q", got[0].Text)
+	}
+}
+
+func TestMergePass_NonAdjacent_NoFuse(t *testing.T) {
+	entities := []Entity{
+		{Text: "Benjamin", Type: TypePER, Start: 0, End: 8, Confidence: 0.9},
+		{Text: "Gaude", Type: TypeLOC, Start: 20, End: 25, Confidence: 0.7},
+	}
+	got := MergePass(func() string { return "Benjamin est la. Gaude aussi." })(entities)
+	if len(got) != 2 {
+		t.Errorf("entités non adjacentes ne doivent pas fusionner : got %d", len(got))
+	}
+}
+
+func TestMergePass_LocLoc_AdjacentFuses(t *testing.T) {
+	text := "NewYorkCity"
+	entities := buildEntities(text, []struct {
+		substr string
+		typ    EntityType
+		conf   float64
+	}{
+		{"New", TypeLOC, 0.9},
+		{"York", TypeLOC, 0.8},
+	})
+	got := MergePass(func() string { return text })(entities)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité fusionnée, got %d", len(got))
+	}
+	if got[0].Text != "NewYork" {
+		t.Errorf("texte fusionné incorrect : %q", got[0].Text)
+	}
+}
+
+func TestMergePass_MultipleConverges(t *testing.T) {
+	text := "JeanDupont habite a Paris"
+	entities := buildEntities(text, []struct {
+		substr string
+		typ    EntityType
+		conf   float64
+	}{
+		{"Jean", TypePER, 0.9},
+		{"Dupont", TypeLOC, 0.7},
+		{"Paris", TypeLOC, 0.8},
+	})
+	got := MergePass(func() string { return text })(entities)
+	if len(got) != 2 {
+		t.Errorf("attendu 2 entités (JeanDupont + Paris), got %d: %v", len(got), got)
+	}
+}
+
+func TestMergePass_EmptyInput(t *testing.T) {
+	got := MergePass(func() string { return "" })(nil)
+	if len(got) != 0 {
+		t.Errorf("nil en entrée doit retourner slice vide")
+	}
+}
+
+// --- NameCompletionPass ---
+
+func TestNameCompletionPass_SingleFirstName_CompletesWithSurname(t *testing.T) {
+	text := "BenjaminGaude est developpeur."
+	entities := buildEntities(text, []struct {
+		substr string
+		typ    EntityType
+		conf   float64
+	}{
+		{"Benjamin", TypePER, 0.9},
+	})
+	got := NameCompletionPass(func() string { return text })(entities)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité, got %d", len(got))
+	}
+	if got[0].Text != "BenjaminGaude" {
+		t.Errorf("nom incomplet : %q", got[0].Text)
+	}
+}
+
+func TestNameCompletionPass_AlreadyComplete_NoChange(t *testing.T) {
+	text := "JeanDupont est la."
+	entities := buildEntities(text, []struct {
+		substr string
+		typ    EntityType
+		conf   float64
+	}{
+		{"JeanDupont", TypePER, 0.9},
+	})
+	got := NameCompletionPass(func() string { return text })(entities)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité, got %d", len(got))
+	}
+	if got[0].Text != "JeanDupont" {
+		t.Errorf("nom déjà complet ne doit pas changer : %q", got[0].Text)
+	}
+}
+
+func TestNameCompletionPass_NoSpaceAfter_Skips(t *testing.T) {
+	text := "Arnaud."
+	entities := buildEntities(text, []struct {
+		substr string
+		typ    EntityType
+		conf   float64
+	}{
+		{"Arnaud", TypePER, 0.9},
+	})
+	got := NameCompletionPass(func() string { return text })(entities)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité, got %d", len(got))
+	}
+	if got[0].Text != "Arnaud" {
+		t.Errorf("ne doit pas compléter sans espace : %q", got[0].Text)
+	}
+}
+
+func TestNameCompletionPass_StopWordAfter_Skips(t *testing.T) {
+	text := "Jean le developpeur"
+	entities := buildEntities(text, []struct {
+		substr string
+		typ    EntityType
+		conf   float64
+	}{
+		{"Jean", TypePER, 0.9},
+	})
+	got := NameCompletionPass(func() string { return text })(entities)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité, got %d", len(got))
+	}
+	if got[0].Text != "Jean" {
+		t.Errorf("ne doit pas compléter sur stop-word : %q", got[0].Text)
+	}
+}
+
+func TestNameCompletionPass_AlreadyCovered_Skips(t *testing.T) {
+	text := "Benjamin et Jean."
+	entities := buildEntities(text, []struct {
+		substr string
+		typ    EntityType
+		conf   float64
+	}{
+		{"Benjamin", TypePER, 0.9},
+		{"Jean", TypePER, 0.9},
+	})
+	got := NameCompletionPass(func() string { return text })(entities)
+	if len(got) != 2 {
+		t.Fatalf("attendu 2 entités, got %d", len(got))
+	}
+	if got[0].Text != "Benjamin" || got[1].Text != "Jean" {
+		t.Errorf("ne doit pas modifier : %v", got)
+	}
+}
+
+func TestNameCompletionPass_KnownLocSurname_Skips(t *testing.T) {
+	text := "Bordeaux habite a Paris."
+	entities := buildEntities(text, []struct {
+		substr string
+		typ    EntityType
+		conf   float64
+	}{
+		{"Bordeaux", TypeLOC, 0.9},
+		{"Paris", TypeLOC, 0.9},
+	})
+	got := NameCompletionPass(func() string { return text })(entities)
+	if len(got) != 2 {
+		t.Fatalf("attendu 2 entités, got %d", len(got))
+	}
+}
+
+func TestNameCompletionPass_EmptyInput(t *testing.T) {
+	got := NameCompletionPass(func() string { return "" })(nil)
+	if len(got) != 0 {
+		t.Errorf("nil en entrée doit retourner slice vide")
 	}
 }

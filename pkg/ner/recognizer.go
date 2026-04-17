@@ -22,6 +22,7 @@ type Recognizer struct {
 	extractor          *features.FeatureExtractor
 	sentenceBoundaries map[string]bool // tokens non-mots qui délimitent les phrases
 	postFilters        []EntityFilter  // filtres appliqués après la reconnaissance
+	lastText           string          // texte de la dernière reconnaissance (pour NameCompletionPass)
 }
 
 // RecognizerOption configure un Recognizer via le pattern d'option fonctionnel.
@@ -76,6 +77,31 @@ func WithBrownClusters(clusters *features.BrownClusters) RecognizerOption {
 	}
 }
 
+// WithNameCompletionPass ajoute un filtre de complétion des noms de personnes
+// après la reconnaissance NER. Ce filtre détecte les entités PER incomplètes
+// (prénom seul) et les complète avec le token adjacent qui ressemble à un nom
+// de famille (commençant par une majuscule, non couvert par une entité existante).
+func WithNameCompletionPass() RecognizerOption {
+	return func(rec *Recognizer) error {
+		rec.postFilters = append(rec.postFilters, NameCompletionPass(func() string {
+			return rec.lastText
+		}))
+		return nil
+	}
+}
+
+// WithMergePass ajoute un filtre de fusion des entités fragmentées après la
+// reconnaissance NER. Ce filtre fusionne les entités adjacentes de même type
+// (PER+PER) et corrige les faux positifs LOC sur les noms de famille (PER+LOC).
+func WithMergePass() RecognizerOption {
+	return func(rec *Recognizer) error {
+		rec.postFilters = append(rec.postFilters, MergePass(func() string {
+			return rec.lastText
+		}))
+		return nil
+	}
+}
+
 // New construit un Recognizer avec le modèle m et les options fournies.
 // Le modèle est obligatoire ; utiliser LoadModel pour l'obtenir depuis un io.Reader.
 func New(m *Model, opts ...RecognizerOption) (*Recognizer, error) {
@@ -120,6 +146,8 @@ func (r *Recognizer) Recognize(text string) ([]Entity, error) {
 	if text == "" {
 		return []Entity{}, nil
 	}
+
+	r.lastText = text
 
 	var allEntities []Entity
 	_, labelIndex := r.crf.LabelsWithIndex()

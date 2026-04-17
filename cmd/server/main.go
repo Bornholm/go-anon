@@ -24,13 +24,15 @@ type Server struct {
 }
 
 type AnonymizeRequest struct {
-	Text          string              `json:"text"`
-	Language      string              `json:"language"`
-	Strategy      string              `json:"strategy"`
-	MinConfidence float64             `json:"minConfidence"`
-	MaxTokens     int                 `json:"maxTokens"`
-	Blocklist     map[string][]string `json:"blocklist"`
-	SkipTypes     []string            `json:"skipTypes"`
+	Text           string              `json:"text"`
+	Language       string              `json:"language"`
+	Strategy       string              `json:"strategy"`
+	MinConfidence  float64             `json:"minConfidence"`
+	MaxTokens      int                 `json:"maxTokens"`
+	Blocklist      map[string][]string `json:"blocklist"`
+	SkipTypes      []string            `json:"skipTypes"`
+	Merge          bool                `json:"merge"`
+	NameCompletion bool                `json:"nameCompletion"`
 }
 
 type Entity struct {
@@ -150,6 +152,12 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var recognizerOpts []goanon.RecognizerOption
+	if req.Merge {
+		recognizerOpts = append(recognizerOpts, goanon.WithMergePass())
+	}
+	if req.NameCompletion {
+		recognizerOpts = append(recognizerOpts, goanon.WithNameCompletionPass())
+	}
 	if req.MinConfidence > 0 || req.MaxTokens > 0 || len(req.Blocklist) > 0 {
 		var filters []goanon.EntityFilter
 		if req.MinConfidence > 0 {

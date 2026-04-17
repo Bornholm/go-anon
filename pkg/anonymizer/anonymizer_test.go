@@ -338,7 +338,7 @@ func TestEnsureConsistency_CatchesMissedEntities(t *testing.T) {
 	original := "Laetitia est la responsable. Laetitia gère les finances."
 	first := spanEntity(original, "Laetitia", ner.TypePER)
 	rec := &mockRecognizer{entities: []ner.Entity{first}}
-	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, ConsistencyPass: true})
+	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
 	result, err := anon.Anonymize(original)
 	if err != nil {
@@ -358,7 +358,7 @@ func TestEnsureConsistency_TypeMismatch(t *testing.T) {
 	first := spanEntity(original, "Laetitia", ner.TypePER)
 	second := spanEntityAfter(original, "Laetitia", first.End, ner.TypeLOC)
 	rec := &mockRecognizer{entities: []ner.Entity{first, second}}
-	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, ConsistencyPass: true})
+	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
 	result, err := anon.Anonymize(original)
 	if err != nil {
@@ -385,7 +385,7 @@ func TestEnsureConsistency_AlreadyCorrect(t *testing.T) {
 	first := spanEntity(original, "Jean Dupont", ner.TypePER)
 	second := spanEntityAfter(original, "Jean Dupont", first.End, ner.TypePER)
 	rec := &mockRecognizer{entities: []ner.Entity{first, second}}
-	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, ConsistencyPass: true})
+	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
 	result, err := anon.Anonymize(original)
 	if err != nil {
@@ -483,4 +483,55 @@ func spanEntityAfter(text, entityText string, fromByte int, typ ner.EntityType) 
 
 func itoa(i int) string {
 	return string(rune('0' + i))
+}
+
+func TestPostProcess_CompletesSurnameAfterPer(t *testing.T) {
+	original := "Benjamin Bohard est ici."
+	first := spanEntity(original, "Benjamin", ner.TypePER)
+	rec := &mockRecognizer{entities: []ner.Entity{first}}
+	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
+
+	result, err := anon.Anonymize(original)
+	if err != nil {
+		t.Fatalf("Anonymize: %v", err)
+	}
+
+	expected := "[PERSON_1] Bohard est ici."
+	if result.Text != expected {
+		t.Errorf("PostProcess failed\n  expected: %q\n  got:      %q", expected, result.Text)
+	}
+}
+
+func TestPostProcess_NoSurname_NoChange(t *testing.T) {
+	original := "Benjamin Bohard est ici."
+	first := spanEntity(original, "Benjamin Bohard", ner.TypePER)
+	rec := &mockRecognizer{entities: []ner.Entity{first}}
+	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
+
+	result, err := anon.Anonymize(original)
+	if err != nil {
+		t.Fatalf("Anonymize: %v", err)
+	}
+
+	expected := "[PERSON_1] est ici."
+	if result.Text != expected {
+		t.Errorf("unexpected modification\n  got: %q", result.Text)
+	}
+}
+
+func TestPostProcess_AdjacentSurnameWithSpace(t *testing.T) {
+	original := "Arnaud Fornerot est la."
+	first := spanEntity(original, "Arnaud", ner.TypePER)
+	rec := &mockRecognizer{entities: []ner.Entity{first}}
+	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
+
+	result, err := anon.Anonymize(original)
+	if err != nil {
+		t.Fatalf("Anonymize: %v", err)
+	}
+
+	expected := "[PERSON_1] Fornerot est la."
+	if result.Text != expected {
+		t.Errorf("PostProcess failed\n  expected: %q\n  got:      %q", expected, result.Text)
+	}
 }

@@ -45,6 +45,7 @@ type Config = anonymizer.Config
 type ReplacerFunc = anonymizer.ReplacerFunc
 type Result = anonymizer.Result
 type Recognizer = anonymizer.Recognizer
+type AnonymizePass = anonymizer.AnonymizePass
 
 const (
 	TagReplace = anonymizer.TagReplace
@@ -65,6 +66,11 @@ var NewRecognizer = ner.New
 // NewAnonymizer crée un Anonymizer qui s'appuie sur le Recognizer donné.
 var NewAnonymizer = anonymizer.New
 
+// — Passes de post-traitement de l'anonymiseur —
+
+var ConsistencyPass = anonymizer.ConsistencyPass
+var SurnameCompletionPass = anonymizer.SurnameCompletionPass
+
 // — Options du Recognizer —
 
 var WithLanguage = ner.WithLanguage
@@ -72,12 +78,16 @@ var WithGazetteers = ner.WithGazetteers
 var WithSentenceBoundaries = ner.WithSentenceBoundaries
 var WithBrownClusters = ner.WithBrownClusters
 var WithPostFilters = ner.WithPostFilters
+var WithMergePass = ner.WithMergePass
+var WithNameCompletionPass = ner.WithNameCompletionPass
 
 // — Filtres post-NER —
 
 var MinConfidenceFilter = ner.MinConfidenceFilter
 var MaxTokensFilter = ner.MaxTokensFilter
 var BlocklistFilter = ner.BlocklistFilter
+var MergePass = ner.MergePass
+var NameCompletionPass = ner.NameCompletionPass
 
 // — Features (réexports pour gazetteers / clusters) —
 
