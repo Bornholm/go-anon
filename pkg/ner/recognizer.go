@@ -1,0 +1,215 @@
+package ner
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/bornholm/go-anon/pkg/features"
+	"github.com/bornholm/go-anon/pkg/lang"
+	"github.com/bornholm/go-anon/pkg/model"
+	"github.com/bornholm/go-anon/pkg/tokenizer"
+)
+
+// DefaultSentenceBoundaries est l'ensemble des tokens non-mots reconnus comme
+// fins de phrase par défaut.
+var DefaultSentenceBoundaries = []string{".", "!", "?", ";"}
+
+// Recognizer orchestre le pipeline NER complet :
+// tokenisation → extraction de features → décodage Viterbi → entités.
+type Recognizer struct {
+	tok                tokenizer.Tokenizer
+	crf                *model.CRF
+	extractor          *features.FeatureExtractor
+	sentenceBoundaries map[string]bool // tokens non-mots qui délimitent les phrases
+	postFilters        []EntityFilter  // filtres appliqués après la reconnaissance
+}
+
+// RecognizerOption configure un Recognizer via le pattern d'option fonctionnel.
+type RecognizerOption func(*Recognizer) error
+
+// WithLanguage configure le tokenizer et le LangProfile selon le code ISO 639-1.
+// Langues supportées : "fr", "en".
+func WithLanguage(code string) RecognizerOption {
+	return func(rec *Recognizer) error {
+		switch code {
+		case "fr":
+			rec.tok = &tokenizer.UnicodeTokenizer{SplitApostrophe: true}
+			rec.extractor.LangProfile = lang.NewFrenchProfile()
+		case "en":
+			rec.tok = &tokenizer.UnicodeTokenizer{SplitHyphen: true}
+			rec.extractor.LangProfile = lang.NewEnglishProfile()
+		default:
+			return fmt.Errorf("ner: WithLanguage: unsupported language %q", code)
+		}
+		return nil
+	}
+}
+
+// WithGazetteers attache des gazetteers nommés au FeatureExtractor.
+func WithGazetteers(gazetteers map[string]*features.Gazetteer) RecognizerOption {
+	return func(rec *Recognizer) error {
+		rec.extractor.Gazetteers = gazetteers
+		return nil
+	}
+}
+
+// WithSentenceBoundaries remplace la liste des tokens délimiteurs de phrases.
+// Seuls les tokens non-mots (IsWord == false) dont le texte figure dans tokens
+// déclenchent une coupure de séquence NER.
+// Passer une liste vide désactive le découpage intra-ligne.
+// Exemple : ner.WithSentenceBoundaries(".", "!", "?", ";", ":")
+func WithSentenceBoundaries(tokens ...string) RecognizerOption {
+	return func(rec *Recognizer) error {
+		rec.sentenceBoundaries = make(map[string]bool, len(tokens))
+		for _, t := range tokens {
+			rec.sentenceBoundaries[t] = true
+		}
+		return nil
+	}
+}
+
+// WithBrownClusters attache des Brown clusters au FeatureExtractor.
+func WithBrownClusters(clusters *features.BrownClusters) RecognizerOption {
+	return func(rec *Recognizer) error {
+		rec.extractor.Clusters = clusters
+		return nil
+	}
+}
+
+// New construit un Recognizer avec le modèle m et les options fournies.
+// Le modèle est obligatoire ; utiliser LoadModel pour l'obtenir depuis un io.Reader.
+func New(m *Model, opts ...RecognizerOption) (*Recognizer, error) {
+	boundaries := make(map[string]bool, len(DefaultSentenceBoundaries))
+	for _, t := range DefaultSentenceBoundaries {
+		boundaries[t] = true
+	}
+
+	rec := &Recognizer{
+		tok: &tokenizer.UnicodeTokenizer{SplitHyphen: true}, // défaut : "en"
+		extractor: &features.FeatureExtractor{
+			WindowSize: 2,
+		},
+		sentenceBoundaries: boundaries,
+		crf:                m.crf,
+	}
+
+	for _, opt := range opts {
+		if err := opt(rec); err != nil {
+			return nil, err
+		}
+	}
+
+	// Synchroniser la taille de fenêtre du modèle avec l'extracteur.
+	// Le modèle sauvegarde la fenêtre utilisée à l'entraînement dans FeatureCfg.WindowSize ;
+	// sans cette synchronisation, l'inférence utiliserait la valeur par défaut (2)
+	// même si le modèle a été entraîné avec window=3, causant une absence de features critiques.
+	if w := m.crf.FeatureCfg.WindowSize; w > 0 {
+		rec.extractor.WindowSize = w
+	}
+
+	return rec, nil
+}
+
+// Recognize détecte les entités nommées dans text.
+// Le texte est découpé ligne par ligne : chaque ligne non vide est traitée
+// comme une séquence NER indépendante (comme à l'entraînement), ce qui évite
+// que le modèle étende des spans d'entités au-delà des frontières naturelles.
+// Les offsets Start/End des entités retournées sont des positions byte dans
+// le texte original (non modifié).
+func (r *Recognizer) Recognize(text string) ([]Entity, error) {
+	if text == "" {
+		return []Entity{}, nil
+	}
+
+	var allEntities []Entity
+	_, labelIndex := r.crf.LabelsWithIndex()
+
+	offset := 0
+	for _, line := range strings.Split(text, "\n") {
+		lineLen := len(line)
+		entities := r.recognizeLine(line, offset, labelIndex)
+		allEntities = append(allEntities, entities...)
+		offset += lineLen + 1 // +1 pour le '\n' consommé
+	}
+
+	for _, f := range r.postFilters {
+		allEntities = f(allEntities)
+	}
+
+	return allEntities, nil
+}
+
+// recognizeLine effectue la reconnaissance NER sur une seule ligne de texte.
+// La ligne est elle-même découpée en phrases aux frontières syntaxiques
+// (`.`, `!`, `?`, `;`) détectées dans le flux de tokens — chaque phrase
+// est traitée indépendamment par le CRF.
+// byteOffset est l'offset de début de la ligne dans le texte original complet ;
+// il est ajouté aux offsets Start/End de chaque entité détectée.
+func (r *Recognizer) recognizeLine(line string, byteOffset int, labelIndex map[string]int) []Entity {
+	if strings.TrimSpace(line) == "" {
+		return nil
+	}
+
+	allTokens := r.tok.Tokenize(line)
+
+	var entities []Entity
+	var segment []tokenizer.Token
+
+	flushSegment := func() {
+		wordTokens := extractWordTokens(segment)
+		segment = segment[:0]
+		if len(wordTokens) == 0 {
+			return
+		}
+		words := tokenTexts(wordTokens)
+		feats := make([]map[string]float64, len(wordTokens))
+		for i := range wordTokens {
+			feats[i] = r.extractor.Features(words, i)
+		}
+		labels := r.crf.Predict(feats)
+		marginals := r.crf.PredictMarginals(feats)
+		fixedLabels := FixBIOViolations(labels)
+		segEntities := decodeEntitiesWithScores(wordTokens, fixedLabels, marginals, labelIndex)
+		for i := range segEntities {
+			segEntities[i].Start += byteOffset
+			segEntities[i].End += byteOffset
+		}
+		entities = append(entities, segEntities...)
+	}
+
+	for _, tok := range allTokens {
+		segment = append(segment, tok)
+		if r.isSentenceBoundary(tok) {
+			flushSegment()
+		}
+	}
+	flushSegment()
+
+	return entities
+}
+
+// isSentenceBoundary retourne true si le token marque une fin de phrase
+// selon la configuration du Recognizer.
+func (r *Recognizer) isSentenceBoundary(tok tokenizer.Token) bool {
+	return !tok.IsWord && r.sentenceBoundaries[tok.Text]
+}
+
+// extractWordTokens retourne uniquement les tokens dont IsWord == true.
+func extractWordTokens(tokens []tokenizer.Token) []tokenizer.Token {
+	result := make([]tokenizer.Token, 0, len(tokens))
+	for _, t := range tokens {
+		if t.IsWord {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+// tokenTexts retourne les formes de surface des tokens.
+func tokenTexts(tokens []tokenizer.Token) []string {
+	texts := make([]string, len(tokens))
+	for i, t := range tokens {
+		texts[i] = t.Text
+	}
+	return texts
+}

@@ -1,0 +1,12 @@
+John	B-PER
+Doe	I-PER
+lives	O
+in	O
+Paris	B-LOC
+.	O
+
+Peter	B-PER
+works	O
+at	O
+Airbus	B-ORG
+.	O
