@@ -12,7 +12,7 @@ import (
 
 // DefaultSentenceBoundaries est l'ensemble des tokens non-mots reconnus comme
 // fins de phrase par défaut.
-var DefaultSentenceBoundaries = []string{".", "!", "?", ";"}
+var DefaultSentenceBoundaries = []string{".", "!", "?", ";", ",", ":", "…", "—", "(", ")"}
 
 // Recognizer orchestre le pipeline NER complet :
 // tokenisation → extraction de features → décodage Viterbi → entités.
@@ -20,9 +20,10 @@ type Recognizer struct {
 	tok                tokenizer.Tokenizer
 	crf                *model.CRF
 	extractor          *features.FeatureExtractor
-	sentenceBoundaries map[string]bool // tokens non-mots qui délimitent les phrases
-	postFilters        []EntityFilter  // filtres appliqués après la reconnaissance
-	lastText           string          // texte de la dernière reconnaissance (pour NameCompletionPass)
+	langProfile        *lang.LangProfile // profil linguistique (pour FirstNameDetectionPass)
+	sentenceBoundaries map[string]bool   // tokens non-mots qui délimitent les phrases
+	postFilters        []EntityFilter    // filtres appliqués après la reconnaissance
+	lastText           string            // texte de la dernière reconnaissance (pour NameCompletionPass)
 }
 
 // RecognizerOption configure un Recognizer via le pattern d'option fonctionnel.
@@ -35,10 +36,12 @@ func WithLanguage(code string) RecognizerOption {
 		switch code {
 		case "fr":
 			rec.tok = &tokenizer.UnicodeTokenizer{SplitApostrophe: true}
-			rec.extractor.LangProfile = lang.NewFrenchProfile()
+			rec.langProfile = lang.NewFrenchProfile()
+			rec.extractor.LangProfile = rec.langProfile
 		case "en":
 			rec.tok = &tokenizer.UnicodeTokenizer{SplitHyphen: true}
-			rec.extractor.LangProfile = lang.NewEnglishProfile()
+			rec.langProfile = lang.NewEnglishProfile()
+			rec.extractor.LangProfile = rec.langProfile
 		default:
 			return fmt.Errorf("ner: WithLanguage: unsupported language %q", code)
 		}
@@ -81,11 +84,45 @@ func WithBrownClusters(clusters *features.BrownClusters) RecognizerOption {
 // après la reconnaissance NER. Ce filtre détecte les entités PER incomplètes
 // (prénom seul) et les complète avec le token adjacent qui ressemble à un nom
 // de famille (commençant par une majuscule, non couvert par une entité existante).
-func WithNameCompletionPass() RecognizerOption {
+// firstNames est un gazetteer de prénoms connus ; nil rend la passe inopérante.
+func WithNameCompletionPass(firstNames *features.Gazetteer) RecognizerOption {
 	return func(rec *Recognizer) error {
 		rec.postFilters = append(rec.postFilters, NameCompletionPass(func() string {
 			return rec.lastText
-		}))
+		}, firstNames))
+		return nil
+	}
+}
+
+// WithFirstNameReclassify ajoute un filtre qui reclasse en PER les entités LOC
+// d'un seul token figurant dans le gazetteer firstNames.
+// À placer avant WithMergePass pour que les prénoms reclassés soient fusionnés
+// correctement avec les noms de famille adjacents.
+func WithFirstNameReclassify(firstNames *features.Gazetteer) RecognizerOption {
+	return func(rec *Recognizer) error {
+		rec.postFilters = append(rec.postFilters, FirstNameReclassifyFilter(firstNames))
+		return nil
+	}
+}
+
+// WithFirstNameDetectionPass ajoute un filtre qui détecte les tokens majuscules
+// correspondant à des prénoms du gazetteer qui ne sont pas déjà couverts par des
+// entités existantes, et les ajoute comme entités PER.
+// Les stop words proviennent du LangProfile du Recognizer.
+// À placer après les autres filtres pour ne pas interférer avec la détection
+// initiale du NER.
+func WithFirstNameDetectionPass(firstNames *features.Gazetteer) RecognizerOption {
+	return func(rec *Recognizer) error {
+		var stopWords map[string]bool
+		if rec.langProfile != nil {
+			stopWords = make(map[string]bool)
+			for w := range rec.langProfile.StopWords {
+				stopWords[w] = true
+			}
+		}
+		rec.postFilters = append(rec.postFilters, FirstNameDetectionFilter(func() string {
+			return rec.lastText
+		}, firstNames, stopWords))
 		return nil
 	}
 }

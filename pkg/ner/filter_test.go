@@ -1,8 +1,17 @@
 package ner
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/bornholm/go-anon/pkg/features"
 )
+
+// testFirstNames construit un gazetteer de prénoms pour les tests.
+func testFirstNames(names ...string) *features.Gazetteer {
+	g, _ := features.LoadGazetteer("firstnames", strings.NewReader(strings.Join(names, "\n")))
+	return g
+}
 
 // helpers
 
@@ -309,7 +318,7 @@ func TestNameCompletionPass_SingleFirstName_CompletesWithSurname(t *testing.T) {
 	}{
 		{"Benjamin", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text })(entities)
+	got := NameCompletionPass(func() string { return text }, testFirstNames("Benjamin"))(entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}
@@ -327,7 +336,7 @@ func TestNameCompletionPass_AlreadyComplete_NoChange(t *testing.T) {
 	}{
 		{"JeanDupont", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text })(entities)
+	got := NameCompletionPass(func() string { return text }, testFirstNames("Jean"))(entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}
@@ -345,7 +354,7 @@ func TestNameCompletionPass_NoSpaceAfter_Skips(t *testing.T) {
 	}{
 		{"Arnaud", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text })(entities)
+	got := NameCompletionPass(func() string { return text }, testFirstNames("Arnaud"))(entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}
@@ -363,7 +372,7 @@ func TestNameCompletionPass_StopWordAfter_Skips(t *testing.T) {
 	}{
 		{"Jean", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text })(entities)
+	got := NameCompletionPass(func() string { return text }, testFirstNames("Jean"))(entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}
@@ -382,7 +391,7 @@ func TestNameCompletionPass_AlreadyCovered_Skips(t *testing.T) {
 		{"Benjamin", TypePER, 0.9},
 		{"Jean", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text })(entities)
+	got := NameCompletionPass(func() string { return text }, testFirstNames("Benjamin", "Jean"))(entities)
 	if len(got) != 2 {
 		t.Fatalf("attendu 2 entités, got %d", len(got))
 	}
@@ -401,15 +410,79 @@ func TestNameCompletionPass_KnownLocSurname_Skips(t *testing.T) {
 		{"Bordeaux", TypeLOC, 0.9},
 		{"Paris", TypeLOC, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text })(entities)
+	got := NameCompletionPass(func() string { return text }, testFirstNames())(entities)
 	if len(got) != 2 {
 		t.Fatalf("attendu 2 entités, got %d", len(got))
 	}
 }
 
 func TestNameCompletionPass_EmptyInput(t *testing.T) {
-	got := NameCompletionPass(func() string { return "" })(nil)
+	got := NameCompletionPass(func() string { return "" }, nil)(nil)
 	if len(got) != 0 {
 		t.Errorf("nil en entrée doit retourner slice vide")
+	}
+}
+
+func TestFirstNameDetectionFilter_DetectsUncoveredFirstNames(t *testing.T) {
+	text := "Vincent est ici."
+	filter := FirstNameDetectionFilter(func() string { return text }, testFirstNames("Vincent"), nil)
+	entities := filter(nil)
+
+	if len(entities) != 1 {
+		t.Fatalf("attendu 1 entité, got %d", len(entities))
+	}
+	if entities[0].Text != "Vincent" {
+		t.Errorf("attendu 'Vincent', got %q", entities[0].Text)
+	}
+	if entities[0].Type != TypePER {
+		t.Errorf("attendu TypePER, got %v", entities[0].Type)
+	}
+}
+
+func TestFirstNameDetectionFilter_AlreadyCovered_Skips(t *testing.T) {
+	text := "Vincent est ici."
+	existing := []Entity{{Text: "Vincent", Type: TypePER, Start: 0, End: 7, Confidence: 1.0}}
+	filter := FirstNameDetectionFilter(func() string { return text }, testFirstNames("Vincent"), nil)
+	entities := filter(existing)
+
+	if len(entities) != 1 {
+		t.Fatalf("attendu 1 entité, got %d", len(entities))
+	}
+}
+
+func TestFirstNameDetectionFilter_NonFirstName_Skips(t *testing.T) {
+	text := "Bonjour tout le monde."
+	filter := FirstNameDetectionFilter(func() string { return text }, testFirstNames("Vincent"), nil)
+	entities := filter(nil)
+
+	if len(entities) != 0 {
+		t.Errorf("attendu 0 entités pour non-prénom, got %d", len(entities))
+	}
+}
+
+func TestFirstNameDetectionFilter_MultipleFirstNames(t *testing.T) {
+	text := "Vincent et Benjamin sont là."
+	filter := FirstNameDetectionFilter(func() string { return text }, testFirstNames("Vincent", "Benjamin"), nil)
+	entities := filter(nil)
+
+	if len(entities) != 2 {
+		t.Fatalf("attendu 2 entités, got %d", len(entities))
+	}
+	if entities[0].Text != "Vincent" {
+		t.Errorf("attendu 'Vincent', got %q", entities[0].Text)
+	}
+	if entities[1].Text != "Benjamin" {
+		t.Errorf("attendu 'Benjamin', got %q", entities[1].Text)
+	}
+}
+
+func TestFirstNameDetectionFilter_StopWordsExcluded(t *testing.T) {
+	text := "Le développeur"
+	stopWords := map[string]bool{"le": true, "la": true, "de": true}
+	filter := FirstNameDetectionFilter(func() string { return text }, testFirstNames("Le", "De"), stopWords)
+	entities := filter(nil)
+
+	if len(entities) != 0 {
+		t.Errorf("attendu 0 entités pour stop words, got %d", len(entities))
 	}
 }

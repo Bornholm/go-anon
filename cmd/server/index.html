@@ -610,6 +610,10 @@
             <h3>Post-traitement NER</h3>
             <div class="checkbox-group">
               <label class="checkbox-item">
+                <input type="checkbox" id="first-name-reclassify" checked />
+                <span>Reclassifier prénoms LOC→PER</span>
+              </label>
+              <label class="checkbox-item">
                 <input type="checkbox" id="merge" checked />
                 <span>Fusion (PER+LOC → PER)</span>
               </label>
@@ -656,6 +660,7 @@
         );
         const maxTokensInput = document.getElementById("max-tokens");
         const blocklistInput = document.getElementById("blocklist");
+        const firstNameReclassifyCheckbox = document.getElementById("first-name-reclassify");
         const mergeCheckbox = document.getElementById("merge");
         const nameCompletionCheckbox = document.getElementById("name-completion");
         const anonymizeBtn = document.getElementById("anonymize-btn");
@@ -803,6 +808,7 @@
                 maxTokens: parseInt(maxTokensInput.value) || 0,
                 blocklist: parseBlocklist(),
                 skipTypes: getSkipTypes(),
+                firstNameReclassify: firstNameReclassifyCheckbox.checked,
                 merge: mergeCheckbox.checked,
                 nameCompletion: nameCompletionCheckbox.checked,
               }),

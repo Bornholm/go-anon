@@ -39,6 +39,8 @@ func main() {
 	flag.Var(&blocklistEntries, "blocklist", `supprimer les entités dont tous les tokens sont dans la liste.
 	Format : "TYPE:mot1,mot2,mot3" — répétable pour plusieurs types.
 	Exemple : -blocklist "PER:Monsieur,Madame" -blocklist "ORG:SA,SARL,Inc"`)
+	firstNameReclassify := flag.Bool("first-name-reclassify", false, "reclasser en PER les entités LOC figurant dans le gazetteer 'firstnames'")
+	firstNameDetection := flag.Bool("first-name-detection", false, "détecter les prénoms du gazetteer non couverts par des entités existantes")
 	mergePass := flag.Bool("merge", false, "activer la fusion des entités fragmentées (PER+LOC adjacents)")
 	nameCompletion := flag.Bool("name-completion", false, "activer la complétion des noms incomplets (prénom seul)")
 
@@ -95,11 +97,17 @@ func main() {
 	}
 
 	// --- Post-filtres ---
+	if *firstNameReclassify {
+		opts = append(opts, goanon.WithFirstNameReclassify(gazetteers["firstnames"]))
+	}
+	if *firstNameDetection {
+		opts = append(opts, goanon.WithFirstNameDetectionPass(gazetteers["firstnames"]))
+	}
 	if *mergePass {
 		opts = append(opts, goanon.WithMergePass())
 	}
 	if *nameCompletion {
-		opts = append(opts, goanon.WithNameCompletionPass())
+		opts = append(opts, goanon.WithNameCompletionPass(gazetteers["firstnames"]))
 	}
 
 	var filters []goanon.EntityFilter

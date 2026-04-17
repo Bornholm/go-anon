@@ -12,6 +12,8 @@ import (
 	"sync"
 
 	goanon "github.com/bornholm/go-anon"
+	"github.com/bornholm/go-anon/cmd/internal/cmdutil"
+	"github.com/bornholm/go-anon/pkg/features"
 	"github.com/bornholm/go-anon/pkg/ner"
 )
 
@@ -19,8 +21,9 @@ import (
 var htmlContent embed.FS
 
 type Server struct {
-	models map[string]*ner.Model
-	mu     sync.RWMutex
+	models     map[string]*ner.Model
+	gazetteers map[string]*features.Gazetteer
+	mu         sync.RWMutex
 }
 
 type AnonymizeRequest struct {
@@ -31,8 +34,9 @@ type AnonymizeRequest struct {
 	MaxTokens      int                 `json:"maxTokens"`
 	Blocklist      map[string][]string `json:"blocklist"`
 	SkipTypes      []string            `json:"skipTypes"`
-	Merge          bool                `json:"merge"`
-	NameCompletion bool                `json:"nameCompletion"`
+	FirstNameReclassify bool                `json:"firstNameReclassify"`
+	Merge               bool                `json:"merge"`
+	NameCompletion      bool                `json:"nameCompletion"`
 }
 
 type Entity struct {
@@ -58,6 +62,7 @@ type DeanonymizeResponse struct {
 
 func main() {
 	modelsFlag := flag.String("models", "", "comma-separated list of lang:path pairs (e.g., fr:model_fr.crf.gz,en:model_en.crf.gz)")
+	gazetteerFlag := flag.String("gazetteers", "", `gazetteers à charger : "nom:fichier.txt,nom:fichier.txt"`)
 	port := flag.String("port", "8080", "server port")
 	flag.Parse()
 
@@ -65,8 +70,14 @@ func main() {
 		log.Fatal("error: -models flag is required (format: lang:path,lang:path)")
 	}
 
+	gazetteers, err := cmdutil.ParseGazetteers(*gazetteerFlag)
+	if err != nil {
+		log.Fatalf("chargement gazetteers : %v", err)
+	}
+
 	srv := &Server{
-		models: make(map[string]*ner.Model),
+		models:     make(map[string]*ner.Model),
+		gazetteers: gazetteers,
 	}
 
 	for _, pair := range strings.Split(*modelsFlag, ",") {
@@ -152,11 +163,15 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var recognizerOpts []goanon.RecognizerOption
+	recognizerOpts = append(recognizerOpts, goanon.WithLanguage(lang))
+	if req.FirstNameReclassify {
+		recognizerOpts = append(recognizerOpts, goanon.WithFirstNameReclassify(s.gazetteers["firstnames"]))
+	}
 	if req.Merge {
 		recognizerOpts = append(recognizerOpts, goanon.WithMergePass())
 	}
 	if req.NameCompletion {
-		recognizerOpts = append(recognizerOpts, goanon.WithNameCompletionPass())
+		recognizerOpts = append(recognizerOpts, goanon.WithNameCompletionPass(s.gazetteers["firstnames"]))
 	}
 	if req.MinConfidence > 0 || req.MaxTokens > 0 || len(req.Blocklist) > 0 {
 		var filters []goanon.EntityFilter

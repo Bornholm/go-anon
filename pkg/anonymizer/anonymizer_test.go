@@ -535,3 +535,21 @@ func TestPostProcess_AdjacentSurnameWithSpace(t *testing.T) {
 		t.Errorf("PostProcess failed\n  expected: %q\n  got:      %q", expected, result.Text)
 	}
 }
+
+func TestAnonymize_SharedSurname_DoesNotConflict(t *testing.T) {
+	entities := []ner.Entity{
+		{Text: "Laetitia Fornerot", Type: ner.TypePER, Start: 0, End: 16, Confidence: 1.0},
+		{Text: "Arnaud Fornerot", Type: ner.TypePER, Start: 18, End: 34, Confidence: 1.0},
+	}
+	rec := &mockRecognizer{entities: entities}
+	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
+
+	result, err := anon.Anonymize("Laetitia Fornerot\n\nArnaud Fornerot")
+	if err != nil {
+		t.Fatalf("Anonymize: %v", err)
+	}
+
+	if strings.Contains(result.Text, "[PERSON_1] [PERSON_2]") {
+		t.Errorf("shared surname should not cause partial replacement\n  got: %q", result.Text)
+	}
+}

@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/bornholm/go-anon/pkg/features"
 )
 
 // EntityFilter est une fonction de post-traitement appliquée sur la liste
@@ -91,17 +93,117 @@ func allTokensBlocked(text string, blocklist map[string]bool) bool {
 	return true
 }
 
-var commonFirstNames = map[string]bool{
-	"arnaud": true, "benjamin": true, "matthieu": true, "philippe": true,
-	"vincent": true, "william": true, "laetitia": true, "charles": true,
-	"jean": true, "marie": true, "pierre": true, "paul": true,
-	"luc": true, "anne": true, "nicolas": true, "alexandre": true,
-	"thomas": true, "antoine": true, "sébastien": true, "frédéric": true,
-	"olivier": true, "julien": true, "maxime": true, "lucas": true,
-	"mathieu": true, "nathan": true, "hugo": true, "gabriel": true,
-	"raphaël": true, "claire": true, "sophie": true, "claude": true,
-	"dominique": true, "gerard": true, "bernard": true, "michel": true,
-	"pierre-yves": true, "jean-marie": true,
+// FirstNameReclassifyFilter reclasse en PER les entités LOC d'un seul token
+// dont le texte figure dans le gazetteer de prénoms. Utile quand le modèle
+// confond un prénom (ex. "Vincent", "Laetitia") avec un lieu.
+// Si firstNames est nil, le filtre est inopérant.
+func FirstNameReclassifyFilter(firstNames *features.Gazetteer) EntityFilter {
+	return func(entities []Entity) []Entity {
+		if firstNames == nil {
+			return entities
+		}
+		result := make([]Entity, len(entities))
+		for i, e := range entities {
+			if e.Type == TypeLOC && countTokens(e.Text) == 1 && firstNames.Contains(e.Text) {
+				e.Type = TypePER
+			}
+			result[i] = e
+		}
+		return result
+	}
+}
+
+// FirstNameDetectionFilter détecte les tokens majuscules correspondant à des
+// prénoms du gazetteer qui ne sont pas déjà couverts par des entités existantes,
+// et les ajoute comme entités PER. getText retourne le texte original.
+// stopWords est une map optionnelle de mots à exclure (en minuscules) ; si nil,
+// seuls les tokens de moins de 3 caractères et ceux suivis d'une lettre minuscule
+// sont filtrés.
+func FirstNameDetectionFilter(getText func() string, firstNames *features.Gazetteer, stopWords map[string]bool) EntityFilter {
+	return func(entities []Entity) []Entity {
+		if firstNames == nil || getText == nil {
+			return entities
+		}
+
+		text := getText()
+		if text == "" {
+			return entities
+		}
+
+		covered := make([]bool, len(text))
+		for _, e := range entities {
+			for i := e.Start; i < e.End && i < len(covered); i++ {
+				covered[i] = true
+			}
+		}
+
+		var newEntities []Entity
+		pos := 0
+		for pos < len(text) {
+			if covered[pos] {
+				pos++
+				continue
+			}
+
+			if !unicode.IsUpper(rune(text[pos])) {
+				pos++
+				continue
+			}
+
+			end := pos
+			for end < len(text) {
+				r := rune(text[end])
+				if unicode.IsLetter(r) || r == '\'' || r == '-' {
+					end++
+				} else {
+					break
+				}
+			}
+
+			token := text[pos:end]
+			if len(token) < 3 {
+				pos = end
+				continue
+			}
+			if stopWords != nil && stopWords[strings.ToLower(token)] {
+				pos = end
+				continue
+			}
+			if end < len(text) && unicode.IsLower(rune(text[end])) {
+				pos = end
+				continue
+			}
+			if firstNames.Contains(token) {
+				newEntities = append(newEntities, Entity{
+					Text:       token,
+					Type:       TypePER,
+					Start:      pos,
+					End:        end,
+					Confidence: 1.0,
+				})
+				for i := pos; i < end; i++ {
+					if i < len(covered) {
+						covered[i] = true
+					}
+				}
+			}
+
+			pos = end
+		}
+
+		if len(newEntities) == 0 {
+			return entities
+		}
+
+		result := append(entities, newEntities...)
+		sort.Slice(result, func(i, j int) bool {
+			if result[i].Start != result[j].Start {
+				return result[i].Start < result[j].Start
+			}
+			return result[i].End > result[j].End
+		})
+		return result
+	}
 }
 
 var defaultStopWords = map[string]bool{
@@ -218,12 +320,13 @@ func isWhitespaceBetween(text string, end, start int) bool {
 	return true
 }
 
-// NameCompletionPass complète les entités PER partielles (prénom seul) en détectant
-// les tokens adjacents qui ressemblent à des noms de famille.
-// getText est une fonction retournant le texte original (fournie par le Recognizer).
-func NameCompletionPass(getText func() string) EntityFilter {
+// NameCompletionPass complète les entités PER d'un seul token (prénom seul) en
+// cherchant un nom de famille adjacent dans le texte original.
+// firstNames est un gazetteer de prénoms connus ; si nil, la passe est inopérante.
+// getText retourne le texte original (fourni par le Recognizer).
+func NameCompletionPass(getText func() string, firstNames *features.Gazetteer) EntityFilter {
 	return func(entities []Entity) []Entity {
-		if len(entities) == 0 {
+		if len(entities) == 0 || firstNames == nil {
 			return entities
 		}
 
@@ -254,8 +357,7 @@ func NameCompletionPass(getText func() string) EntityFilter {
 				continue
 			}
 
-			firstName := strings.ToLower(e.Text)
-			if !commonFirstNames[firstName] {
+			if !firstNames.Contains(e.Text) {
 				result = append(result, e)
 				continue
 			}

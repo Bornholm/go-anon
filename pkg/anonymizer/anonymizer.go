@@ -210,6 +210,49 @@ func ConsistencyPass() AnonymizePass {
 			}
 		}
 
+		// Pour les entités PER multi-mots, ajouter chaque token majuscule
+		// séparément afin de couvrir les occurrences du prénom ou nom seul.
+		// Ne pas ajouter les tokens qui apparaissent dans plusieurs entités PER
+		// (évite les conflits sur les noms partagés comme "Fornerot").
+		perTokenCount := make(map[string]int)
+		for _, ent := range result.Entities {
+			if ent.Type != ner.TypePER {
+				continue
+			}
+			for _, tok := range strings.Fields(ent.Text) {
+				runes := []rune(tok)
+				if len(runes) > 0 && unicode.IsUpper(runes[0]) {
+					perTokenCount[normalizeForFuzzy(tok)]++
+				}
+			}
+		}
+		for _, ent := range sortedByType {
+			if ent.Type != ner.TypePER {
+				continue
+			}
+			placeholder := result.OriginalToPlaceholder[ent.Text]
+			if placeholder == "" {
+				continue
+			}
+			tokens := strings.Fields(ent.Text)
+			if len(tokens) <= 1 {
+				continue
+			}
+			for _, tok := range tokens {
+				runes := []rune(tok)
+				if len(runes) == 0 || !unicode.IsUpper(runes[0]) {
+					continue
+				}
+				norm := normalizeForFuzzy(tok)
+				if perTokenCount[norm] > 1 {
+					continue
+				}
+				if _, exists := canonicalMap[norm]; !exists {
+					canonicalMap[norm] = placeholder
+				}
+			}
+		}
+
 		// Convertir en slice triée : matchs longs d'abord (greedy), puis
 		// lexicographique pour garantir un ordre déterministe.
 		type canonicalEntry struct {
@@ -443,4 +486,3 @@ func filterByType(entities []ner.Entity, types []ner.EntityType) []ner.Entity {
 	}
 	return result
 }
-

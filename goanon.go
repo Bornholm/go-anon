@@ -78,11 +78,15 @@ var WithGazetteers = ner.WithGazetteers
 var WithSentenceBoundaries = ner.WithSentenceBoundaries
 var WithBrownClusters = ner.WithBrownClusters
 var WithPostFilters = ner.WithPostFilters
+var WithFirstNameReclassify = ner.WithFirstNameReclassify
+var WithFirstNameDetectionPass = ner.WithFirstNameDetectionPass
 var WithMergePass = ner.WithMergePass
 var WithNameCompletionPass = ner.WithNameCompletionPass
 
 // — Filtres post-NER —
 
+var FirstNameReclassifyFilter = ner.FirstNameReclassifyFilter
+var FirstNameDetectionFilter = ner.FirstNameDetectionFilter
 var MinConfidenceFilter = ner.MinConfidenceFilter
 var MaxTokensFilter = ner.MaxTokensFilter
 var BlocklistFilter = ner.BlocklistFilter
