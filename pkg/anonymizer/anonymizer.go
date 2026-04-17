@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/bornholm/go-anon/pkg/ner"
 )
@@ -254,15 +255,19 @@ func ConsistencyPass() AnonymizePass {
 			}
 
 			for _, entry := range canonical {
-				if pos+len(entry.substr) > len(text) {
+				end := pos + len(entry.substr)
+				if end > len(text) {
 					continue
 				}
-				candidate := text[pos : pos+len(entry.substr)]
+				candidate := text[pos:end]
 				if normalizeForFuzzy(candidate) != entry.substr {
 					continue
 				}
+				if !isWordBoundary(text, pos, end) {
+					continue
+				}
 
-				text = text[:pos] + entry.placeholder + text[pos+len(entry.substr):]
+				text = text[:pos] + entry.placeholder + text[end:]
 
 				newCovered := make([]bool, pos)
 				copy(newCovered, covered[:pos])
@@ -370,6 +375,24 @@ func SurnameCompletionPass() AnonymizePass {
 
 		return text
 	}
+}
+
+// isWordBoundary retourne true si le span [start, end) dans text est délimité
+// par des caractères non-lettre/non-chiffre (ou par les bords du texte).
+func isWordBoundary(text string, start, end int) bool {
+	if start > 0 {
+		r, _ := utf8.DecodeLastRuneInString(text[:start])
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return false
+		}
+	}
+	if end < len(text) {
+		r, _ := utf8.DecodeRuneInString(text[end:])
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }
 
 func typeToLabel(t ner.EntityType) string {
