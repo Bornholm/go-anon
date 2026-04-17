@@ -177,6 +177,11 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 	if req.NameCompletion {
 		recognizerOpts = append(recognizerOpts, goanon.WithNameCompletionPass(s.gazetteers["firstnames"]))
 	}
+	if req.FirstNameReclassify {
+		// Détecte les prénoms du gazetteer non couverts par les entités NER (ex: prénom
+		// seul en milieu de phrase). À placer après les autres passes NER.
+		recognizerOpts = append(recognizerOpts, goanon.WithFirstNameDetectionPass(s.gazetteers["firstnames"]))
+	}
 	if req.MinConfidence > 0 || req.MaxTokens > 0 || len(req.Blocklist) > 0 {
 		var filters []goanon.EntityFilter
 		if req.MinConfidence > 0 {
