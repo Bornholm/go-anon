@@ -83,6 +83,17 @@ func (g *Gazetteer) ContainsSequence(words []string, start, end int) bool {
 	return ok
 }
 
+// ContainsSequenceLower est identique à ContainsSequence mais attend des mots
+// déjà en minuscules, évitant ainsi l'allocation ToLower.
+func (g *Gazetteer) ContainsSequenceLower(lowerWords []string, start, end int) bool {
+	if start < 0 || end > len(lowerWords) || start >= end {
+		return false
+	}
+	phrase := strings.Join(lowerWords[start:end], " ")
+	_, ok := g.entries[phrase]
+	return ok
+}
+
 // Name retourne le nom du gazetteer tel que passé à LoadGazetteer.
 func (g *Gazetteer) Name() string {
 	return g.name

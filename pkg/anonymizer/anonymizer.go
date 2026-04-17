@@ -317,6 +317,7 @@ func ConsistencyPass() AnonymizePass {
 			}
 		}
 
+		var repls []textReplacement
 		for pos := len(text) - 1; pos >= 0; pos-- {
 			if covered[pos] {
 				continue
@@ -327,6 +328,18 @@ func ConsistencyPass() AnonymizePass {
 				if end > len(text) {
 					continue
 				}
+				// Vérifie qu'aucune position du span n'est déjà couverte
+				// (évite les chevauchements entre remplacements collectés)
+				overlapsCovered := false
+				for i := pos + 1; i < end; i++ {
+					if covered[i] {
+						overlapsCovered = true
+						break
+					}
+				}
+				if overlapsCovered {
+					continue
+				}
 				candidate := text[pos:end]
 				if normalizeForFuzzy(candidate) != entry.substr {
 					continue
@@ -335,16 +348,15 @@ func ConsistencyPass() AnonymizePass {
 					continue
 				}
 
-				text = text[:pos] + entry.placeholder + text[end:]
-
-				newCovered := make([]bool, pos)
-				copy(newCovered, covered[:pos])
-				covered = newCovered
+				repls = append(repls, textReplacement{pos, end, entry.placeholder})
+				for i := pos; i < end; i++ {
+					covered[i] = true
+				}
 				break
 			}
 		}
 
-		return text
+		return applyReplacements(text, repls)
 	}
 }
 
@@ -374,6 +386,7 @@ func SurnameCompletionPass() AnonymizePass {
 			}
 		}
 
+		var repls []textReplacement
 		for pos := len(text) - 1; pos >= 0; pos-- {
 			if pos+1 < len(text) && text[pos] == ']' {
 				bracketStart := pos
@@ -430,19 +443,43 @@ func SurnameCompletionPass() AnonymizePass {
 					if candidateStart+len(candidate) <= len(text) {
 						curr := text[candidateStart : candidateStart+len(candidate)]
 						if curr == candidate {
-							text = text[:candidateStart] + placeholder + text[candidateStart+len(candidate):]
-
-							newCovered := make([]bool, candidateStart)
-							copy(newCovered, covered[:candidateStart])
-							covered = newCovered
+							repls = append(repls, textReplacement{candidateStart, candidateStart + len(candidate), placeholder})
+							for i := candidateStart; i < candidateStart+len(candidate); i++ {
+								covered[i] = true
+							}
 						}
 					}
 				}
 			}
 		}
 
+		return applyReplacements(text, repls)
+	}
+}
+
+// textReplacement accumule un remplacement avant application groupée via applyReplacements.
+type textReplacement struct {
+	start, end  int
+	placeholder string
+}
+
+// applyReplacements applique une slice de remplacements (ordre décroissant de start)
+// en une seule passe strings.Builder — O(S) au lieu de O(S × N).
+func applyReplacements(text string, repls []textReplacement) string {
+	if len(repls) == 0 {
 		return text
 	}
+	var b strings.Builder
+	b.Grow(len(text))
+	prev := 0
+	for i := len(repls) - 1; i >= 0; i-- {
+		r := repls[i]
+		b.WriteString(text[prev:r.start])
+		b.WriteString(r.placeholder)
+		prev = r.end
+	}
+	b.WriteString(text[prev:])
+	return b.String()
 }
 
 // isWordBoundary retourne true si le span [start, end) dans text est délimité

@@ -34,12 +34,23 @@ type FeatureExtractor struct {
 // Features retourne la map de features pour le token à la position idx dans tokens.
 // tokens est la séquence de mots de la phrase (formes de surface).
 func (fe *FeatureExtractor) Features(tokens []string, idx int) map[string]float64 {
+	lowerTokens := make([]string, len(tokens))
+	for i, t := range tokens {
+		lowerTokens[i] = strings.ToLower(t)
+	}
+	return fe.FeaturesEx(tokens, lowerTokens, idx)
+}
+
+// FeaturesEx est identique à Features mais accepte lowerTokens pré-calculés,
+// évitant de recalculer strings.ToLower pour chaque token de la phrase.
+func (fe *FeatureExtractor) FeaturesEx(tokens []string, lowerTokens []string, idx int) map[string]float64 {
 	f := make(map[string]float64)
 	word := tokens[idx]
+	wordLower := lowerTokens[idx]
 
 	// --- Features morphologiques ---
 	f["bias"] = 1.0
-	f["word.lower="+lowercase(word)] = 1.0
+	f["word.lower="+wordLower] = 1.0
 	f["word.suffix1="+suffix(word, 1)] = 1.0
 	f["word.suffix2="+suffix(word, 2)] = 1.0
 	f["word.suffix3="+suffix(word, 3)] = 1.0
@@ -91,11 +102,11 @@ func (fe *FeatureExtractor) Features(tokens []string, idx int) map[string]float6
 			f[ctxKey+"EOS"] = 1.0 // End of Sentence
 		} else {
 			ctxWord := tokens[pos]
-			f[ctxKey+"lower="+lowercase(ctxWord)] = 1.0
+			f[ctxKey+"lower="+lowerTokens[pos]] = 1.0
 			f[ctxKey+"isTitle"] = boolToFloat(isTitleCase(ctxWord))
 			// Suffixe 3 du contexte
 			if len(ctxWord) >= 3 {
-				f[ctxKey+"suf3="+lowercase(suffix(ctxWord, 3))] = 1.0
+				f[ctxKey+"suf3="+suffix(lowerTokens[pos], 3)] = 1.0
 			}
 		}
 	}
@@ -126,7 +137,7 @@ func (fe *FeatureExtractor) Features(tokens []string, idx int) map[string]float6
 		// Multi-word gazetteer lookup
 		if idx > 0 {
 			for end := idx + 1; end <= len(tokens) && end-idx <= 3; end++ {
-				if gaz.ContainsSequence(tokens, idx, end) {
+				if gaz.ContainsSequenceLower(lowerTokens, idx, end) {
 					f["gazseq."+name] = 1.0
 					break
 				}
@@ -134,7 +145,7 @@ func (fe *FeatureExtractor) Features(tokens []string, idx int) map[string]float6
 		}
 		if idx < len(tokens)-1 {
 			for end := idx + 2; end <= len(tokens) && end-idx <= 3; end++ {
-				if gaz.ContainsSequence(tokens, idx, end) {
+				if gaz.ContainsSequenceLower(lowerTokens, idx, end) {
 					f["gazseq."+name] = 1.0
 					break
 				}
@@ -163,17 +174,17 @@ func (fe *FeatureExtractor) Features(tokens []string, idx int) map[string]float6
 
 	// --- Bigram features ---
 	if idx > 0 {
-		f["bigram.w[-1]+w[0]="+lowercase(tokens[idx-1])+" "+lowercase(word)] = 1.0
+		f["bigram.w[-1]+w[0]="+lowerTokens[idx-1]+" "+wordLower] = 1.0
 	}
 	if idx < len(tokens)-1 {
-		f["bigram.w[0]+w[+1]="+lowercase(word)+" "+lowercase(tokens[idx+1])] = 1.0
+		f["bigram.w[0]+w[+1]="+wordLower+" "+lowerTokens[idx+1]] = 1.0
 	}
 	// Bigrammes contextuels élargis
 	if idx >= 2 {
-		f["bigram.w[-2]+w[-1]="+lowercase(tokens[idx-2])+" "+lowercase(tokens[idx-1])] = 1.0
+		f["bigram.w[-2]+w[-1]="+lowerTokens[idx-2]+" "+lowerTokens[idx-1]] = 1.0
 	}
 	if idx < len(tokens)-2 {
-		f["bigram.w[+1]+w[+2]="+lowercase(tokens[idx+1])+" "+lowercase(tokens[idx+2])] = 1.0
+		f["bigram.w[+1]+w[+2]="+lowerTokens[idx+1]+" "+lowerTokens[idx+2]] = 1.0
 	}
 
 	// --- Features positionnelles ---
@@ -305,10 +316,6 @@ func (fe *FeatureExtractor) Features(tokens []string, idx int) map[string]float6
 }
 
 // --- Helpers privés ---
-
-func lowercase(s string) string {
-	return strings.ToLower(s)
-}
 
 // suffix retourne les n dernières runes de s (UTF-8 safe).
 // Si s contient moins de n runes, retourne s en entier.

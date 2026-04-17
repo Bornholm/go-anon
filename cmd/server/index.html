@@ -732,6 +732,12 @@
           }
         }
 
+        function formatDuration(ms) {
+          if (ms < 1) return Math.round(ms * 1000) + " µs";
+          if (ms < 1000) return ms.toFixed(1) + " ms";
+          return (ms / 1000).toFixed(2) + " s";
+        }
+
         function escapeHtml(text) {
           const div = document.createElement("div");
           div.textContent = text;
@@ -825,7 +831,7 @@
             currentEntities = data.entities;
             deanonymizedText.value = "";
             updateMappingTable(data.entities, data.mapping);
-            showStatus("Texte anonymisé avec succès", "success");
+            showStatus("Texte anonymisé avec succès — " + formatDuration(data.durationMs), "success");
           } catch (err) {
             showStatus("Erreur d'anonymisation : " + err.message, "error");
           } finally {
@@ -866,7 +872,7 @@
 
             const data = await res.json();
             deanonymizedText.value = data.text;
-            showStatus("Texte désanonymisé avec succès", "success");
+            showStatus("Texte désanonymisé avec succès — " + formatDuration(data.durationMs), "success");
           } catch (err) {
             showStatus("Erreur de désanonymisation : " + err.message, "error");
           } finally {

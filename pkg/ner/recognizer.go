@@ -228,9 +228,13 @@ func (r *Recognizer) recognizeLine(line string, byteOffset int, labelIndex map[s
 			return
 		}
 		words := tokenTexts(wordTokens)
+		lowerWords := make([]string, len(words))
+		for i, w := range words {
+			lowerWords[i] = strings.ToLower(w)
+		}
 		feats := make([]map[string]float64, len(wordTokens))
 		for i := range wordTokens {
-			feats[i] = r.extractor.Features(words, i)
+			feats[i] = r.extractor.FeaturesEx(words, lowerWords, i)
 		}
 		labels := r.crf.Predict(feats)
 		marginals := r.crf.PredictMarginals(feats)

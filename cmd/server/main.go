@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	goanon "github.com/bornholm/go-anon"
 	"github.com/bornholm/go-anon/cmd/internal/cmdutil"
@@ -47,9 +48,10 @@ type Entity struct {
 }
 
 type AnonymizeResponse struct {
-	Text     string            `json:"text"`
-	Mapping  map[string]string `json:"mapping"`
-	Entities []Entity          `json:"entities"`
+	Text       string            `json:"text"`
+	Mapping    map[string]string `json:"mapping"`
+	Entities   []Entity          `json:"entities"`
+	DurationMs float64           `json:"durationMs"`
 }
 
 type DeanonymizeRequest struct {
@@ -58,7 +60,8 @@ type DeanonymizeRequest struct {
 }
 
 type DeanonymizeResponse struct {
-	Text string `json:"text"`
+	Text       string  `json:"text"`
+	DurationMs float64 `json:"durationMs"`
 }
 
 func main() {
@@ -204,11 +207,13 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	anon := goanon.NewAnonymizer(rec, cfg)
+	anonStart := time.Now()
 	result, err := anon.Anonymize(req.Text)
 	if err != nil {
 		http.Error(w, "anonymization failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	log.Printf("anonymize: %d chars, %d entities, took %s", len(req.Text), len(result.Entities), time.Since(anonStart))
 
 	entities := make([]Entity, len(result.Entities))
 	for i, e := range result.Entities {
@@ -231,9 +236,10 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := AnonymizeResponse{
-		Text:     result.Text,
-		Mapping:  mapping,
-		Entities: entities,
+		Text:       result.Text,
+		Mapping:    mapping,
+		Entities:   entities,
+		DurationMs: float64(time.Since(anonStart).Microseconds()) / 1000.0,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -253,12 +259,17 @@ func (s *Server) handleDeanonymize(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
+	deanonStart := time.Now()
 	text := req.Text
 	for placeholder, original := range req.Mapping {
 		text = strings.ReplaceAll(text, placeholder, original)
 	}
+	log.Printf("deanonymize: %d chars, %d mappings, took %s", len(req.Text), len(req.Mapping), time.Since(deanonStart))
 
-	resp := DeanonymizeResponse{Text: text}
+	resp := DeanonymizeResponse{
+		Text:       text,
+		DurationMs: float64(time.Since(deanonStart).Microseconds()) / 1000.0,
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
