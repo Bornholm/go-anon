@@ -95,7 +95,7 @@ func allTokensBlocked(text string, blocklist map[string]bool) bool {
 
 // FirstNameReclassifyFilter reclasse en PER les entités LOC d'un seul token
 // dont le texte figure dans le gazetteer de prénoms. Utile quand le modèle
-// confond un prénom (ex. "Vincent", "Laetitia") avec un lieu.
+// confond un prénom (ex. "Alice", "Marie") avec un lieu.
 // Si firstNames est nil, le filtre est inopérant.
 func FirstNameReclassifyFilter(firstNames *features.Gazetteer) EntityFilter {
 	return func(entities []Entity) []Entity {
@@ -261,10 +261,8 @@ func MergePass(getText func() string) EntityFilter {
 				e := entities[i]
 				if i+1 < len(entities) {
 					next := entities[i+1]
-					adjacent := e.End == next.Start ||
-						(e.End < next.Start && isWhitespaceBetween(text, e.End, next.Start))
 
-					if adjacent && (e.Type == next.Type || next.Type == TypeLOC) {
+					if e.End == next.Start && (e.Type == next.Type || next.Type == TypeLOC) {
 						mergedType := e.Type
 						// On conserve la confiance de l'entité dominante (PER de tête) :
 						// quand on absorbe un second token incertain, l'ancre est la première entité.
@@ -299,25 +297,6 @@ func MergePass(getText func() string) EntityFilter {
 
 		return entities
 	}
-}
-
-// isWhitespaceBetween retourne true si le gap entre end et start ne contient
-// que des espaces horizontaux (pas de saut de ligne). Un saut de ligne signale
-// une frontière de phrase/paragraphe et ne doit pas déclencher une fusion.
-func isWhitespaceBetween(text string, end, start int) bool {
-	if start <= end {
-		return false
-	}
-	for i := end; i < start && i < len(text); i++ {
-		r := rune(text[i])
-		if r == '\n' || r == '\r' {
-			return false
-		}
-		if !unicode.IsSpace(r) {
-			return false
-		}
-	}
-	return true
 }
 
 // NameCompletionPass complète les entités PER d'un seul token (prénom seul) en
@@ -368,11 +347,16 @@ func NameCompletionPass(getText func() string, firstNames *features.Gazetteer) E
 			}
 
 			candidateStart := e.End
-			if text[e.End] == ' ' {
+			if e.End < len(text) && (text[e.End] == ' ' || text[e.End] == '\n' || text[e.End] == '\r') {
 				candidateStart = e.End + 1
 			}
 
 			if candidateStart >= len(text) || text[candidateStart] == ' ' {
+				result = append(result, e)
+				continue
+			}
+
+			if candidateStart < len(text) && (text[candidateStart] == '\n' || text[candidateStart] == '\r') {
 				result = append(result, e)
 				continue
 			}

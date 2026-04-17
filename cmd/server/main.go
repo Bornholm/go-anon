@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 
@@ -27,13 +28,13 @@ type Server struct {
 }
 
 type AnonymizeRequest struct {
-	Text           string              `json:"text"`
-	Language       string              `json:"language"`
-	Strategy       string              `json:"strategy"`
-	MinConfidence  float64             `json:"minConfidence"`
-	MaxTokens      int                 `json:"maxTokens"`
-	Blocklist      map[string][]string `json:"blocklist"`
-	SkipTypes      []string            `json:"skipTypes"`
+	Text                string              `json:"text"`
+	Language            string              `json:"language"`
+	Strategy            string              `json:"strategy"`
+	MinConfidence       float64             `json:"minConfidence"`
+	MaxTokens           int                 `json:"maxTokens"`
+	Blocklist           map[string][]string `json:"blocklist"`
+	SkipTypes           []string            `json:"skipTypes"`
 	FirstNameReclassify bool                `json:"firstNameReclassify"`
 	Merge               bool                `json:"merge"`
 	NameCompletion      bool                `json:"nameCompletion"`
@@ -218,9 +219,20 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	sortedMapping := make([]string, 0, len(result.Mapping))
+	for placeholder := range result.Mapping {
+		sortedMapping = append(sortedMapping, placeholder)
+	}
+	sort.Strings(sortedMapping)
+
+	mapping := make(map[string]string, len(result.Mapping))
+	for _, placeholder := range sortedMapping {
+		mapping[placeholder] = result.Mapping[placeholder]
+	}
+
 	resp := AnonymizeResponse{
 		Text:     result.Text,
-		Mapping:  result.Mapping,
+		Mapping:  mapping,
 		Entities: entities,
 	}
 

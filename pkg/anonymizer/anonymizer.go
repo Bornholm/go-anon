@@ -96,13 +96,6 @@ func (a *Anonymizer) Anonymize(text string) (*Result, error) {
 		entities = filterByType(entities, a.config.EntityTypes)
 	}
 
-	sort.Slice(entities, func(i, j int) bool {
-		if typePriority(entities[i].Type) != typePriority(entities[j].Type) {
-			return typePriority(entities[i].Type) > typePriority(entities[j].Type)
-		}
-		return entities[i].Start > entities[j].Start
-	})
-
 	result := &Result{
 		Text:                  text,
 		Entities:              entities,
@@ -110,20 +103,27 @@ func (a *Anonymizer) Anonymize(text string) (*Result, error) {
 		OriginalToPlaceholder: make(map[string]string),
 	}
 
+	// Passe 1 : assigner les remplacements dans l'ordre type-priorité DESC puis
+	// start ASC, afin que [PERSON_1] corresponde à la première mention dans le texte.
+	assignOrder := make([]ner.Entity, len(entities))
+	copy(assignOrder, entities)
+	sort.Slice(assignOrder, func(i, j int) bool {
+		if typePriority(assignOrder[i].Type) != typePriority(assignOrder[j].Type) {
+			return typePriority(assignOrder[i].Type) > typePriority(assignOrder[j].Type)
+		}
+		return assignOrder[i].Start < assignOrder[j].Start
+	})
+
 	counters := make(map[ner.EntityType]int)
 	consistentCache := make(map[string]string)
 
-	shift := 0
-	for _, ent := range entities {
+	for _, ent := range assignOrder {
 		var replacement string
-
 		if a.config.ConsistentMap {
-			cacheKey := normalizeForFuzzy(ent.Text)
-			if cached, ok := consistentCache[cacheKey]; ok {
+			if cached, ok := consistentCache[normalizeForFuzzy(ent.Text)]; ok {
 				replacement = cached
 			}
 		}
-
 		if replacement == "" {
 			counters[ent.Type]++
 			replacement = a.replace(ent, counters[ent.Type])
@@ -131,18 +131,43 @@ func (a *Anonymizer) Anonymize(text string) (*Result, error) {
 				consistentCache[normalizeForFuzzy(ent.Text)] = replacement
 			}
 		}
-
 		result.Mapping[replacement] = ent.Text
 		result.OriginalToPlaceholder[ent.Text] = replacement
+	}
 
-		adjustedStart := ent.Start + shift
-		adjustedEnd := ent.End + shift
-
-		if adjustedStart >= 0 && adjustedEnd <= len(result.Text) && result.Text[adjustedStart:adjustedEnd] == ent.Text {
-			result.Text = result.Text[:adjustedStart] + replacement + result.Text[adjustedEnd:]
-			shift += len(replacement) - (ent.End - ent.Start)
+	// Associer chaque entité à son replacement.
+	entityReplacements := make([]string, len(entities))
+	for i, ent := range entities {
+		if a.config.ConsistentMap {
+			entityReplacements[i] = consistentCache[normalizeForFuzzy(ent.Text)]
 		} else {
-			shift += len(replacement) - (ent.End - ent.Start)
+			entityReplacements[i] = result.OriginalToPlaceholder[ent.Text]
+		}
+	}
+
+	// Passe 2 : remplacer de droite à gauche (start décroissant) sans décalage cumulatif.
+	// Chaque remplacement ne modifie que le texte après la position courante,
+	// ce qui préserve la validité des offsets des entités précédentes.
+	type indexedEntity struct {
+		ent         ner.Entity
+		replacement string
+	}
+	ordered := make([]indexedEntity, len(entities))
+	for i, ent := range entities {
+		ordered[i] = indexedEntity{ent, entityReplacements[i]}
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].ent.Start > ordered[j].ent.Start
+	})
+
+	for _, ie := range ordered {
+		repl := ie.replacement
+		if repl == "" {
+			continue
+		}
+		start, end := ie.ent.Start, ie.ent.End
+		if start >= 0 && end <= len(result.Text) && result.Text[start:end] == ie.ent.Text {
+			result.Text = result.Text[:start] + repl + result.Text[end:]
 		}
 	}
 
@@ -213,7 +238,7 @@ func ConsistencyPass() AnonymizePass {
 		// Pour les entités PER multi-mots, ajouter chaque token majuscule
 		// séparément afin de couvrir les occurrences du prénom ou nom seul.
 		// Ne pas ajouter les tokens qui apparaissent dans plusieurs entités PER
-		// (évite les conflits sur les noms partagés comme "Fornerot").
+		// (évite les conflits sur les noms partagés comme "Dupont").
 		perTokenCount := make(map[string]int)
 		for _, ent := range result.Entities {
 			if ent.Type != ner.TypePER {

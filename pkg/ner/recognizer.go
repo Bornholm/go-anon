@@ -80,20 +80,6 @@ func WithBrownClusters(clusters *features.BrownClusters) RecognizerOption {
 	}
 }
 
-// WithNameCompletionPass ajoute un filtre de complétion des noms de personnes
-// après la reconnaissance NER. Ce filtre détecte les entités PER incomplètes
-// (prénom seul) et les complète avec le token adjacent qui ressemble à un nom
-// de famille (commençant par une majuscule, non couvert par une entité existante).
-// firstNames est un gazetteer de prénoms connus ; nil rend la passe inopérante.
-func WithNameCompletionPass(firstNames *features.Gazetteer) RecognizerOption {
-	return func(rec *Recognizer) error {
-		rec.postFilters = append(rec.postFilters, NameCompletionPass(func() string {
-			return rec.lastText
-		}, firstNames))
-		return nil
-	}
-}
-
 // WithFirstNameReclassify ajoute un filtre qui reclasse en PER les entités LOC
 // d'un seul token figurant dans le gazetteer firstNames.
 // À placer avant WithMergePass pour que les prénoms reclassés soient fusionnés
@@ -123,6 +109,21 @@ func WithFirstNameDetectionPass(firstNames *features.Gazetteer) RecognizerOption
 		rec.postFilters = append(rec.postFilters, FirstNameDetectionFilter(func() string {
 			return rec.lastText
 		}, firstNames, stopWords))
+		return nil
+	}
+}
+
+// WithNameCompletionPass ajoute un filtre de complétion des noms de personnes
+// après la reconnaissance NER. Ce filtre détecte les entités PER incomplètes
+// (prénom seul) et les complète avec le token adjacent qui ressemble à un nom
+// de famille (commençant par une majuscule, non couvert par une entité existante).
+// firstNames est un gazetteer de prénoms connus ; nil rend la passe inopérante.
+// À placer après WithFirstNameDetectionPass pour voir les entités détectées.
+func WithNameCompletionPass(firstNames *features.Gazetteer) RecognizerOption {
+	return func(rec *Recognizer) error {
+		rec.postFilters = append(rec.postFilters, NameCompletionPass(func() string {
+			return rec.lastText
+		}, firstNames))
 		return nil
 	}
 }

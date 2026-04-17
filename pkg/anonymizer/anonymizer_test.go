@@ -335,8 +335,8 @@ func TestRoundTrip_MultipleEntities(t *testing.T) {
 // TestEnsureConsistency_CatchesMissedEntities vérifie que la passe de cohérence
 // remplace les occurrences d'entité non détectées par le NER.
 func TestEnsureConsistency_CatchesMissedEntities(t *testing.T) {
-	original := "Laetitia est la responsable. Laetitia gère les finances."
-	first := spanEntity(original, "Laetitia", ner.TypePER)
+	original := "Marie est la responsable. Marie gère les finances."
+	first := spanEntity(original, "Marie", ner.TypePER)
 	rec := &mockRecognizer{entities: []ner.Entity{first}}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
@@ -354,9 +354,9 @@ func TestEnsureConsistency_CatchesMissedEntities(t *testing.T) {
 // TestEnsureConsistency_TypeMismatch vérifie que la passe de cohérence
 // uniformise les placeholders quand le même texte est détecté avec des types différents.
 func TestEnsureConsistency_TypeMismatch(t *testing.T) {
-	original := "Laetitia est ici. Laetitia est là."
-	first := spanEntity(original, "Laetitia", ner.TypePER)
-	second := spanEntityAfter(original, "Laetitia", first.End, ner.TypeLOC)
+	original := "Marie est ici. Marie est là."
+	first := spanEntity(original, "Marie", ner.TypePER)
+	second := spanEntityAfter(original, "Marie", first.End, ner.TypeLOC)
 	rec := &mockRecognizer{entities: []ner.Entity{first, second}}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
@@ -486,8 +486,8 @@ func itoa(i int) string {
 }
 
 func TestPostProcess_CompletesSurnameAfterPer(t *testing.T) {
-	original := "Benjamin Bohard est ici."
-	first := spanEntity(original, "Benjamin", ner.TypePER)
+	original := "Pierre Martin est ici."
+	first := spanEntity(original, "Pierre", ner.TypePER)
 	rec := &mockRecognizer{entities: []ner.Entity{first}}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
 
@@ -496,15 +496,15 @@ func TestPostProcess_CompletesSurnameAfterPer(t *testing.T) {
 		t.Fatalf("Anonymize: %v", err)
 	}
 
-	expected := "[PERSON_1] Bohard est ici."
+	expected := "[PERSON_1] Martin est ici."
 	if result.Text != expected {
 		t.Errorf("PostProcess failed\n  expected: %q\n  got:      %q", expected, result.Text)
 	}
 }
 
 func TestPostProcess_NoSurname_NoChange(t *testing.T) {
-	original := "Benjamin Bohard est ici."
-	first := spanEntity(original, "Benjamin Bohard", ner.TypePER)
+	original := "Pierre Martin est ici."
+	first := spanEntity(original, "Pierre Martin", ner.TypePER)
 	rec := &mockRecognizer{entities: []ner.Entity{first}}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
 
@@ -520,8 +520,8 @@ func TestPostProcess_NoSurname_NoChange(t *testing.T) {
 }
 
 func TestPostProcess_AdjacentSurnameWithSpace(t *testing.T) {
-	original := "Arnaud Fornerot est la."
-	first := spanEntity(original, "Arnaud", ner.TypePER)
+	original := "Pierre Dupont est là."
+	first := spanEntity(original, "Pierre", ner.TypePER)
 	rec := &mockRecognizer{entities: []ner.Entity{first}}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
 
@@ -530,7 +530,7 @@ func TestPostProcess_AdjacentSurnameWithSpace(t *testing.T) {
 		t.Fatalf("Anonymize: %v", err)
 	}
 
-	expected := "[PERSON_1] Fornerot est la."
+	expected := "[PERSON_1] Dupont est là."
 	if result.Text != expected {
 		t.Errorf("PostProcess failed\n  expected: %q\n  got:      %q", expected, result.Text)
 	}
@@ -538,13 +538,13 @@ func TestPostProcess_AdjacentSurnameWithSpace(t *testing.T) {
 
 func TestAnonymize_SharedSurname_DoesNotConflict(t *testing.T) {
 	entities := []ner.Entity{
-		{Text: "Laetitia Fornerot", Type: ner.TypePER, Start: 0, End: 16, Confidence: 1.0},
-		{Text: "Arnaud Fornerot", Type: ner.TypePER, Start: 18, End: 34, Confidence: 1.0},
+		{Text: "Marie Dupont", Type: ner.TypePER, Start: 0, End: 12, Confidence: 1.0},
+		{Text: "Pierre Dupont", Type: ner.TypePER, Start: 14, End: 27, Confidence: 1.0},
 	}
 	rec := &mockRecognizer{entities: entities}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
-	result, err := anon.Anonymize("Laetitia Fornerot\n\nArnaud Fornerot")
+	result, err := anon.Anonymize("Marie Dupont\n\nPierre Dupont")
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}

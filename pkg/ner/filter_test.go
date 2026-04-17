@@ -235,30 +235,30 @@ func TestMergePass_PerLoc_AdjacentFusesIntoPer(t *testing.T) {
 }
 
 func TestMergePass_PerPer_AdjacentFusesIntoPer(t *testing.T) {
-	text := "BenjaminBohard"
+	text := "AliceMartin"
 	entities := buildEntities(text, []struct {
 		substr string
 		typ    EntityType
 		conf   float64
 	}{
-		{"Benjamin", TypePER, 0.9},
-		{"Bohard", TypePER, 0.8},
+		{"Alice", TypePER, 0.9},
+		{"Martin", TypePER, 0.8},
 	})
 	got := MergePass(func() string { return text })(entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité fusionnée, got %d", len(got))
 	}
-	if got[0].Text != "BenjaminBohard" {
+	if got[0].Text != "AliceMartin" {
 		t.Errorf("texte fusionné incorrect : %q", got[0].Text)
 	}
 }
 
 func TestMergePass_NonAdjacent_NoFuse(t *testing.T) {
 	entities := []Entity{
-		{Text: "Benjamin", Type: TypePER, Start: 0, End: 8, Confidence: 0.9},
-		{Text: "Gaude", Type: TypeLOC, Start: 20, End: 25, Confidence: 0.7},
+		{Text: "Alice", Type: TypePER, Start: 0, End: 5, Confidence: 0.9},
+		{Text: "Lyon", Type: TypeLOC, Start: 20, End: 24, Confidence: 0.7},
 	}
-	got := MergePass(func() string { return "Benjamin est la. Gaude aussi." })(entities)
+	got := MergePass(func() string { return "Alice est là. Lyon aussi." })(entities)
 	if len(got) != 2 {
 		t.Errorf("entités non adjacentes ne doivent pas fusionner : got %d", len(got))
 	}
@@ -346,19 +346,19 @@ func TestNameCompletionPass_AlreadyComplete_NoChange(t *testing.T) {
 }
 
 func TestNameCompletionPass_NoSpaceAfter_Skips(t *testing.T) {
-	text := "Arnaud."
+	text := "Alice."
 	entities := buildEntities(text, []struct {
 		substr string
 		typ    EntityType
 		conf   float64
 	}{
-		{"Arnaud", TypePER, 0.9},
+		{"Alice", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text }, testFirstNames("Arnaud"))(entities)
+	got := NameCompletionPass(func() string { return text }, testFirstNames("Alice"))(entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}
-	if got[0].Text != "Arnaud" {
+	if got[0].Text != "Alice" {
 		t.Errorf("ne doit pas compléter sans espace : %q", got[0].Text)
 	}
 }

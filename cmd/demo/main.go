@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 
 	goanon "github.com/bornholm/go-anon"
@@ -204,9 +205,15 @@ func runAnonymize(rec goanon.Recognizer, text, strategyName string, skipTypes en
 	fmt.Println(result.Text)
 
 	if len(result.Mapping) > 0 {
+		keys := make([]string, 0, len(result.Mapping))
+		for placeholder := range result.Mapping {
+			keys = append(keys, placeholder)
+		}
+		sort.Strings(keys)
+
 		fmt.Printf("\nMapping (%d substitutions) :\n", len(result.Mapping))
-		for placeholder, original := range result.Mapping {
-			fmt.Printf("  %-25s → %q\n", placeholder, original)
+		for _, placeholder := range keys {
+			fmt.Printf("  %-25s → %q\n", placeholder, result.Mapping[placeholder])
 		}
 	}
 }
