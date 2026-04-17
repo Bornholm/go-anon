@@ -332,6 +332,71 @@ func TestRoundTrip_MultipleEntities(t *testing.T) {
 	assertRoundTrip(t, original, entities, Config{Strategy: TagReplace})
 }
 
+// TestEnsureConsistency_CatchesMissedEntities vérifie que la passe de cohérence
+// remplace les occurrences d'entité non détectées par le NER.
+func TestEnsureConsistency_CatchesMissedEntities(t *testing.T) {
+	original := "Laetitia est la responsable. Laetitia gère les finances."
+	first := spanEntity(original, "Laetitia", ner.TypePER)
+	rec := &mockRecognizer{entities: []ner.Entity{first}}
+	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, ConsistencyPass: true})
+
+	result, err := anon.Anonymize(original)
+	if err != nil {
+		t.Fatalf("Anonymize: %v", err)
+	}
+
+	expected := "[PERSON_1] est la responsable. [PERSON_1] gère les finances."
+	if result.Text != expected {
+		t.Errorf("consistency pass failed\n  expected: %q\n  got:      %q", expected, result.Text)
+	}
+}
+
+// TestEnsureConsistency_TypeMismatch vérifie que la passe de cohérence
+// uniformise les placeholders quand le même texte est détecté avec des types différents.
+func TestEnsureConsistency_TypeMismatch(t *testing.T) {
+	original := "Laetitia est ici. Laetitia est là."
+	first := spanEntity(original, "Laetitia", ner.TypePER)
+	second := spanEntityAfter(original, "Laetitia", first.End, ner.TypeLOC)
+	rec := &mockRecognizer{entities: []ner.Entity{first, second}}
+	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, ConsistencyPass: true})
+
+	result, err := anon.Anonymize(original)
+	if err != nil {
+		t.Fatalf("Anonymize: %v", err)
+	}
+
+	countPerson := strings.Count(result.Text, "[PERSON_1]")
+	countLocation := strings.Count(result.Text, "[LOCATION_1]")
+	if countPerson+countLocation != 2 {
+		t.Errorf("expected 2 total placeholders, got PERSON=%d + LOCATION=%d", countPerson, countLocation)
+	}
+	if countPerson != 2 {
+		t.Errorf("expected 2 [PERSON_1], got %d", countPerson)
+	}
+	if countLocation != 0 {
+		t.Errorf("expected 0 [LOCATION_1], got %d", countLocation)
+	}
+}
+
+// TestEnsureConsistency_DiscoveredButCorrect vérifie que la passe ne modifie pas
+// un texte déjà correctement anonymisé.
+func TestEnsureConsistency_AlreadyCorrect(t *testing.T) {
+	original := "Jean Dupont et Jean Dupont."
+	first := spanEntity(original, "Jean Dupont", ner.TypePER)
+	second := spanEntityAfter(original, "Jean Dupont", first.End, ner.TypePER)
+	rec := &mockRecognizer{entities: []ner.Entity{first, second}}
+	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, ConsistencyPass: true})
+
+	result, err := anon.Anonymize(original)
+	if err != nil {
+		t.Fatalf("Anonymize: %v", err)
+	}
+
+	if result.Text != "[PERSON_1] et [PERSON_1]." {
+		t.Errorf("unexpected modification\n  got: %q", result.Text)
+	}
+}
+
 // TestRoundTrip_ConsistentMap vérifie que les occurrences multiples de la même
 // entité sont toutes remplacées puis restituées correctement.
 func TestRoundTrip_ConsistentMap(t *testing.T) {

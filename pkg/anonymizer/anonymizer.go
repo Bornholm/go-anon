@@ -25,6 +25,7 @@ type Config struct {
 	Strategy        Strategy
 	EntityTypes     []ner.EntityType // nil = toutes les entités
 	ConsistentMap   bool             // même texte → même placeholder
+	ConsistencyPass bool             // passe post-traitement pour cohérence des occurrences
 	CustomReplacers map[ner.EntityType]ReplacerFunc
 }
 
@@ -54,6 +55,9 @@ type Result struct {
 
 // New crée un nouvel Anonymizer.
 func New(recognizer Recognizer, config Config) *Anonymizer {
+	if !config.ConsistencyPass {
+		config.ConsistencyPass = true
+	}
 	return &Anonymizer{
 		recognizer: recognizer,
 		config:     config,
@@ -95,6 +99,14 @@ func (a *Anonymizer) Anonymize(text string) (*Result, error) {
 	counters := make(map[ner.EntityType]int)
 	consistentCache := make(map[string]string)
 
+	sort.Slice(entities, func(i, j int) bool {
+		if typePriority(entities[i].Type) != typePriority(entities[j].Type) {
+			return typePriority(entities[i].Type) > typePriority(entities[j].Type)
+		}
+		return entities[i].Start > entities[j].Start
+	})
+
+	shift := 0
 	for _, ent := range entities {
 		var replacement string
 
@@ -116,7 +128,19 @@ func (a *Anonymizer) Anonymize(text string) (*Result, error) {
 		result.Mapping[replacement] = ent.Text
 		result.OriginalToPlaceholder[ent.Text] = replacement
 
-		result.Text = result.Text[:ent.Start] + replacement + result.Text[ent.End:]
+		adjustedStart := ent.Start + shift
+		adjustedEnd := ent.End + shift
+
+		if adjustedStart >= 0 && adjustedEnd <= len(result.Text) && result.Text[adjustedStart:adjustedEnd] == ent.Text {
+			result.Text = result.Text[:adjustedStart] + replacement + result.Text[adjustedEnd:]
+			shift += len(replacement) - (ent.End - ent.Start)
+		} else {
+			shift += len(replacement) - (ent.End - ent.Start)
+		}
+	}
+
+	if a.config.ConsistencyPass {
+		result.Text = a.EnsureConsistency(text, result)
 	}
 
 	return result, nil
@@ -171,6 +195,21 @@ func typeToLabel(t ner.EntityType) string {
 	}
 }
 
+func typePriority(t ner.EntityType) int {
+	switch t {
+	case ner.TypePER:
+		return 4
+	case ner.TypeLOC:
+		return 3
+	case ner.TypeORG:
+		return 2
+	case ner.TypeMISC:
+		return 1
+	default:
+		return 0
+	}
+}
+
 func normalizeForFuzzy(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
@@ -188,4 +227,70 @@ func filterByType(entities []ner.Entity, types []ner.EntityType) []ner.Entity {
 		}
 	}
 	return result
+}
+
+func (a *Anonymizer) EnsureConsistency(original string, result *Result) string {
+	if len(result.Entities) == 0 {
+		return result.Text
+	}
+
+	canonical := make(map[string]string)
+	sortedByType := make([]ner.Entity, len(result.Entities))
+	copy(sortedByType, result.Entities)
+	sort.Slice(sortedByType, func(i, j int) bool {
+		return typePriority(sortedByType[i].Type) > typePriority(sortedByType[j].Type)
+	})
+	for _, ent := range sortedByType {
+		cacheKey := normalizeForFuzzy(ent.Text)
+		if _, exists := canonical[cacheKey]; !exists {
+			canonical[cacheKey] = result.OriginalToPlaceholder[ent.Text]
+		}
+	}
+
+	text := result.Text
+
+	covered := make([]bool, len(text))
+	for _, ent := range result.Entities {
+		placeholder := result.OriginalToPlaceholder[ent.Text]
+		if placeholder == "" {
+			continue
+		}
+		pos := 0
+		for {
+			idx := strings.Index(text[pos:], placeholder)
+			if idx < 0 {
+				break
+			}
+			abs := pos + idx
+			for i := abs; i < abs+len(placeholder) && i < len(covered); i++ {
+				covered[i] = true
+			}
+			pos = abs + 1
+		}
+	}
+
+	for pos := len(text) - 1; pos >= 0; pos-- {
+		if covered[pos] {
+			continue
+		}
+
+		for substr, placeholder := range canonical {
+			if pos+len(substr) > len(text) {
+				continue
+			}
+			candidate := text[pos : pos+len(substr)]
+			if normalizeForFuzzy(candidate) != substr {
+				continue
+			}
+
+			text = text[:pos] + placeholder + text[pos+len(substr):]
+
+			newCovered := make([]bool, pos)
+			copy(newCovered, covered[:pos])
+			covered = newCovered
+			break
+		}
+	}
+
+	return text
 }
