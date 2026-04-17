@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GoAnon - Anonymisation de texte</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #fafafa;
+        --surface: #ffffff;
+        --text-primary: #1f2937;
+        --text-secondary: #6b7280;
+        --border: #e5e7eb;
+        --accent: #2563eb;
+        --accent-hover: #1d4ed8;
+        --error: #dc2626;
+        --success: #059669;
+        --muted: #f3f4f6;
+        --radius: 8px;
+      }
+
+      body {
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--bg);
+        color: var(--text-primary);
+        line-height: 1.5;
+        min-height: 100vh;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .header-info {
+        font-size: 14px;
+        color: var(--text-secondary);
+      }
+
+      .intro {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px 20px;
+        margin-bottom: 24px;
+        font-size: 14px;
+        line-height: 1.6;
+        color: var(--text-secondary);
+      }
+
+      .intro strong {
+        color: var(--text-primary);
+      }
+
+      @media (max-width: 480px) {
+        .header-info {
+          display: none;
+        }
+      }
+
+      /* Row 1: Textareas */
+      .textareas-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .textarea-wrapper {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .textarea-wrapper label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 180px;
+        padding: 12px;
+        font-family: "Inter", monospace;
+        font-size: 14px;
+        line-height: 1.6;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        resize: vertical;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+
+      textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+      }
+
+      textarea[readonly] {
+        background: var(--muted);
+        cursor: default;
+      }
+
+      textarea[readonly]:focus {
+        border-color: var(--border);
+        box-shadow: none;
+      }
+
+      /* Row 2: Actions + Loader */
+      .actions-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 24px;
+        min-height: 48px;
+      }
+
+      button {
+        padding: 12px 24px;
+        font-size: 14px;
+        font-weight: 500;
+        border: none;
+        border-radius: var(--radius);
+        cursor: pointer;
+        transition: background-color 0.2s, transform 0.1s, opacity 0.2s;
+        min-height: 48px;
+      }
+
+      button:active:not(:disabled) {
+        transform: scale(0.98);
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: white;
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        background: var(--accent-hover);
+      }
+
+      .btn-secondary {
+        background: var(--surface);
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+      }
+
+      .btn-secondary:hover:not(:disabled) {
+        background: var(--muted);
+      }
+
+      .loading {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-secondary);
+        font-size: 14px;
+      }
+
+      .loading.visible {
+        display: flex;
+      }
+
+      .spinner {
+        width: 18px;
+        height: 18px;
+        border: 2px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .status {
+        padding: 12px 16px;
+        border-radius: var(--radius);
+        font-size: 13px;
+        display: none;
+        margin-left: auto;
+      }
+
+      .status.visible {
+        display: block;
+      }
+
+      .status.error {
+        background: #fef2f2;
+        color: var(--error);
+        border: 1px solid #fecaca;
+      }
+
+      .status.success {
+        background: #ecfdf5;
+        color: var(--success);
+        border: 1px solid #a7f3d0;
+      }
+
+      /* Row 3: Config Options */
+      .config-row {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+      }
+
+      .config-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .config-section h3 {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+      }
+
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .form-group label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+      }
+
+      select,
+      input[type="text"],
+      input[type="number"] {
+        padding: 8px 12px;
+        font-size: 14px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        color: var(--text-primary);
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+
+      select:focus,
+      input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+      }
+
+      input[type="range"] {
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--border);
+        appearance: none;
+        cursor: pointer;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--accent);
+        cursor: pointer;
+      }
+
+      .range-value {
+        font-size: 12px;
+        color: var(--text-secondary);
+        text-align: center;
+      }
+
+      .checkbox-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .checkbox-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        cursor: pointer;
+        min-height: 44px;
+        padding: 10px 4px;
+      }
+
+      .checkbox-item input {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        accent-color: var(--accent);
+      }
+
+      /* Mapping Section */
+      .mapping-section {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-top: 24px;
+        display: none;
+      }
+
+      .mapping-section.visible {
+        display: block;
+      }
+
+      .mapping-section h2 {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 12px;
+        color: var(--text-primary);
+      }
+
+      .mapping-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      .mapping-table th {
+        text-align: left;
+        padding: 8px 12px;
+        background: var(--muted);
+        font-weight: 500;
+        color: var(--text-secondary);
+        border-bottom: 1px solid var(--border);
+      }
+
+      .mapping-table td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .mapping-table tr:last-child td {
+        border-bottom: none;
+      }
+
+      .mapping-table .placeholder {
+        font-family: monospace;
+        background: var(--muted);
+        padding: 2px 6px;
+        border-radius: 4px;
+        color: var(--accent);
+      }
+
+      .mapping-table .arrow {
+        color: var(--text-secondary);
+      }
+
+      .mapping-table .original {
+        color: var(--text-primary);
+      }
+
+      .mapping-table .entity-type {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 500;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: var(--muted);
+        color: var(--text-secondary);
+      }
+
+      /* Responsive */
+      @media (max-width: 1024px) {
+        .textareas-row {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 768px) {
+        header {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 8px;
+        }
+
+        h1 {
+          font-size: 20px;
+        }
+
+        .config-row {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .container {
+          padding: 16px;
+        }
+
+        .actions-row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        button {
+          width: 100%;
+        }
+
+        textarea {
+          min-height: 120px;
+          font-size: 16px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+        <header>
+          <h1>GoAnon</h1>
+          <span class="header-info"
+            >Reconnaissance d'entités nommées et anonymisation</span
+          >
+        </header>
+
+        <div class="intro">
+          <p>
+            <strong>GoAnon</strong> est un outil de reconnaissance d'entités nommées (NER) qui détecte et anonymise automatiquement les informations personnelles dans vos textes.
+            Il identifie les <strong>personnes</strong>, <strong>lieux</strong>, <strong>organisations</strong> et <strong>divers</strong> pour les remplacer par des jetons pseudonymisés.
+          </p>
+        </div>
+
+      <main>
+        <section class="textareas-row" aria-label="Zone de texte">
+          <div class="textarea-wrapper">
+            <label for="source-text">Texte source</label>
+            <textarea
+              id="source-text"
+              placeholder="Saisissez le texte à anonymiser..."
+              rows="20"
+            ></textarea>
+          </div>
+          <div class="textarea-wrapper">
+            <label for="anonymized-text">Texte anonymisé</label>
+            <textarea
+              id="anonymized-text"
+              readonly
+              placeholder="Le texte anonymisé apparaîtra ici..."
+              rows="20"
+            ></textarea>
+          </div>
+          <div class="textarea-wrapper">
+            <label for="deanonymized-text">Texte désanonymisé</label>
+            <textarea
+              id="deanonymized-text"
+              readonly
+              placeholder="Le texte désanonymisé apparaîtra ici..."
+              rows="20"
+            ></textarea>
+          </div>
+        </section>
+
+        <section class="actions-row" aria-label="Actions">
+          <button type="button" id="anonymize-btn" class="btn-primary">
+            Anonymiser
+          </button>
+          <button type="button" id="deanonymize-btn" class="btn-secondary">
+            Désanonymiser
+          </button>
+
+          <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <span>Traitement en cours...</span>
+          </div>
+
+          <div class="status" id="status" role="alert" aria-live="polite"></div>
+        </section>
+
+        <section class="config-row" aria-label="Configuration">
+          <div class="config-section">
+            <h3>Langue et stratégie</h3>
+            <div class="form-group">
+              <label for="language">Langue</label>
+              <select id="language">
+                <option value="">Chargement...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="strategy">Stratégie</label>
+              <select id="strategy">
+                <option value="tag">Jeton ([PERSON_1])</option>
+                <option value="redact">Masquage (████)</option>
+                <option value="hash">Hachage ([PER_a1b2c3])</option>
+                <option value="consistent">Cohérent</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="config-section">
+            <h3>Filtres</h3>
+            <div class="form-group">
+              <label for="min-confidence">Confiance min.</label>
+              <input
+                type="range"
+                id="min-confidence"
+                min="0"
+                max="1"
+                step="0.05"
+                value="0.4"
+              />
+              <div class="range-value" id="min-confidence-value">0.40</div>
+            </div>
+            <div class="form-group">
+              <label for="max-tokens">Nb max de tokens (0 = illimité)</label>
+              <input
+                type="number"
+                id="max-tokens"
+                min="0"
+                max="100"
+                value="3"
+              />
+            </div>
+          </div>
+
+          <div class="config-section">
+            <h3>Types à ignorer</h3>
+            <div class="checkbox-group">
+              <label class="checkbox-item">
+                <input type="checkbox" id="skip-per" value="PER" />
+                <span>PER</span>
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" id="skip-loc" value="LOC" />
+                <span>LOC</span>
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" id="skip-org" value="ORG" />
+                <span>ORG</span>
+              </label>
+              <label class="checkbox-item">
+                <input type="checkbox" id="skip-misc" value="MISC" checked />
+                <span>MISC</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="config-section">
+            <h3>Mots exclus</h3>
+            <div class="form-group">
+              <label for="blocklist">À exclure (séparés par virgules)</label>
+              <input
+                type="text"
+                id="blocklist"
+                placeholder="ex: Monsieur, Madame"
+              />
+            </div>
+          </div>
+        </section>
+
+        <section class="mapping-section" id="mapping-section">
+          <h2>Correspondances</h2>
+          <table class="mapping-table">
+            <thead>
+              <tr>
+                <th>Jeton</th>
+                <th></th>
+                <th>Entité originale</th>
+                <th>Type</th>
+                <th>Confiance</th>
+              </tr>
+            </thead>
+            <tbody id="mapping-body"></tbody>
+          </table>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      (function () {
+        const sourceText = document.getElementById("source-text");
+        const anonymizedText = document.getElementById("anonymized-text");
+        const deanonymizedText = document.getElementById("deanonymized-text");
+        const mappingSection = document.getElementById("mapping-section");
+        const mappingBody = document.getElementById("mapping-body");
+        const loading = document.getElementById("loading");
+        const status = document.getElementById("status");
+        const languageSelect = document.getElementById("language");
+        const strategySelect = document.getElementById("strategy");
+        const minConfidenceInput = document.getElementById("min-confidence");
+        const minConfidenceValue = document.getElementById(
+          "min-confidence-value"
+        );
+        const maxTokensInput = document.getElementById("max-tokens");
+        const blocklistInput = document.getElementById("blocklist");
+        const anonymizeBtn = document.getElementById("anonymize-btn");
+        const deanonymizeBtn = document.getElementById("deanonymize-btn");
+
+        let currentMapping = {};
+        let currentEntities = [];
+
+        async function fetchLanguages() {
+          try {
+            const res = await fetch("/api/languages");
+            const data = await res.json();
+            languageSelect.innerHTML = "";
+            data.languages.forEach((lang) => {
+              const opt = document.createElement("option");
+              opt.value = lang;
+              opt.textContent = lang.toUpperCase();
+              languageSelect.appendChild(opt);
+            });
+          } catch (err) {
+            showStatus("Erreur lors du chargement des langues", "error");
+          }
+        }
+
+        function showLoading(show) {
+          loading.classList.toggle("visible", show);
+          anonymizeBtn.disabled = show;
+          deanonymizeBtn.disabled = show;
+        }
+
+        function showStatus(message, type) {
+          status.textContent = message;
+          status.className = "status visible " + type;
+          setTimeout(() => {
+            status.classList.remove("visible");
+          }, 5000);
+        }
+
+        function updateMappingTable(entities, mapping) {
+          mappingBody.innerHTML = "";
+          if (Object.keys(mapping).length === 0) {
+            mappingSection.classList.remove("visible");
+            return;
+          }
+          mappingSection.classList.add("visible");
+
+          for (const [placeholder, original] of Object.entries(mapping)) {
+            const entity = entities.find((e) =>
+              placeholder.includes(e.type.substring(0, 3))
+            );
+            const row = document.createElement("tr");
+            row.innerHTML =
+              '<td><span class="placeholder">' +
+              escapeHtml(placeholder) +
+              "</span></td>" +
+              '<td class="arrow">→</td>' +
+              '<td class="original">"' +
+              escapeHtml(original) +
+              '"</td>' +
+              "<td>" +
+              (entity
+                ? '<span class="entity-type">' + entity.type + "</span>"
+                : "") +
+              "</td>" +
+              "<td>" +
+              (entity ? entity.confidence.toFixed(2) : "-") +
+              "</td>";
+            mappingBody.appendChild(row);
+          }
+        }
+
+        function escapeHtml(text) {
+          const div = document.createElement("div");
+          div.textContent = text;
+          return div.innerHTML;
+        }
+
+        function getSkipTypes() {
+          const skipTypes = [];
+          if (document.getElementById("skip-per").checked)
+            skipTypes.push("PER");
+          if (document.getElementById("skip-loc").checked)
+            skipTypes.push("LOC");
+          if (document.getElementById("skip-org").checked)
+            skipTypes.push("ORG");
+          if (document.getElementById("skip-misc").checked)
+            skipTypes.push("MISC");
+          return skipTypes;
+        }
+
+        function parseBlocklist() {
+          const blocklist = {};
+          const text = blocklistInput.value.trim();
+          if (!text) return blocklist;
+
+          const types = ["PER", "LOC", "ORG", "MISC"];
+          const parts = text
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+
+          parts.forEach((part) => {
+            for (const type of types) {
+              if (part.toLowerCase().startsWith(type.toLowerCase() + ":")) {
+                const words = part
+                  .substring(type.length + 1)
+                  .split(/[,;]/)
+                  .map((w) => w.trim())
+                  .filter(Boolean);
+                if (words.length) blocklist[type] = words;
+                return;
+              }
+            }
+          });
+
+          if (Object.keys(blocklist).length === 0) {
+            blocklist["PER"] = parts;
+          }
+          return blocklist;
+        }
+
+        async function anonymize() {
+          const text = sourceText.value.trim();
+          if (!text) {
+            showStatus("Veuillez saisir un texte à anonymiser", "error");
+            return;
+          }
+
+          const language = languageSelect.value;
+          if (!language) {
+            showStatus("Veuillez sélectionner une langue", "error");
+            return;
+          }
+
+          showLoading(true);
+          try {
+            const res = await fetch("/api/anonymize", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                text: text,
+                language: language,
+                strategy: strategySelect.value,
+                minConfidence: parseFloat(minConfidenceInput.value),
+                maxTokens: parseInt(maxTokensInput.value) || 0,
+                blocklist: parseBlocklist(),
+                skipTypes: getSkipTypes(),
+              }),
+            });
+
+            if (!res.ok) {
+              const err = await res.text();
+              throw new Error(err);
+            }
+
+            const data = await res.json();
+            anonymizedText.value = data.text;
+            currentMapping = data.mapping;
+            currentEntities = data.entities;
+            deanonymizedText.value = "";
+            updateMappingTable(data.entities, data.mapping);
+            showStatus("Texte anonymisé avec succès", "success");
+          } catch (err) {
+            showStatus("Erreur d'anonymisation : " + err.message, "error");
+          } finally {
+            showLoading(false);
+          }
+        }
+
+        async function deanonymize() {
+          const text = anonymizedText.value.trim();
+          if (!text) {
+            showStatus("Aucun texte anonymisé à restaurer", "error");
+            return;
+          }
+
+          if (Object.keys(currentMapping).length === 0) {
+            showStatus(
+              "Aucune correspondance disponible. Veuillez d'abord anonymiser.",
+              "error"
+            );
+            return;
+          }
+
+          showLoading(true);
+          try {
+            const res = await fetch("/api/deanonymize", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                text: text,
+                mapping: currentMapping,
+              }),
+            });
+
+            if (!res.ok) {
+              const err = await res.text();
+              throw new Error(err);
+            }
+
+            const data = await res.json();
+            deanonymizedText.value = data.text;
+            showStatus("Texte désanonymisé avec succès", "success");
+          } catch (err) {
+            showStatus("Erreur de désanonymisation : " + err.message, "error");
+          } finally {
+            showLoading(false);
+          }
+        }
+
+        minConfidenceInput.addEventListener("input", function () {
+          minConfidenceValue.textContent = parseFloat(this.value).toFixed(2);
+        });
+
+        minConfidenceValue.textContent = parseFloat(
+          minConfidenceInput.value
+        ).toFixed(2);
+
+        anonymizeBtn.addEventListener("click", anonymize);
+        deanonymizeBtn.addEventListener("click", deanonymize);
+
+        fetchLanguages();
+      })();
+    </script>
+  </body>
+</html>
