@@ -511,7 +511,7 @@ func typeToLabel(t ner.EntityType) string {
 	case ner.TypeMISC:
 		return "MISC"
 	default:
-		return "ENTITY"
+		return string(t)
 	}
 }
 

@@ -197,6 +197,7 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 		}
 		recognizerOpts = append(recognizerOpts, goanon.WithPostFilters(filters...))
 	}
+	recognizerOpts = append(recognizerOpts, goanon.WithBuiltinRegexPatterns())
 
 	rec, err := goanon.NewRecognizer(model, recognizerOpts...)
 	if err != nil {
@@ -219,6 +220,9 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("anonymize: %d chars, %d entities, took %s", len(req.Text), len(result.Entities), time.Since(anonStart))
+	for _, e := range result.Entities {
+		log.Printf("  entity type=%s text=%q start=%d end=%d conf=%.2f", e.Type, e.Text, e.Start, e.End, e.Confidence)
+	}
 
 	entities := make([]Entity, len(result.Entities))
 	for i, e := range result.Entities {
@@ -315,8 +319,13 @@ func parseSkipTypes(skipTypes []string) []goanon.EntityType {
 	for _, t := range skipTypes {
 		skip[goanon.EntityType(t)] = true
 	}
+	allTypes := []goanon.EntityType{
+		goanon.TypePER, goanon.TypeLOC, goanon.TypeORG, goanon.TypeMISC,
+		goanon.TypeEMAIL, goanon.TypeIPV4, goanon.TypeIPV6,
+		goanon.TypeIBAN, goanon.TypeSIRET, goanon.TypeSIREN, goanon.TypePHONE,
+	}
 	var result []goanon.EntityType
-	for _, t := range []goanon.EntityType{goanon.TypePER, goanon.TypeLOC, goanon.TypeORG, goanon.TypeMISC} {
+	for _, t := range allTypes {
 		if !skip[t] {
 			result = append(result, t)
 		}

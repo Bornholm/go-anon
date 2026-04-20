@@ -466,19 +466,23 @@
   </head>
   <body>
     <div class="container">
-        <header>
-          <h1>GoAnon</h1>
-          <span class="header-info"
-            >Reconnaissance d'entités nommées et anonymisation</span
-          >
-        </header>
+      <header>
+        <h1>GoAnon</h1>
+        <span class="header-info"
+          >Reconnaissance d'entités nommées et anonymisation</span
+        >
+      </header>
 
-        <div class="intro">
-          <p>
-            <strong>GoAnon</strong> est un outil de reconnaissance d'entités nommées (NER) qui détecte et anonymise automatiquement les informations personnelles dans vos textes.
-            Il identifie les <strong>personnes</strong>, <strong>lieux</strong>, <strong>organisations</strong> et <strong>divers</strong> pour les remplacer par des jetons pseudonymisés.
-          </p>
-        </div>
+      <div class="intro">
+        <p>
+          <strong>GoAnon</strong> est un outil de reconnaissance d'entités
+          nommées (NER) qui détecte et anonymise automatiquement les
+          informations personnelles dans vos textes. Il identifie les
+          <strong>personnes</strong>, <strong>lieux</strong>,
+          <strong>organisations</strong> et <strong>divers</strong> pour les
+          remplacer par des jetons pseudonymisés.
+        </p>
+      </div>
 
       <main>
         <section class="textareas-row" aria-label="Zone de texte">
@@ -488,7 +492,26 @@
               id="source-text"
               placeholder="Saisissez le texte à anonymiser..."
               rows="20"
-            ></textarea>
+            >
+**Rapport d'activité client – Compte n°2024-0876**
+
+Le 14 mars 2024, Mme Camille Rousseau, directrice administrative de la société TechNova Solutions (SIRET 81234567800025, SIREN 812345678), a contacté notre agence de Lyon afin de faire le point sur le contrat Premium souscrit en septembre 2023.
+
+L'entretien a été mené par Julien Lefèvre, conseiller référent, en présence de Marc Dubreuil, responsable du pôle grands comptes. La cliente a exprimé sa satisfaction concernant la migration récente de ses serveurs vers notre datacenter de Roubaix, opération coordonnée avec la société partenaire CloudBridge SAS.
+
+Plusieurs points ont été abordés :
+
+1. **Facturation** : un virement de 12 450 € a été effectué le 28 février depuis le compte FR76 3000 4000 0312 3456 7890 143 vers notre IBAN société. Mme Rousseau souhaite désormais recevoir les factures à l'adresse camille.rousseau@technova-solutions.fr plutôt qu'au service comptabilité général.
+
+2. **Support technique** : trois incidents ont été enregistrés depuis janvier, dont une coupure réseau le 22 février ayant impacté le serveur principal (adresse IP 192.168.45.120) ainsi qu'un nœud secondaire en IPv6 (2001:0db8:85a3:0000:0000:8a2e:0370:7334). L'équipe de Sophie Martin, basée à Nantes, a résolu l'incident en moins de deux heures.
+
+3. **Évolution contractuelle** : la cliente envisage d'étendre le contrat à sa filiale TechNova Iberia, située à Barcelone, en Espagne. Un rendez-vous est prévu le 5 avril à Paris avec M. Antoine Berger, directeur Europe du Sud.
+
+Mme Rousseau peut être jointe au 06 78 45 23 91 pour toute question complémentaire. Un compte rendu détaillé sera également transmis à son assistante, Léa Fontaine, ainsi qu'au cabinet d'audit Deloitte, mandaté pour la revue annuelle.
+
+Rapport rédigé par Julien Lefèvre, agence de Lyon, le 15 mars 2024.          
+          </textarea
+            >
           </div>
           <div class="textarea-wrapper">
             <label for="anonymized-text">Texte anonymisé</label>
@@ -574,22 +597,91 @@
 
           <div class="config-section">
             <h3>Types à ignorer</h3>
+            <p style="font-size: 0.8em; color: #666; margin: 0 0 6px">
+              Entités NER
+            </p>
             <div class="checkbox-group">
               <label class="checkbox-item">
-                <input type="checkbox" id="skip-per" value="PER" />
+                <input type="checkbox" class="skip-type-checkbox" value="PER" />
                 <span>PER</span>
               </label>
               <label class="checkbox-item">
-                <input type="checkbox" id="skip-loc" value="LOC" />
+                <input type="checkbox" class="skip-type-checkbox" value="LOC" />
                 <span>LOC</span>
               </label>
               <label class="checkbox-item">
-                <input type="checkbox" id="skip-org" value="ORG" />
+                <input type="checkbox" class="skip-type-checkbox" value="ORG" />
                 <span>ORG</span>
               </label>
               <label class="checkbox-item">
-                <input type="checkbox" id="skip-misc" value="MISC" checked />
+                <input
+                  type="checkbox"
+                  class="skip-type-checkbox"
+                  value="MISC"
+                  checked
+                />
                 <span>MISC</span>
+              </label>
+            </div>
+            <p style="font-size: 0.8em; color: #666; margin: 8px 0 6px">
+              Entités regex
+            </p>
+            <div class="checkbox-group">
+              <label class="checkbox-item">
+                <input
+                  type="checkbox"
+                  class="skip-type-checkbox"
+                  value="EMAIL"
+                />
+                <span>EMAIL</span>
+              </label>
+              <label class="checkbox-item">
+                <input
+                  type="checkbox"
+                  class="skip-type-checkbox"
+                  value="PHONE"
+                />
+                <span>PHONE</span>
+              </label>
+              <label class="checkbox-item">
+                <input
+                  type="checkbox"
+                  class="skip-type-checkbox"
+                  value="IPV4"
+                />
+                <span>IPV4</span>
+              </label>
+              <label class="checkbox-item">
+                <input
+                  type="checkbox"
+                  class="skip-type-checkbox"
+                  value="IPV6"
+                />
+                <span>IPV6</span>
+              </label>
+              <label class="checkbox-item">
+                <input
+                  type="checkbox"
+                  class="skip-type-checkbox"
+                  value="IBAN"
+                />
+                <span>IBAN</span>
+              </label>
+              <label class="checkbox-item">
+                <input
+                  type="checkbox"
+                  class="skip-type-checkbox"
+                  value="SIRET"
+                />
+                <span>SIRET</span>
+              </label>
+              <label class="checkbox-item">
+                <input
+                  type="checkbox"
+                  class="skip-type-checkbox"
+                  value="SIREN"
+                />
+                <span>SIREN</span>
               </label>
             </div>
           </div>
@@ -660,9 +752,12 @@
         );
         const maxTokensInput = document.getElementById("max-tokens");
         const blocklistInput = document.getElementById("blocklist");
-        const firstNameReclassifyCheckbox = document.getElementById("first-name-reclassify");
+        const firstNameReclassifyCheckbox = document.getElementById(
+          "first-name-reclassify"
+        );
         const mergeCheckbox = document.getElementById("merge");
-        const nameCompletionCheckbox = document.getElementById("name-completion");
+        const nameCompletionCheckbox =
+          document.getElementById("name-completion");
         const anonymizeBtn = document.getElementById("anonymize-btn");
         const deanonymizeBtn = document.getElementById("deanonymize-btn");
 
@@ -746,14 +841,11 @@
 
         function getSkipTypes() {
           const skipTypes = [];
-          if (document.getElementById("skip-per").checked)
-            skipTypes.push("PER");
-          if (document.getElementById("skip-loc").checked)
-            skipTypes.push("LOC");
-          if (document.getElementById("skip-org").checked)
-            skipTypes.push("ORG");
-          if (document.getElementById("skip-misc").checked)
-            skipTypes.push("MISC");
+          document
+            .querySelectorAll(".skip-type-checkbox:checked")
+            .forEach((cb) => {
+              skipTypes.push(cb.value);
+            });
           return skipTypes;
         }
 
@@ -762,7 +854,19 @@
           const text = blocklistInput.value.trim();
           if (!text) return blocklist;
 
-          const types = ["PER", "LOC", "ORG", "MISC"];
+          const types = [
+            "PER",
+            "LOC",
+            "ORG",
+            "MISC",
+            "EMAIL",
+            "PHONE",
+            "IPV4",
+            "IPV6",
+            "IBAN",
+            "SIRET",
+            "SIREN",
+          ];
           const parts = text
             .split(",")
             .map((s) => s.trim())
@@ -831,7 +935,11 @@
             currentEntities = data.entities;
             deanonymizedText.value = "";
             updateMappingTable(data.entities, data.mapping);
-            showStatus("Texte anonymisé avec succès — " + formatDuration(data.durationMs), "success");
+            showStatus(
+              "Texte anonymisé avec succès — " +
+                formatDuration(data.durationMs),
+              "success"
+            );
           } catch (err) {
             showStatus("Erreur d'anonymisation : " + err.message, "error");
           } finally {
@@ -872,7 +980,11 @@
 
             const data = await res.json();
             deanonymizedText.value = data.text;
-            showStatus("Texte désanonymisé avec succès — " + formatDuration(data.durationMs), "success");
+            showStatus(
+              "Texte désanonymisé avec succès — " +
+                formatDuration(data.durationMs),
+              "success"
+            );
           } catch (err) {
             showStatus("Erreur de désanonymisation : " + err.message, "error");
           } finally {

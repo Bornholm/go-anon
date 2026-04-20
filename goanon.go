@@ -34,6 +34,14 @@ const (
 	TypeLOC  = ner.TypeLOC
 	TypeORG  = ner.TypeORG
 	TypeMISC = ner.TypeMISC
+
+	TypeEMAIL = ner.TypeEMAIL
+	TypeIPV4  = ner.TypeIPV4
+	TypeIPV6  = ner.TypeIPV6
+	TypeIBAN  = ner.TypeIBAN
+	TypeSIRET = ner.TypeSIRET
+	TypeSIREN = ner.TypeSIREN
+	TypePHONE = ner.TypePHONE
 )
 
 var DefaultSentenceBoundaries = ner.DefaultSentenceBoundaries
@@ -92,6 +100,13 @@ var MaxTokensFilter = ner.MaxTokensFilter
 var BlocklistFilter = ner.BlocklistFilter
 var MergePass = ner.MergePass
 var NameCompletionPass = ner.NameCompletionPass
+var RegexEntityFilter = ner.RegexEntityFilter
+var WithRegexPatterns = ner.WithRegexPatterns
+var WithBuiltinRegexPatterns = ner.WithBuiltinRegexPatterns
+var BuiltinRegexPatterns = ner.BuiltinRegexPatterns
+
+// RegexPattern associe une expression régulière à un type d'entité.
+type RegexPattern = ner.RegexPattern
 
 // — Features (réexports pour gazetteers / clusters) —
 
