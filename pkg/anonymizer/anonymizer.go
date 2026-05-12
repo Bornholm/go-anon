@@ -76,8 +76,26 @@ func New(recognizer Recognizer, config Config) *Anonymizer {
 }
 
 // Anonymize anonymise les entités dans le texte.
-// Retourne le texte anonymisé avec les mappings pour dé-anonymisation.
-func (a *Anonymizer) Anonymize(text string) (*Result, error) {
+// Accepte des AnonymizeOption optionnelles, notamment WithSession pour partager
+// l'état (compteurs, cache de cohérence) entre plusieurs appels.
+func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, error) {
+	params := &anonymizeParams{}
+	for _, opt := range opts {
+		opt(params)
+	}
+
+	var (
+		counters        map[ner.EntityType]int
+		consistentCache map[string]string
+	)
+	if params.session != nil {
+		counters = params.session.counters
+		consistentCache = params.session.consistentCache
+	} else {
+		counters = make(map[ner.EntityType]int)
+		consistentCache = make(map[string]string)
+	}
+
 	if text == "" {
 		return &Result{
 			Text:                  text,
@@ -113,9 +131,6 @@ func (a *Anonymizer) Anonymize(text string) (*Result, error) {
 		}
 		return assignOrder[i].Start < assignOrder[j].Start
 	})
-
-	counters := make(map[ner.EntityType]int)
-	consistentCache := make(map[string]string)
 
 	for _, ent := range assignOrder {
 		var replacement string
@@ -173,6 +188,15 @@ func (a *Anonymizer) Anonymize(text string) (*Result, error) {
 
 	for _, pass := range a.config.Passes {
 		result.Text = pass(text, result)
+	}
+
+	if params.session != nil {
+		for k, v := range result.Mapping {
+			params.session.Mapping[k] = v
+		}
+		for k, v := range result.OriginalToPlaceholder {
+			params.session.OriginalToPlaceholder[k] = v
+		}
 	}
 
 	return result, nil
