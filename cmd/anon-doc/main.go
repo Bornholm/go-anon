@@ -23,6 +23,7 @@ import (
 	"github.com/bornholm/go-anon/pkg/anonymizer"
 	"github.com/bornholm/go-anon/pkg/docprocessor"
 	pkgdocx "github.com/bornholm/go-anon/pkg/docx"
+	pkgodt "github.com/bornholm/go-anon/pkg/odt"
 )
 
 // walkerFactory crée un Walker à partir d'un chemin de fichier.
@@ -31,6 +32,7 @@ type walkerFactory func(path string) (docprocessor.Walker, error)
 // registre des formats supportés par extension (en minuscules).
 var walkerFactories = map[string]walkerFactory{
 	".docx": pkgdocx.NewWalkerFromFile,
+	".odt":  pkgodt.NewWalkerFromFile,
 }
 
 func main() {
