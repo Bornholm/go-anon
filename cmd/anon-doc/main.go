@@ -22,6 +22,7 @@ import (
 	"github.com/bornholm/go-anon/cmd/internal/cmdutil"
 	"github.com/bornholm/go-anon/pkg/anonymizer"
 	"github.com/bornholm/go-anon/pkg/docprocessor"
+	pkgcsv "github.com/bornholm/go-anon/pkg/csv"
 	pkgdocx "github.com/bornholm/go-anon/pkg/docx"
 	pkgodt "github.com/bornholm/go-anon/pkg/odt"
 )
@@ -33,6 +34,8 @@ type walkerFactory func(path string) (docprocessor.Walker, error)
 var walkerFactories = map[string]walkerFactory{
 	".docx": pkgdocx.NewWalkerFromFile,
 	".odt":  pkgodt.NewWalkerFromFile,
+	".csv":  pkgcsv.NewWalkerFromFile,
+	".tsv":  pkgcsv.NewWalkerFromFile,
 }
 
 func main() {

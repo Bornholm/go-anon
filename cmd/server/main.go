@@ -18,6 +18,7 @@ import (
 	goanon "github.com/bornholm/go-anon"
 	"github.com/bornholm/go-anon/cmd/internal/cmdutil"
 	"github.com/bornholm/go-anon/pkg/docprocessor"
+	pkgcsv "github.com/bornholm/go-anon/pkg/csv"
 	pkgdocx "github.com/bornholm/go-anon/pkg/docx"
 	pkgodt "github.com/bornholm/go-anon/pkg/odt"
 	"github.com/bornholm/go-anon/pkg/features"
@@ -29,11 +30,15 @@ type walkerFactory func(path string) (docprocessor.Walker, error)
 var walkerFactories = map[string]walkerFactory{
 	".docx": pkgdocx.NewWalkerFromFile,
 	".odt":  pkgodt.NewWalkerFromFile,
+	".csv":  pkgcsv.NewWalkerFromFile,
+	".tsv":  pkgcsv.NewWalkerFromFile,
 }
 
 var docMimeTypes = map[string]string{
 	".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 	".odt":  "application/vnd.oasis.opendocument.text",
+	".csv":  "text/csv",
+	".tsv":  "text/tab-separated-values",
 }
 
 //go:embed index.html
