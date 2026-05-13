@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -15,9 +17,22 @@ import (
 
 	goanon "github.com/bornholm/go-anon"
 	"github.com/bornholm/go-anon/cmd/internal/cmdutil"
+	"github.com/bornholm/go-anon/pkg/docprocessor"
+	pkgdocx "github.com/bornholm/go-anon/pkg/docx"
 	"github.com/bornholm/go-anon/pkg/features"
 	"github.com/bornholm/go-anon/pkg/ner"
 )
+
+type walkerFactory func(path string) (docprocessor.Walker, error)
+
+var walkerFactories = map[string]walkerFactory{
+	".docx": pkgdocx.NewWalkerFromFile,
+	// futurs formats : ".xlsx", ".odt", ".csv", ...
+}
+
+var docMimeTypes = map[string]string{
+	".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
 
 //go:embed index.html
 var htmlContent embed.FS
@@ -122,6 +137,8 @@ func main() {
 	mux.HandleFunc("/api/anonymize", srv.handleAnonymize)
 	mux.HandleFunc("/api/deanonymize", srv.handleDeanonymize)
 	mux.HandleFunc("/api/languages", srv.handleLanguages)
+	mux.HandleFunc("/api/doc-formats", srv.handleDocFormats)
+	mux.HandleFunc("/api/anonymize-doc", srv.handleAnonymizeDoc)
 
 	addr := ":" + *port
 	log.Printf("starting server on %s", addr)
@@ -296,6 +313,133 @@ func (s *Server) handleLanguages(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"languages": langs,
 	})
+}
+
+func (s *Server) handleDocFormats(w http.ResponseWriter, r *http.Request) {
+	formats := make([]string, 0, len(walkerFactories))
+	for ext := range walkerFactories {
+		formats = append(formats, ext)
+	}
+	sort.Strings(formats)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"formats": formats})
+}
+
+func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseMultipartForm(2 << 20); err != nil {
+		http.Error(w, "fichier trop volumineux (max 2 Mo)", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "fichier manquant", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	lang := strings.ToLower(r.FormValue("lang"))
+	if lang == "" {
+		lang = "fr"
+	}
+
+	s.mu.RLock()
+	model, ok := s.models[lang]
+	s.mu.RUnlock()
+	if !ok {
+		http.Error(w, fmt.Sprintf("langue %q non supportée", lang), http.StatusBadRequest)
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	factory, ok := walkerFactories[ext]
+	if !ok {
+		http.Error(w, fmt.Sprintf("format %q non supporté", ext), http.StatusBadRequest)
+		return
+	}
+
+	tmpIn, err := os.CreateTemp("", "goanon-in-*"+ext)
+	if err != nil {
+		http.Error(w, "erreur interne", http.StatusInternalServerError)
+		return
+	}
+	defer os.Remove(tmpIn.Name())
+
+	if _, err := io.Copy(tmpIn, file); err != nil {
+		tmpIn.Close()
+		http.Error(w, "erreur lecture fichier", http.StatusInternalServerError)
+		return
+	}
+	tmpIn.Close()
+
+	tmpOut, err := os.CreateTemp("", "goanon-out-*"+ext)
+	if err != nil {
+		http.Error(w, "erreur interne", http.StatusInternalServerError)
+		return
+	}
+	tmpOutName := tmpOut.Name()
+	tmpOut.Close()
+	defer os.Remove(tmpOutName)
+
+	rec, err := goanon.NewRecognizer(model,
+		goanon.WithLanguage(lang),
+		goanon.WithBuiltinRegexPatterns(),
+	)
+	if err != nil {
+		http.Error(w, "erreur initialisation: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	cfg := goanon.Config{
+		Strategy:      goanon.TagReplace,
+		ConsistentMap: true,
+	}
+	anon := goanon.NewAnonymizer(rec, cfg)
+	proc := docprocessor.New(anon)
+
+	walker, err := factory(tmpIn.Name())
+	if err != nil {
+		http.Error(w, "erreur ouverture document: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	session, err := proc.Process(walker)
+	if err != nil {
+		http.Error(w, "erreur anonymisation: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Printf("anonymize-doc: lang=%s format=%s entities=%d", lang, ext, len(session.Mapping))
+
+	saver, ok := walker.(interface{ SaveTo(string) error })
+	if !ok {
+		http.Error(w, "format non sauvegardable", http.StatusInternalServerError)
+		return
+	}
+	if err := saver.SaveTo(tmpOutName); err != nil {
+		http.Error(w, "erreur sauvegarde: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	outFile, err := os.Open(tmpOutName)
+	if err != nil {
+		http.Error(w, "erreur lecture résultat", http.StatusInternalServerError)
+		return
+	}
+	defer outFile.Close()
+
+	mime := docMimeTypes[ext]
+	if mime == "" {
+		mime = "application/octet-stream"
+	}
+	outFilename := "anonymized_" + filepath.Base(header.Filename)
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+outFilename+`"`)
+	io.Copy(w, outFile)
 }
 
 func parseStrategy(name string) goanon.Strategy {

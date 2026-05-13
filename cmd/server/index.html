@@ -411,6 +411,117 @@
         color: var(--text-secondary);
       }
 
+      /* Tabs */
+      .tabs-nav {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 24px;
+        border-bottom: 2px solid var(--border);
+        padding-bottom: 0;
+      }
+
+      .tab-btn {
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 500;
+        background: transparent;
+        color: var(--text-secondary);
+        border: none;
+        border-bottom: 2px solid transparent;
+        border-radius: 0;
+        cursor: pointer;
+        margin-bottom: -2px;
+        min-height: unset;
+        transition: color 0.2s, border-color 0.2s;
+      }
+
+      .tab-btn:hover:not(:disabled) {
+        color: var(--text-primary);
+        background: transparent;
+      }
+
+      .tab-btn.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+      }
+
+      .tab-btn:active:not(:disabled) {
+        transform: none;
+      }
+
+      .tab-panel {
+        display: none;
+      }
+
+      .tab-panel.active {
+        display: block;
+      }
+
+      /* Document upload panel */
+      .doc-upload-panel {
+        max-width: 560px;
+        margin: 0 auto;
+      }
+
+      .doc-upload-panel .upload-card {
+        background: var(--surface);
+        border: 2px dashed var(--border);
+        border-radius: var(--radius);
+        padding: 40px 32px;
+        text-align: center;
+        transition: border-color 0.2s;
+      }
+
+      .doc-upload-panel .upload-card.dragover {
+        border-color: var(--accent);
+        background: #eff6ff;
+      }
+
+      .doc-upload-panel .upload-icon {
+        font-size: 40px;
+        margin-bottom: 12px;
+        line-height: 1;
+      }
+
+      .doc-upload-panel .upload-hint {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-top: 8px;
+      }
+
+      .doc-upload-panel .file-name {
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--text-primary);
+        font-weight: 500;
+        min-height: 20px;
+      }
+
+      input[type="file"] {
+        display: none;
+      }
+
+      .doc-options {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-top: 20px;
+        flex-wrap: wrap;
+      }
+
+      .doc-options .form-group {
+        flex: 1;
+        min-width: 120px;
+      }
+
+      .doc-actions {
+        margin-top: 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
       /* Responsive */
       @media (max-width: 1024px) {
         .textareas-row {
@@ -484,7 +595,14 @@
         </p>
       </div>
 
+      <nav class="tabs-nav" role="tablist" aria-label="Mode d'anonymisation">
+        <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-text" data-tab="text">Texte</button>
+        <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-doc" data-tab="doc">Document</button>
+      </nav>
+
       <main>
+        <div id="tab-text" class="tab-panel active" role="tabpanel">
+
         <section class="textareas-row" aria-label="Zone de texte">
           <div class="textarea-wrapper">
             <label for="source-text">Texte source</label>
@@ -732,6 +850,42 @@ Rapport rédigé par Julien Lefèvre, agence de Lyon, le 15 mars 2024.
             <tbody id="mapping-body"></tbody>
           </table>
         </section>
+
+        </div><!-- #tab-text -->
+
+        <div id="tab-doc" class="tab-panel" role="tabpanel">
+          <div class="doc-upload-panel">
+            <div class="upload-card" id="upload-card">
+              <div class="upload-icon">📄</div>
+              <p>Glissez un document ici ou</p>
+              <button type="button" class="btn-secondary" id="pick-file-btn" style="margin-top:12px">Choisir un fichier</button>
+              <input type="file" id="doc-file-input" />
+              <p class="upload-hint">Formats acceptés : <span id="doc-formats-hint">chargement…</span> — Max 2 Mo</p>
+              <p class="file-name" id="doc-file-name"></p>
+            </div>
+
+            <div class="doc-options">
+              <div class="form-group">
+                <label for="doc-language">Langue</label>
+                <select id="doc-language">
+                  <option value="">Chargement...</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="doc-actions">
+              <button type="button" id="doc-anonymize-btn" class="btn-primary" disabled>
+                Anonymiser le document
+              </button>
+              <div class="loading" id="doc-loading">
+                <div class="spinner"></div>
+                <span>Traitement en cours...</span>
+              </div>
+              <div class="status" id="doc-status" role="alert" aria-live="polite"></div>
+            </div>
+          </div>
+        </div><!-- #tab-doc -->
+
       </main>
     </div>
 
@@ -1004,6 +1158,183 @@ Rapport rédigé par Julien Lefèvre, agence de Lyon, le 15 mars 2024.
         deanonymizeBtn.addEventListener("click", deanonymize);
 
         fetchLanguages();
+
+        // ── Tabs ──────────────────────────────────────────────────────────────
+        function activateTab(tabName) {
+          const validTabs = ["text", "doc"];
+          const name = validTabs.includes(tabName) ? tabName : "text";
+          document.querySelectorAll(".tab-btn").forEach(function (b) {
+            const active = b.dataset.tab === name;
+            b.classList.toggle("active", active);
+            b.setAttribute("aria-selected", String(active));
+          });
+          document.querySelectorAll(".tab-panel").forEach(function (p) {
+            p.classList.remove("active");
+          });
+          document.getElementById("tab-" + name).classList.add("active");
+        }
+
+        document.querySelectorAll(".tab-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            history.pushState(null, "", "#" + btn.dataset.tab);
+            activateTab(btn.dataset.tab);
+          });
+        });
+
+        window.addEventListener("hashchange", function () {
+          activateTab(location.hash.replace("#", ""));
+        });
+
+        activateTab(location.hash.replace("#", ""));
+
+        // ── Document upload ───────────────────────────────────────────────────
+        const docFileInput = document.getElementById("doc-file-input");
+        const pickFileBtn = document.getElementById("pick-file-btn");
+        const uploadCard = document.getElementById("upload-card");
+        const docFileName = document.getElementById("doc-file-name");
+        const docLanguageSelect = document.getElementById("doc-language");
+        const docAnonymizeBtn = document.getElementById("doc-anonymize-btn");
+        const docLoading = document.getElementById("doc-loading");
+        const docStatus = document.getElementById("doc-status");
+        const docFormatsHint = document.getElementById("doc-formats-hint");
+
+        async function fetchDocFormats() {
+          try {
+            const res = await fetch("/api/doc-formats");
+            const data = await res.json();
+            const formats = data.formats || [];
+            docFileInput.accept = formats.join(",");
+            docFormatsHint.textContent = formats.join(", ");
+          } catch (_) {
+            docFormatsHint.textContent = ".docx";
+            docFileInput.accept = ".docx";
+          }
+        }
+
+        async function syncDocLanguages() {
+          try {
+            const res = await fetch("/api/languages");
+            const data = await res.json();
+            docLanguageSelect.innerHTML = "";
+            data.languages.forEach(function (lang) {
+              const opt = document.createElement("option");
+              opt.value = lang;
+              opt.textContent = lang.toUpperCase();
+              docLanguageSelect.appendChild(opt);
+            });
+          } catch (_) {}
+        }
+
+        function showDocLoading(show) {
+          docLoading.classList.toggle("visible", show);
+          docAnonymizeBtn.disabled = show || !docFileInput.files.length;
+        }
+
+        function showDocStatus(message, type) {
+          docStatus.textContent = message;
+          docStatus.className = "status visible " + type;
+          setTimeout(function () {
+            docStatus.classList.remove("visible");
+          }, 6000);
+        }
+
+        function onFileSelected() {
+          const file = docFileInput.files[0];
+          if (!file) {
+            docFileName.textContent = "";
+            docAnonymizeBtn.disabled = true;
+            return;
+          }
+          if (file.size > 2 * 1024 * 1024) {
+            showDocStatus(
+              "Fichier trop volumineux (max 2 Mo). Taille actuelle : " +
+                (file.size / 1024 / 1024).toFixed(1) +
+                " Mo",
+              "error"
+            );
+            docFileInput.value = "";
+            docFileName.textContent = "";
+            docAnonymizeBtn.disabled = true;
+            return;
+          }
+          docFileName.textContent = file.name;
+          docAnonymizeBtn.disabled = false;
+        }
+
+        pickFileBtn.addEventListener("click", function () {
+          docFileInput.click();
+        });
+
+        docFileInput.addEventListener("change", onFileSelected);
+
+        uploadCard.addEventListener("dragover", function (e) {
+          e.preventDefault();
+          uploadCard.classList.add("dragover");
+        });
+
+        uploadCard.addEventListener("dragleave", function () {
+          uploadCard.classList.remove("dragover");
+        });
+
+        uploadCard.addEventListener("drop", function (e) {
+          e.preventDefault();
+          uploadCard.classList.remove("dragover");
+          if (e.dataTransfer.files.length) {
+            docFileInput.files = e.dataTransfer.files;
+            onFileSelected();
+          }
+        });
+
+        docAnonymizeBtn.addEventListener("click", async function () {
+          const file = docFileInput.files[0];
+          if (!file) return;
+
+          const lang = docLanguageSelect.value;
+          if (!lang) {
+            showDocStatus("Veuillez sélectionner une langue", "error");
+            return;
+          }
+
+          showDocLoading(true);
+          try {
+            const form = new FormData();
+            form.append("file", file);
+            form.append("lang", lang);
+
+            const res = await fetch("/api/anonymize-doc", {
+              method: "POST",
+              body: form,
+            });
+
+            if (!res.ok) {
+              const err = await res.text();
+              throw new Error(err.trim());
+            }
+
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            const disp = res.headers.get("Content-Disposition") || "";
+            const match = disp.match(/filename="([^"]+)"/);
+            a.download = match ? match[1] : "anonymized_" + file.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(function () {
+              URL.revokeObjectURL(url);
+            }, 10000);
+
+            showDocStatus("Document anonymisé et téléchargé.", "success");
+          } catch (err) {
+            showDocStatus("Erreur : " + err.message, "error");
+          } finally {
+            showDocLoading(false);
+          }
+        });
+
+        fetchDocFormats();
+        syncDocLanguages();
       })();
     </script>
   </body>
