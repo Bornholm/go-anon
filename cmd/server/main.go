@@ -21,6 +21,7 @@ import (
 	pkgcsv "github.com/bornholm/go-anon/pkg/csv"
 	pkgdocx "github.com/bornholm/go-anon/pkg/docx"
 	pkgodt "github.com/bornholm/go-anon/pkg/odt"
+	pkgpdf "github.com/bornholm/go-anon/pkg/pdf"
 	"github.com/bornholm/go-anon/pkg/features"
 	"github.com/bornholm/go-anon/pkg/ner"
 )
@@ -32,6 +33,7 @@ var walkerFactories = map[string]walkerFactory{
 	".odt":  pkgodt.NewWalkerFromFile,
 	".csv":  pkgcsv.NewWalkerFromFile,
 	".tsv":  pkgcsv.NewWalkerFromFile,
+	".pdf":  pkgpdf.NewWalkerFromFile,
 }
 
 var docMimeTypes = map[string]string{
@@ -39,6 +41,7 @@ var docMimeTypes = map[string]string{
 	".odt":  "application/vnd.oasis.opendocument.text",
 	".csv":  "text/csv",
 	".tsv":  "text/tab-separated-values",
+	".pdf":  "application/pdf",
 }
 
 //go:embed index.html

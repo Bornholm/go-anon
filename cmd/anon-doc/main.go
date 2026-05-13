@@ -25,6 +25,7 @@ import (
 	pkgcsv "github.com/bornholm/go-anon/pkg/csv"
 	pkgdocx "github.com/bornholm/go-anon/pkg/docx"
 	pkgodt "github.com/bornholm/go-anon/pkg/odt"
+	pkgpdf "github.com/bornholm/go-anon/pkg/pdf"
 )
 
 // walkerFactory crée un Walker à partir d'un chemin de fichier.
@@ -36,6 +37,7 @@ var walkerFactories = map[string]walkerFactory{
 	".odt":  pkgodt.NewWalkerFromFile,
 	".csv":  pkgcsv.NewWalkerFromFile,
 	".tsv":  pkgcsv.NewWalkerFromFile,
+	".pdf":  pkgpdf.NewWalkerFromFile,
 }
 
 func main() {
