@@ -1,7 +1,7 @@
 # Entraîner le modèle FR à partir du jeu de données WikiNER
 
 Ce tutoriel couvre la reproduction complète d'un modèle français
-(`model_fr.crf.gz`, F1 ≈ 82,4 % sur WikiNER) depuis les données brutes.
+(`model_fr.crf.gz`, F1 >= 85% sur WikiNER) depuis les données brutes.
 
 ## Prérequis
 
@@ -17,6 +17,7 @@ go build -o bin/eval          ./cmd/eval/
 go build -o bin/prune         ./cmd/prune/
 go build -o bin/brown-cluster ./cmd/brown-cluster/
 go build -o bin/demo          ./cmd/demo/
+go build -o bin/server ./cmd/server/
 ```
 
 ## Étape 2 — Obtenir les données WikiNER

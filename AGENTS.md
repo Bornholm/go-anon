@@ -16,6 +16,7 @@ go build -o bin/eval         ./cmd/eval/
 go build -o bin/demo         ./cmd/demo/
 go build -o bin/prune        ./cmd/prune/
 go build -o bin/brown-cluster ./cmd/brown-cluster/
+go build -o bin/server ./cmd/server/
 
 # Entraînement (exemple FR, corpus complet)
 ./bin/train \
