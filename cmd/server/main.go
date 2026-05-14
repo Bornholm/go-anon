@@ -26,6 +26,8 @@ import (
 	"github.com/bornholm/go-anon/pkg/ner"
 )
 
+var version = "dev"
+
 type walkerFactory func(path string) (docprocessor.Walker, error)
 
 var walkerFactories = map[string]walkerFactory{

@@ -28,6 +28,8 @@ import (
 	pkgpdf "github.com/bornholm/go-anon/pkg/pdf"
 )
 
+var version = "dev"
+
 // walkerFactory crée un Walker à partir d'un chemin de fichier.
 type walkerFactory func(path string) (docprocessor.Walker, error)
 
