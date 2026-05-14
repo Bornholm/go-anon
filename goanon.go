@@ -42,6 +42,10 @@ const (
 	TypeSIRET = ner.TypeSIRET
 	TypeSIREN = ner.TypeSIREN
 	TypePHONE = ner.TypePHONE
+
+	TypeAPIKey = ner.TypeAPIKey
+	TypeJWT    = ner.TypeJWT
+	TypeSecret = ner.TypeSecret
 )
 
 var DefaultSentenceBoundaries = ner.DefaultSentenceBoundaries
@@ -104,6 +108,8 @@ var RegexEntityFilter = ner.RegexEntityFilter
 var WithRegexPatterns = ner.WithRegexPatterns
 var WithBuiltinRegexPatterns = ner.WithBuiltinRegexPatterns
 var BuiltinRegexPatterns = ner.BuiltinRegexPatterns
+var WithBuiltinSecretPatterns = ner.WithBuiltinSecretPatterns
+var SecretPatterns = ner.SecretPatterns
 
 // RegexPattern associe une expression régulière à un type d'entité.
 type RegexPattern = ner.RegexPattern

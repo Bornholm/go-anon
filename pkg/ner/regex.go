@@ -8,10 +8,13 @@ import (
 // RegexPattern associe une expression régulière compilée à un type d'entité.
 // Re doit être pré-compilé par l'appelant (regexp.MustCompile ou regexp.Compile).
 // Confidence à 0 est interprété comme 1.0.
+// Submatch indique quel groupe capturant utiliser comme span de l'entité :
+// 0 (défaut) = match complet, 1 = premier groupe capturant, etc.
 type RegexPattern struct {
 	Re         *regexp.Regexp
 	EntityType EntityType
 	Confidence float64
+	Submatch   int
 }
 
 // RegexEntityFilter retourne un EntityFilter qui injecte des entités détectées
@@ -41,8 +44,13 @@ func RegexEntityFilter(getText func() string, patterns []RegexPattern) EntityFil
 			if conf == 0 {
 				conf = 1.0
 			}
-			for _, m := range p.Re.FindAllStringIndex(text, -1) {
-				start, end := m[0], m[1]
+			for _, m := range p.Re.FindAllStringSubmatchIndex(text, -1) {
+				var start, end int
+				if p.Submatch > 0 && p.Submatch*2+1 < len(m) && m[p.Submatch*2] >= 0 {
+					start, end = m[p.Submatch*2], m[p.Submatch*2+1]
+				} else {
+					start, end = m[0], m[1]
+				}
 				overlaps := false
 				for i := start; i < end && i < len(covered); i++ {
 					if covered[i] {

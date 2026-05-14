@@ -227,6 +227,7 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 		recognizerOpts = append(recognizerOpts, goanon.WithPostFilters(filters...))
 	}
 	recognizerOpts = append(recognizerOpts, goanon.WithBuiltinRegexPatterns())
+	recognizerOpts = append(recognizerOpts, goanon.WithBuiltinSecretPatterns())
 
 	rec, err := goanon.NewRecognizer(model, recognizerOpts...)
 	if err != nil {
@@ -401,6 +402,7 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 	rec, err := goanon.NewRecognizer(model,
 		goanon.WithLanguage(lang),
 		goanon.WithBuiltinRegexPatterns(),
+		goanon.WithBuiltinSecretPatterns(),
 	)
 	if err != nil {
 		http.Error(w, "erreur initialisation: "+err.Error(), http.StatusInternalServerError)
@@ -479,6 +481,7 @@ func parseSkipTypes(skipTypes []string) []goanon.EntityType {
 		goanon.TypePER, goanon.TypeLOC, goanon.TypeORG, goanon.TypeMISC,
 		goanon.TypeEMAIL, goanon.TypeIPV4, goanon.TypeIPV6,
 		goanon.TypeIBAN, goanon.TypeSIRET, goanon.TypeSIREN, goanon.TypePHONE,
+		goanon.TypeAPIKey, goanon.TypeJWT, goanon.TypeSecret,
 	}
 	var result []goanon.EntityType
 	for _, t := range allTypes {

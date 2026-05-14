@@ -10,13 +10,20 @@ go test ./...                              # suite complète
 go test ./pkg/ner/ -run TestRoundTrip      # un test précis
 go test ./pkg/model/ -count=1             # sans cache
 
-# Build des binaires (dans bin/)
+# Build des binaires principaux (server + anon-doc)
+make build
+
+# Build des outils d'entraînement (dans bin/)
+make build-tools
+
+# Ou individuellement :
+go build -o bin/server    ./cmd/server/
+go build -o bin/anon-doc  ./cmd/anon-doc/
 go build -o bin/train        ./cmd/train/
 go build -o bin/eval         ./cmd/eval/
 go build -o bin/demo         ./cmd/demo/
 go build -o bin/prune        ./cmd/prune/
 go build -o bin/brown-cluster ./cmd/brown-cluster/
-go build -o bin/server ./cmd/server/
 
 # Entraînement (exemple FR, corpus complet)
 ./bin/train \
@@ -36,9 +43,18 @@ go build -o bin/server ./cmd/server/
 ./bin/prune -model model_fr_full_bio.crf.gz \
   -threshold 0.001 -output model_fr_pruned.crf.gz
 
-# Démonstration / anonymisation interactive
+# Démonstration / anonymisation interactive (texte brut)
 cat test.txt | ./bin/demo -lang fr -model model_fr_pruned.crf.gz -anonymize
 echo "Jean Dupont habite à Paris." | ./bin/demo -lang fr -model model_fr.crf.gz
+
+# Anonymisation de documents bureautiques (DOCX, ODT, CSV, TSV, PDF)
+./bin/anon-doc -model model_fr.crf.gz -lang fr \
+  -input rapport.docx -output rapport_anon.docx
+./bin/anon-doc -model model_fr.crf.gz -lang fr \
+  -input doc.docx -output out.docx -save-mapping mapping.json
+# Stratégies disponibles : "tag" (défaut), "redact", "hash"
+./bin/anon-doc -model model_fr.crf.gz -lang fr -strategy redact \
+  -input data.csv -output data_anon.csv
 
 # Génération de Brown clusters
 ./bin/brown-cluster -input data/wikiner_fr_full.train.wikiner \
@@ -65,15 +81,20 @@ texte brut
 
 ### Packages
 
-| Package          | Rôle                                                                                                        |
-| ---------------- | ----------------------------------------------------------------------------------------------------------- |
-| `pkg/model`      | CRF linéaire : poids, Viterbi, forward-backward, entraînement SGD/Adam, sérialisation gob+gzip              |
-| `pkg/features`   | Extraction de features : morphologie, n-grammes, shape, Brown clusters, word embeddings (GloVe), gazetteers |
-| `pkg/ner`        | Orchestration : `Recognizer`, décodage BIO→entités, évaluation F1, post-filtres, corrections BIO            |
-| `pkg/anonymizer` | Remplacement/restauration des entités dans le texte original                                                |
-| `pkg/corpus`     | Lecture CoNLL et WikiNER, normalisation BIO, conversion BIO↔BIOES                                           |
-| `pkg/tokenizer`  | `UnicodeTokenizer` — offsets byte-précis, options FR/EN (apostrophe, trait d'union)                         |
-| `pkg/lang`       | Profils linguistiques : stop-words, préfixes honorifiques, features spécifiques FR/EN                       |
+| Package            | Rôle                                                                                                        |
+| ------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `pkg/model`        | CRF linéaire : poids, Viterbi, forward-backward, entraînement SGD/Adam, sérialisation gob+gzip              |
+| `pkg/features`     | Extraction de features : morphologie, n-grammes, shape, Brown clusters, word embeddings (GloVe), gazetteers |
+| `pkg/ner`          | Orchestration : `Recognizer`, décodage BIO→entités, évaluation F1, post-filtres, corrections BIO            |
+| `pkg/anonymizer`   | Remplacement des entités : stratégies (tag/redact/hash), `Session` cross-segments, passes de post-traitement |
+| `pkg/docprocessor` | Interface `Walker` + `Processor` — orchestration de l'anonymisation de documents format-agnostique          |
+| `pkg/docx`         | `Walker` DOCX : itération sur les paragraphes, réécriture des runs                                         |
+| `pkg/odt`          | `Walker` ODT : parsing XML en mémoire, réécriture in-place, resérialisation ZIP                             |
+| `pkg/csv`          | `Walker` CSV/TSV : détection auto du séparateur, anonymisation cellule par cellule                          |
+| `pkg/pdf`          | `Walker` PDF (lecture seule via pdfcpu) : extraction texte avec offsets, redact dans le flux de contenu     |
+| `pkg/corpus`       | Lecture CoNLL et WikiNER, normalisation BIO, conversion BIO↔BIOES                                           |
+| `pkg/tokenizer`    | `UnicodeTokenizer` — offsets byte-précis, options FR/EN (apostrophe, trait d'union)                         |
+| `pkg/lang`         | Profils linguistiques : stop-words, préfixes honorifiques, features spécifiques FR/EN                       |
 
 ### SparseWeights — double représentation
 
@@ -101,6 +122,36 @@ Les offsets `Start`/`End` des entités sont toujours des positions **byte** dans
 
 - **CoNLL** : une ligne par token (`FORME ... TAG`), phrases séparées par lignes vides. Colonnes configurables.
 - **WikiNER** : une phrase par ligne, tokens `FORME|POS|NER` séparés par espaces. `WikiNERReader` applique `normalizeBIO()` qui convertit les `I-X` initiaux en `B-X` (WikiNER utilise un schéma flat).
+
+### Anonymizer — stratégies et Session (`pkg/anonymizer`)
+
+`Config.Strategy` choisit le mode de remplacement :
+
+- **`TagReplace`** (défaut) : `"Jean"` → `"[PERSON_1]"`
+- **`Redact`** : `"Jean"` → `"████"` (longueur proportionnelle)
+- **`Hash`** : `"Jean"` → `"[PER_a1b2c3]"` (SHA-256 tronqué)
+- **`Consistent`** : variante fuzzy de TagReplace, même entité → même placeholder
+
+`Session` permet une numérotation et une cohérence cross-segments (ex. plusieurs paragraphes d'un DOCX) :
+
+```go
+session := anonymizer.NewSession()
+anon.Anonymize(seg1, anonymizer.WithSession(session))
+anon.Anonymize(seg2, anonymizer.WithSession(session))
+// session.Mapping : placeholder → original (cumulé)
+```
+
+### Pipeline de traitement de documents (`pkg/docprocessor`)
+
+```
+fichier (DOCX/ODT/CSV/TSV/PDF)
+  → Walker.Walk()         — itère sur les segments de texte du document
+  → Processor.Process()   — anonymise chaque segment avec une Session partagée
+  → Segment.Replace()     — réécrit le texte anonymisé in-place dans le document
+  → walker.SaveTo()       — sérialise le document modifié sur disque
+```
+
+`Walker` est une interface à implémenter par format ; `Processor` est générique.
 
 ### Post-filtres (`pkg/ner/filter.go`)
 

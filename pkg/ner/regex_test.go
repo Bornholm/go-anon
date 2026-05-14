@@ -2,6 +2,7 @@ package ner
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -241,6 +242,243 @@ func TestBuiltinPatterns_PhoneFR(t *testing.T) {
 		if !rePhoneFR.MatchString(c) {
 			t.Errorf("rePhoneFR ne matche pas %q", c)
 		}
+	}
+}
+
+// --- Support Submatch ---
+
+func TestRegexEntityFilter_Submatch(t *testing.T) {
+	text := "Authorization: Bearer eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.signature123"
+	f := RegexEntityFilter(makeText(text), []RegexPattern{
+		{Re: reBearerToken, EntityType: TypeAPIKey, Confidence: 0.99, Submatch: 1},
+	})
+	got := f(nil)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité, got %d: %+v", len(got), got)
+	}
+	e := got[0]
+	// Doit contenir uniquement le jeton, pas "Bearer "
+	if e.Text == "" || e.Text == text {
+		t.Errorf("entité inattendue : %+v", e)
+	}
+	if len(e.Text) < 20 {
+		t.Errorf("jeton trop court : %q", e.Text)
+	}
+	// Le texte de l'entité ne doit pas commencer par "Bearer"
+	if len(e.Text) >= 6 && e.Text[:6] == "Bearer" {
+		t.Errorf("l'entité ne doit pas inclure 'Bearer' : %q", e.Text)
+	}
+}
+
+func TestRegexEntityFilter_SubmatchInvalid(t *testing.T) {
+	text := "test 12345"
+	// Submatch=2 mais le pattern n'a qu'un groupe → doit utiliser le match complet
+	f := RegexEntityFilter(makeText(text), []RegexPattern{
+		{Re: regexp.MustCompile(`(\d+)`), EntityType: "NUM", Submatch: 2},
+	})
+	got := f(nil)
+	// Le comportement de repli doit retourner le match complet (groupe 0)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité, got %d", len(got))
+	}
+}
+
+// --- Patterns secrets ---
+
+func TestSecretPatterns_JWT(t *testing.T) {
+	valid := []string{
+		"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+		"eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIn0.abc123def456",
+	}
+	for _, c := range valid {
+		if !reJWT.MatchString(c) {
+			t.Errorf("reJWT ne matche pas %q", c)
+		}
+	}
+}
+
+func TestSecretPatterns_OpenAI(t *testing.T) {
+	valid := []string{
+		"sk-abcdefghijklmnopqrstuvwxyz123456",
+		"sk-proj-abcdefghijklmnopqrstuvwxyz1234567890ABCD",
+	}
+	for _, c := range valid {
+		if !reOpenAIKey.MatchString(c) {
+			t.Errorf("reOpenAIKey ne matche pas %q", c)
+		}
+	}
+	invalid := []string{"sk-abc", "sk-1234"}
+	for _, c := range invalid {
+		if reOpenAIKey.MatchString(c) {
+			t.Errorf("reOpenAIKey ne doit pas matcher %q", c)
+		}
+	}
+}
+
+func TestSecretPatterns_AWS(t *testing.T) {
+	valid := []string{"AKIAIOSFODNN7EXAMPLE", "AKIAI44QH8DHBEXAMPLE"}
+	for _, c := range valid {
+		if !reAWSKeyID.MatchString(c) {
+			t.Errorf("reAWSKeyID ne matche pas %q", c)
+		}
+	}
+	invalid := []string{"AKIA123", "akiaIOSFODNN7EXAMPLE"}
+	for _, c := range invalid {
+		if reAWSKeyID.MatchString(c) {
+			t.Errorf("reAWSKeyID ne doit pas matcher %q", c)
+		}
+	}
+}
+
+func TestSecretPatterns_GitHub(t *testing.T) {
+	ghp := "ghp_" + strings.Repeat("a", 36)
+	gpat := "github_pat_" + strings.Repeat("a", 82)
+	for _, c := range []string{ghp, gpat} {
+		if !reGitHubToken.MatchString(c) {
+			t.Errorf("reGitHubToken ne matche pas %q", c)
+		}
+	}
+}
+
+func TestSecretPatterns_Slack(t *testing.T) {
+	valid := []string{
+		"xoxb-123456789012-123456789012-abcdefghijklmnopqrstuvwx",
+		"xoxp-123456789012-123456789012-123456789012-abcdefghij",
+	}
+	for _, c := range valid {
+		if !reSlackToken.MatchString(c) {
+			t.Errorf("reSlackToken ne matche pas %q", c)
+		}
+	}
+}
+
+func TestSecretPatterns_Stripe(t *testing.T) {
+	valid := []string{
+		"sk_live_abcdefghijklmnopqrstuvwx",
+		"sk_test_abcdefghijklmnopqrstuvwx",
+		"rk_live_abcdefghijklmnopqrstuvwx",
+	}
+	for _, c := range valid {
+		if !reStripeKey.MatchString(c) {
+			t.Errorf("reStripeKey ne matche pas %q", c)
+		}
+	}
+}
+
+func TestSecretPatterns_Bearer(t *testing.T) {
+	text := "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1In0.sig12345678901234567"
+	f := RegexEntityFilter(makeText(text), SecretPatterns())
+	got := f(nil)
+	found := false
+	for _, e := range got {
+		if e.Type == TypeJWT || e.Type == TypeAPIKey {
+			found = true
+			// Vérifie que l'entité ne contient pas "Bearer "
+			if len(e.Text) >= 7 && e.Text[:7] == "Bearer " {
+				t.Errorf("l'entité ne doit pas inclure le préfixe Bearer : %q", e.Text)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("aucun JWT ou API_KEY détecté dans : %q", text)
+	}
+}
+
+func TestSecretPatterns_JWTBeforeBearer(t *testing.T) {
+	jwt := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	text := "Authorization: Bearer " + jwt
+	f := RegexEntityFilter(makeText(text), SecretPatterns())
+	got := f(nil)
+	// Le JWT doit être détecté en priorité
+	for _, e := range got {
+		if e.Type == TypeJWT {
+			return
+		}
+	}
+	t.Errorf("JWT doit être détecté en priorité sur Bearer générique : %+v", got)
+}
+
+func TestSecretPatterns_SecretKV(t *testing.T) {
+	cases := []struct {
+		text  string
+		value string
+	}{
+		// password / passwd / passphrase
+		{"DB_PASSWORD=Tr0ub4dor&3", "Tr0ub4dor&3"},
+		{"SMTP_PASSWORD=key-abcdef1234567890", "key-abcdef1234567890"},
+		{"passphrase=correct-horse-battery-staple", "correct-horse-battery-staple"},
+		// pass (fragment court)
+		{"DB_PASS=s3cr3t!", "s3cr3t!"},
+		{"REDIS_PASS=r3d1s_p@ss", "r3d1s_p@ss"},
+		// secret
+		{"AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"},
+		{"client_secret=mysecretvalue123", "mysecretvalue123"},
+		{"SECRET_KEY=abcdefgh", "abcdefgh"},
+		// token
+		{"ACCESS_TOKEN=ya29.a0AfH6SMBxxx", "ya29.a0AfH6SMBxxx"},
+		{"REFRESH_TOKEN=1//0gLhxxxxxxxxxx", "1//0gLhxxxxxxxxxx"},
+		// credential / cred
+		{"DB_CREDENTIALS=user:p@ssw0rd", "user:p@ssw0rd"},
+		{"API_CRED=mycredential123", "mycredential123"},
+		// private
+		{"PRIVATE_KEY=-----BEGIN-RSA", "-----BEGIN-RSA"},
+	}
+	for _, c := range cases {
+		f := RegexEntityFilter(makeText(c.text), []RegexPattern{
+			{Re: reSecretKV, EntityType: TypeSecret, Confidence: 0.95, Submatch: 1},
+		})
+		got := f(nil)
+		if len(got) != 1 {
+			t.Errorf("[%s] attendu 1 entité, got %d: %+v", c.text, len(got), got)
+			continue
+		}
+		if got[0].Text != c.value {
+			t.Errorf("[%s] valeur attendue %q, got %q", c.text, c.value, got[0].Text)
+		}
+		if got[0].Type != TypeSecret {
+			t.Errorf("[%s] type attendu SECRET, got %s", c.text, got[0].Type)
+		}
+	}
+}
+
+func TestSecretPatterns_SecretKV_NoMatchMidSentence(t *testing.T) {
+	// Le pattern est ancré ^ : ne doit pas matcher en milieu de phrase.
+	text := "Le mot de passe secret est password mais ce n'est pas un secret=valeur"
+	f := RegexEntityFilter(makeText(text), []RegexPattern{
+		{Re: reSecretKV, EntityType: TypeSecret, Confidence: 0.95, Submatch: 1},
+	})
+	got := f(nil)
+	if len(got) != 0 {
+		t.Errorf("ne doit pas matcher en milieu de phrase, got %+v", got)
+	}
+}
+
+func TestSecretPatterns_SecretKV_ShortValueIgnored(t *testing.T) {
+	// Valeurs < 4 chars ignorées (évite les faux positifs sur secret=ok, etc.)
+	text := "DB_PASSWORD=abc"
+	f := RegexEntityFilter(makeText(text), []RegexPattern{
+		{Re: reSecretKV, EntityType: TypeSecret, Confidence: 0.95, Submatch: 1},
+	})
+	got := f(nil)
+	if len(got) != 0 {
+		t.Errorf("valeur trop courte ne doit pas être détectée, got %+v", got)
+	}
+}
+
+func TestSecretPatterns_JWTBeforeSecretKV(t *testing.T) {
+	// JWT_SECRET= : le JWT est détecté en priorité par reJWT, reSecretKV ne doit pas doubler.
+	jwt := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	text := "JWT_SECRET=" + jwt
+	f := RegexEntityFilter(makeText(text), SecretPatterns())
+	got := f(nil)
+	jwtCount := 0
+	for _, e := range got {
+		if e.Type == TypeJWT {
+			jwtCount++
+		}
+	}
+	if jwtCount != 1 {
+		t.Errorf("le JWT doit être détecté exactement une fois, got %d JWT dans %+v", jwtCount, got)
 	}
 }
 

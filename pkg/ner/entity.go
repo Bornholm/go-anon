@@ -8,6 +8,10 @@ const (
 	TypeLOC  EntityType = "LOC"
 	TypeORG  EntityType = "ORG"
 	TypeMISC EntityType = "MISC"
+
+	TypeAPIKey EntityType = "API_KEY"
+	TypeJWT    EntityType = "JWT"
+	TypeSecret EntityType = "SECRET"
 )
 
 // Entity est une entité nommée détectée dans le texte.

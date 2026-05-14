@@ -554,6 +554,33 @@
         flex-wrap: wrap;
       }
 
+      .examples-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      .example-link {
+        color: var(--accent);
+        text-decoration: none;
+        padding: 2px 6px;
+        border-radius: 4px;
+        transition: background 0.15s;
+      }
+
+      .example-link:hover {
+        background: var(--muted);
+        text-decoration: underline;
+      }
+
+      .example-link.active {
+        font-weight: 500;
+        color: var(--accent-hover);
+      }
+
       /* Responsive */
       @media (max-width: 1024px) {
         .textareas-row {
@@ -650,26 +677,14 @@
               id="source-text"
               placeholder="Saisissez le texte à anonymiser..."
               rows="20"
+            ></textarea
             >
-**Rapport d'activité client – Compte n°2024-0876**
-
-Le 14 mars 2024, Mme Camille Rousseau, directrice administrative de la société TechNova Solutions (SIRET 81234567800025, SIREN 812345678), a contacté notre agence de Lyon afin de faire le point sur le contrat Premium souscrit en septembre 2023.
-
-L'entretien a été mené par Julien Lefèvre, conseiller référent, en présence de Marc Dubreuil, responsable du pôle grands comptes. La cliente a exprimé sa satisfaction concernant la migration récente de ses serveurs vers notre datacenter de Roubaix, opération coordonnée avec la société partenaire CloudBridge SAS.
-
-Plusieurs points ont été abordés :
-
-1. **Facturation** : un virement de 12 450 € a été effectué le 28 février depuis le compte FR76 3000 4000 0312 3456 7890 143 vers notre IBAN société. Mme Rousseau souhaite désormais recevoir les factures à l'adresse camille.rousseau@technova-solutions.fr plutôt qu'au service comptabilité général.
-
-2. **Support technique** : trois incidents ont été enregistrés depuis janvier, dont une coupure réseau le 22 février ayant impacté le serveur principal (adresse IP 192.168.45.120) ainsi qu'un nœud secondaire en IPv6 (2001:0db8:85a3:0000:0000:8a2e:0370:7334). L'équipe de Sophie Martin, basée à Nantes, a résolu l'incident en moins de deux heures.
-
-3. **Évolution contractuelle** : la cliente envisage d'étendre le contrat à sa filiale TechNova Iberia, située à Barcelone, en Espagne. Un rendez-vous est prévu le 5 avril à Paris avec M. Antoine Berger, directeur Europe du Sud.
-
-Mme Rousseau peut être jointe au 06 78 45 23 91 pour toute question complémentaire. Un compte rendu détaillé sera également transmis à son assistante, Léa Fontaine, ainsi qu'au cabinet d'audit Deloitte, mandaté pour la revue annuelle.
-
-Rapport rédigé par Julien Lefèvre, agence de Lyon, le 15 mars 2024.          
-          </textarea
-            >
+            <div class="examples-bar">
+              <span>Exemples :</span>
+              <a href="#" class="example-link active" data-example="rapport">Rapport d'activité</a>
+              <a href="#" class="example-link" data-example="email">E-mail professionnel</a>
+              <a href="#" class="example-link" data-example="dotenv">Fichier .env</a>
+            </div>
           </div>
           <div class="textarea-wrapper">
             <label for="anonymized-text">Texte anonymisé</label>
@@ -842,6 +857,35 @@ Rapport rédigé par Julien Lefèvre, agence de Lyon, le 15 mars 2024.
                 <span>SIREN</span>
               </label>
             </div>
+            <p style="font-size: 0.8em; color: #666; margin: 8px 0 6px">
+              Secrets / Authentification
+            </p>
+            <div class="checkbox-group">
+              <label class="checkbox-item">
+                <input
+                  type="checkbox"
+                  class="skip-type-checkbox"
+                  value="JWT"
+                />
+                <span>JWT</span>
+              </label>
+              <label class="checkbox-item">
+                <input
+                  type="checkbox"
+                  class="skip-type-checkbox"
+                  value="API_KEY"
+                />
+                <span>API_KEY</span>
+              </label>
+              <label class="checkbox-item">
+                <input
+                  type="checkbox"
+                  class="skip-type-checkbox"
+                  value="SECRET"
+                />
+                <span>SECRET</span>
+              </label>
+            </div>
           </div>
 
           <div class="config-section">
@@ -931,6 +975,88 @@ Rapport rédigé par Julien Lefèvre, agence de Lyon, le 15 mars 2024.
 
     <script>
       (function () {
+        const EXAMPLES = {
+          rapport: `**Rapport d'activité client – Compte n°2024-0876**
+
+Le 14 mars 2024, Mme Camille Rousseau, directrice administrative de la société TechNova Solutions (SIRET 81234567800025, SIREN 812345678), a contacté notre agence de Lyon afin de faire le point sur le contrat Premium souscrit en septembre 2023.
+
+L'entretien a été mené par Julien Lefèvre, conseiller référent, en présence de Marc Dubreuil, responsable du pôle grands comptes. La cliente a exprimé sa satisfaction concernant la migration récente de ses serveurs vers notre datacenter de Roubaix, opération coordonnée avec la société partenaire CloudBridge SAS.
+
+Plusieurs points ont été abordés :
+
+1. **Facturation** : un virement de 12 450 € a été effectué le 28 février depuis le compte FR76 3000 4000 0312 3456 7890 143 vers notre IBAN société. Mme Rousseau souhaite désormais recevoir les factures à l'adresse camille.rousseau@technova-solutions.fr plutôt qu'au service comptabilité général.
+
+2. **Support technique** : trois incidents ont été enregistrés depuis janvier, dont une coupure réseau le 22 février ayant impacté le serveur principal (adresse IP 192.168.45.120) ainsi qu'un nœud secondaire en IPv6 (2001:0db8:85a3:0000:0000:8a2e:0370:7334). L'équipe de Sophie Martin, basée à Nantes, a résolu l'incident en moins de deux heures.
+
+3. **Évolution contractuelle** : la cliente envisage d'étendre le contrat à sa filiale TechNova Iberia, située à Barcelone, en Espagne. Un rendez-vous est prévu le 5 avril à Paris avec M. Antoine Berger, directeur Europe du Sud.
+
+Mme Rousseau peut être jointe au 06 78 45 23 91 pour toute question complémentaire. Un compte rendu détaillé sera également transmis à son assistante, Léa Fontaine, ainsi qu'au cabinet d'audit Deloitte, mandaté pour la revue annuelle.
+
+Rapport rédigé par Julien Lefèvre, agence de Lyon, le 15 mars 2024.`,
+
+          email: `De : pierre.martin@acme-corp.fr
+À : sophie.bernard@partenaire.eu
+Objet : Réunion de suivi – Projet Horizon
+
+Bonjour Sophie,
+
+Suite à notre appel de vendredi, je vous confirme le rendez-vous du 22 avril à 14h dans nos locaux au 18 rue de Rivoli, Paris 75001.
+
+Seront présents de notre côté : Paul Dumont (directeur technique) et Nathalie Guérin (chef de projet). Pouvez-vous confirmer la participation de votre responsable, M. Karim Benali ?
+
+Pour la facturation du lot 2, le virement devra être effectué sur notre IBAN : FR76 3000 4000 0312 3456 7890 143. Notre numéro SIRET est le 732 802 526 00074.
+
+Pour toute question, vous pouvez me joindre au 01 45 67 89 12 ou sur mon mobile au 06 12 34 56 78.
+
+Cordialement,
+Pierre Martin
+Directeur commercial – ACME Corp
+RCS Paris 732 802 526`,
+
+          dotenv: `# Configuration application – production
+# NE PAS VERSIONNER CE FICHIER
+
+APP_ENV=production
+APP_HOST=api.acme-corp.fr
+APP_PORT=8443
+
+# Base de données
+DB_HOST=db-prod.internal.acme-corp.fr
+DB_PORT=5432
+DB_NAME=acme_prod
+DB_USER=app_prod
+DB_PASSWORD=Tr0ub4dor&3
+
+# OpenAI
+OPENAI_API_KEY=sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz1234567890ABCDEFGHIJ
+
+# AWS
+AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+AWS_REGION=eu-west-3
+
+# GitHub Actions
+GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789
+
+# Stripe
+STRIPE_SECRET_KEY=sk_live_AbCdEfGhIjKlMnOpQrStUvWx
+
+# JWT
+JWT_SECRET=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhcHAtcHJvZCIsImlhdCI6MTcxNjY1NjAwMH0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+
+# Slack webhook
+SLACK_TOKEN=xoxb-123456789012-123456789012-AbCdEfGhIjKlMnOpQrStUvWx
+
+# SMTP (Mailgun)
+SMTP_HOST=smtp.mailgun.org
+SMTP_USER=postmaster@mg.acme-corp.fr
+SMTP_PASSWORD=key-abcdef1234567890abcdef1234567890
+
+# Contact technique
+ADMIN_EMAIL=ops@acme-corp.fr
+SUPPORT_PHONE=+33 1 42 68 53 00`,
+        };
+
         const sourceText = document.getElementById("source-text");
         const anonymizedText = document.getElementById("anonymized-text");
         const deanonymizedText = document.getElementById("deanonymized-text");
@@ -1060,6 +1186,9 @@ Rapport rédigé par Julien Lefèvre, agence de Lyon, le 15 mars 2024.
             "IBAN",
             "SIRET",
             "SIREN",
+            "JWT",
+            "API_KEY",
+            "SECRET",
           ];
           const parts = text
             .split(",")
@@ -1196,6 +1325,22 @@ Rapport rédigé par Julien Lefèvre, agence de Lyon, le 15 mars 2024.
 
         anonymizeBtn.addEventListener("click", anonymize);
         deanonymizeBtn.addEventListener("click", deanonymize);
+
+        sourceText.value = EXAMPLES.rapport;
+
+        document.querySelectorAll(".example-link").forEach(function (link) {
+          link.addEventListener("click", function (e) {
+            e.preventDefault();
+            const key = this.dataset.example;
+            if (EXAMPLES[key]) {
+              sourceText.value = EXAMPLES[key];
+              document.querySelectorAll(".example-link").forEach(function (l) {
+                l.classList.remove("active");
+              });
+              this.classList.add("active");
+            }
+          });
+        });
 
         fetchLanguages();
 
