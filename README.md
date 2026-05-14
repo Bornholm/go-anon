@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="./misc/resources/logo.svg" style="height:150px" />
+</p>
+
+
 # go-anon
 
 Pipeline de **reconnaissance d'entités nommées (NER) et d'anonymisation** pour le français et l'anglais. Zéro dépendance externe — bibliothèque standard Go uniquement.
