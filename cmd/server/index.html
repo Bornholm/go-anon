@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GoAnon - Anonymisation de texte</title>
+    <title id="page-title">GoAnon - Text Anonymization</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -97,6 +97,17 @@
         width: 20px;
         height: 20px;
         fill: currentColor;
+      }
+
+      #ui-lang-select {
+        font-size: 12px;
+        padding: 4px 8px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        color: var(--text-secondary);
+        cursor: pointer;
+        min-height: unset;
       }
 
       .intro {
@@ -274,6 +285,7 @@
         border: 1px solid var(--border);
         border-radius: var(--radius);
         padding: 20px;
+        margin-top: 24px;
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 20px;
@@ -642,81 +654,84 @@
           GoAnon
         </h1>
         <div class="header-right">
-          <span class="header-info"
-            >Reconnaissance d'entités nommées et anonymisation</span
+          <select id="ui-lang-select" aria-label="Interface language">
+            <option value="en">EN</option>
+            <option value="fr">FR</option>
+            <option value="es">ES</option>
+          </select>
+          <span class="header-info" data-i18n="header_subtitle"
+            >Named entity recognition and anonymization</span
           >
-          <a class="github-link" href="https://github.com/Bornholm/go-anon" target="_blank" rel="noopener" aria-label="Dépôt GitHub">
+          <a class="github-link" href="https://github.com/Bornholm/go-anon" target="_blank" rel="noopener" aria-label="GitHub Repository">
             <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
           </a>
         </div>
       </header>
 
       <div class="intro">
-        <p>
-          <strong>GoAnon</strong> est un outil de reconnaissance d'entités
-          nommées (NER) qui détecte et anonymise automatiquement les
-          informations personnelles dans vos textes. Il identifie les
-          <strong>personnes</strong>, <strong>lieux</strong>,
-          <strong>organisations</strong> et <strong>divers</strong> pour les
-          remplacer par des jetons pseudonymisés.
+        <p id="intro-text">
+          <strong>GoAnon</strong> is a named entity recognition (NER) tool that automatically detects and anonymizes personal information in your texts. It identifies <strong>persons</strong>, <strong>locations</strong>, <strong>organizations</strong> and <strong>miscellaneous</strong> entities and replaces them with pseudonymized tokens.
         </p>
       </div>
 
-      <nav class="tabs-nav" role="tablist" aria-label="Mode d'anonymisation">
-        <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-text" data-tab="text">Texte</button>
-        <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-doc" data-tab="doc">Document</button>
+      <nav class="tabs-nav" role="tablist" aria-label="Anonymization mode">
+        <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-text" data-tab="text" data-i18n="tab_text">Text</button>
+        <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-doc" data-tab="doc" data-i18n="tab_doc">Document</button>
       </nav>
 
       <main>
         <div id="tab-text" class="tab-panel active" role="tabpanel">
 
-        <section class="textareas-row" aria-label="Zone de texte">
+        <section class="textareas-row" aria-label="Text area">
           <div class="textarea-wrapper">
-            <label for="source-text">Texte source</label>
+            <label for="source-text" data-i18n="label_source">Source text</label>
             <textarea
               id="source-text"
-              placeholder="Saisissez le texte à anonymiser..."
+              data-i18n-placeholder="placeholder_source"
+              placeholder="Enter text to anonymize..."
               rows="20"
             ></textarea
             >
             <div class="examples-bar">
-              <span>Exemples :</span>
-              <a href="#" class="example-link active" data-example="rapport">Rapport d'activité</a>
-              <a href="#" class="example-link" data-example="email">E-mail professionnel</a>
-              <a href="#" class="example-link" data-example="dotenv">Fichier .env</a>
+              <span data-i18n="examples_label">Examples:</span>
+              <a href="#" class="example-link active" data-example="rapport" data-i18n="example_rapport">Activity report</a>
+              <a href="#" class="example-link" data-example="email" data-i18n="example_email">Professional email</a>
+              <a href="#" class="example-link" data-example="dotenv" data-i18n="example_dotenv">.env file</a>
             </div>
           </div>
           <div class="textarea-wrapper">
-            <label for="anonymized-text">Texte anonymisé</label>
+            <label for="anonymized-text" data-i18n="label_anonymized">Anonymized text</label>
             <textarea
               id="anonymized-text"
               readonly
-              placeholder="Le texte anonymisé apparaîtra ici..."
+              data-i18n-placeholder="placeholder_anonymized"
+              placeholder="The anonymized text will appear here..."
               rows="20"
             ></textarea>
           </div>
           <div class="textarea-wrapper">
-            <label for="deanonymized-text">Texte désanonymisé</label>
+            <label for="deanonymized-text" data-i18n="label_deanonymized">De-anonymized text</label>
             <textarea
               id="deanonymized-text"
               readonly
-              placeholder="Le texte désanonymisé apparaîtra ici..."
+              data-i18n-placeholder="placeholder_deanonymized"
+              placeholder="The de-anonymized text will appear here..."
               rows="20"
             ></textarea>
           </div>
         </section>
 
         <section class="actions-row" aria-label="Actions">
-          <button type="button" id="anonymize-btn" class="btn-primary">
-            Anonymiser
+          <button type="button" id="anonymize-btn" class="btn-primary" data-i18n="btn_anonymize">
+            Anonymize
           </button>
-          <button type="button" id="deanonymize-btn" class="btn-secondary">
-            Désanonymiser
+          <button type="button" id="deanonymize-btn" class="btn-secondary" data-i18n="btn_deanonymize">
+            De-anonymize
           </button>
 
           <div class="loading" id="loading">
             <div class="spinner"></div>
-            <span>Traitement en cours...</span>
+            <span data-i18n="loading_text">Processing...</span>
           </div>
 
           <div class="status" id="status" role="alert" aria-live="polite"></div>
@@ -724,28 +739,28 @@
 
         <section class="config-row" aria-label="Configuration">
           <div class="config-section">
-            <h3>Langue et stratégie</h3>
+            <h3 data-i18n="config_lang_strategy">Language &amp; strategy</h3>
             <div class="form-group">
-              <label for="language">Langue</label>
+              <label for="language" data-i18n="label_language">Language</label>
               <select id="language">
-                <option value="">Chargement...</option>
+                <option value="" data-i18n="loading_option">Loading...</option>
               </select>
             </div>
             <div class="form-group">
-              <label for="strategy">Stratégie</label>
+              <label for="strategy" data-i18n="label_strategy">Strategy</label>
               <select id="strategy">
-                <option value="tag">Jeton ([PERSON_1])</option>
-                <option value="redact">Masquage (████)</option>
-                <option value="hash">Hachage ([PER_a1b2c3])</option>
-                <option value="consistent">Cohérent</option>
+                <option value="tag" data-i18n="option_strategy_tag">Token ([PERSON_1])</option>
+                <option value="redact" data-i18n="option_strategy_redact">Redact (████)</option>
+                <option value="hash" data-i18n="option_strategy_hash">Hash ([PER_a1b2c3])</option>
+                <option value="consistent" data-i18n="option_strategy_consistent">Consistent</option>
               </select>
             </div>
           </div>
 
           <div class="config-section">
-            <h3>Filtres</h3>
+            <h3 data-i18n="config_filters">Filters</h3>
             <div class="form-group">
-              <label for="min-confidence">Confiance min.</label>
+              <label for="min-confidence" data-i18n="label_min_confidence">Min. confidence</label>
               <input
                 type="range"
                 id="min-confidence"
@@ -757,7 +772,7 @@
               <div class="range-value" id="min-confidence-value">0.40</div>
             </div>
             <div class="form-group">
-              <label for="max-tokens">Nb max de tokens (0 = illimité)</label>
+              <label for="max-tokens" data-i18n="label_max_tokens">Max tokens (0 = unlimited)</label>
               <input
                 type="number"
                 id="max-tokens"
@@ -769,9 +784,9 @@
           </div>
 
           <div class="config-section">
-            <h3>Types à ignorer</h3>
-            <p style="font-size: 0.8em; color: #666; margin: 0 0 6px">
-              Entités NER
+            <h3 data-i18n="config_skip_types">Skip types</h3>
+            <p style="font-size: 0.8em; color: #666; margin: 0 0 6px" data-i18n="skip_ner_entities">
+              NER entities
             </p>
             <div class="checkbox-group">
               <label class="checkbox-item">
@@ -796,8 +811,8 @@
                 <span>MISC</span>
               </label>
             </div>
-            <p style="font-size: 0.8em; color: #666; margin: 8px 0 6px">
-              Entités regex
+            <p style="font-size: 0.8em; color: #666; margin: 8px 0 6px" data-i18n="skip_regex_entities">
+              Regex entities
             </p>
             <div class="checkbox-group">
               <label class="checkbox-item">
@@ -857,8 +872,8 @@
                 <span>SIREN</span>
               </label>
             </div>
-            <p style="font-size: 0.8em; color: #666; margin: 8px 0 6px">
-              Secrets / Authentification
+            <p style="font-size: 0.8em; color: #666; margin: 8px 0 6px" data-i18n="skip_secrets">
+              Secrets / Authentication
             </p>
             <div class="checkbox-group">
               <label class="checkbox-item">
@@ -889,46 +904,47 @@
           </div>
 
           <div class="config-section">
-            <h3>Mots exclus</h3>
+            <h3 data-i18n="config_blocklist">Excluded words</h3>
             <div class="form-group">
-              <label for="blocklist">À exclure (séparés par virgules)</label>
+              <label for="blocklist" data-i18n="label_blocklist">Exclude (comma-separated)</label>
               <input
                 type="text"
                 id="blocklist"
-                placeholder="ex: Monsieur, Madame"
+                data-i18n-placeholder="placeholder_blocklist"
+                placeholder="e.g.: Mr., Mrs."
               />
             </div>
           </div>
 
           <div class="config-section">
-            <h3>Post-traitement NER</h3>
+            <h3 data-i18n="config_ner_postprocess">NER post-processing</h3>
             <div class="checkbox-group">
               <label class="checkbox-item">
                 <input type="checkbox" id="first-name-reclassify" checked />
-                <span>Reclassifier prénoms LOC→PER</span>
+                <span data-i18n="ner_reclassify">Reclassify first names LOC→PER</span>
               </label>
               <label class="checkbox-item">
                 <input type="checkbox" id="merge" checked />
-                <span>Fusion (PER+LOC → PER)</span>
+                <span data-i18n="ner_merge">Merge (PER+LOC → PER)</span>
               </label>
               <label class="checkbox-item">
                 <input type="checkbox" id="name-completion" checked />
-                <span>Complétion des noms</span>
+                <span data-i18n="ner_completion">Name completion</span>
               </label>
             </div>
           </div>
         </section>
 
         <section class="mapping-section" id="mapping-section">
-          <h2>Correspondances</h2>
+          <h2 data-i18n="mappings_title">Mappings</h2>
           <table class="mapping-table">
             <thead>
               <tr>
-                <th>Jeton</th>
+                <th data-i18n="th_placeholder">Token</th>
                 <th></th>
-                <th>Entité originale</th>
-                <th>Type</th>
-                <th>Confiance</th>
+                <th data-i18n="th_original">Original entity</th>
+                <th data-i18n="th_type">Type</th>
+                <th data-i18n="th_confidence">Confidence</th>
               </tr>
             </thead>
             <tbody id="mapping-body"></tbody>
@@ -941,29 +957,20 @@
           <div class="doc-upload-panel">
             <div class="upload-card" id="upload-card">
               <div class="upload-icon">📄</div>
-              <p>Glissez un document ici ou</p>
-              <button type="button" class="btn-secondary" id="pick-file-btn" style="margin-top:12px">Choisir un fichier</button>
+              <p data-i18n="doc_upload_hint">Drop a document here or</p>
+              <button type="button" class="btn-secondary" id="pick-file-btn" style="margin-top:12px" data-i18n="btn_pick_file">Choose a file</button>
               <input type="file" id="doc-file-input" />
-              <p class="upload-hint">Formats acceptés : <span id="doc-formats-hint">chargement…</span> — Max 2 Mo</p>
+              <p class="upload-hint"><span data-i18n="doc_formats_accepted">Accepted formats: </span><span id="doc-formats-hint">loading…</span><span data-i18n="doc_size_limit"> — Max 2 MB</span></p>
               <p class="file-name" id="doc-file-name"></p>
             </div>
 
-            <div class="doc-options">
-              <div class="form-group">
-                <label for="doc-language">Langue</label>
-                <select id="doc-language">
-                  <option value="">Chargement...</option>
-                </select>
-              </div>
-            </div>
-
             <div class="doc-actions">
-              <button type="button" id="doc-anonymize-btn" class="btn-primary" disabled>
-                Anonymiser le document
+              <button type="button" id="doc-anonymize-btn" class="btn-primary" disabled data-i18n="btn_doc_anonymize">
+                Anonymize document
               </button>
               <div class="loading" id="doc-loading">
                 <div class="spinner"></div>
-                <span>Traitement en cours...</span>
+                <span data-i18n="loading_text">Processing...</span>
               </div>
               <div class="status" id="doc-status" role="alert" aria-live="polite"></div>
             </div>
@@ -975,8 +982,285 @@
 
     <script>
       (function () {
-        const EXAMPLES = {
-          rapport: `**Rapport d'activité client – Compte n°2024-0876**
+        const TRANSLATIONS = {
+          en: {
+            page_title: "GoAnon - Text Anonymization",
+            header_subtitle: "Named entity recognition and anonymization",
+            intro_text: "<strong>GoAnon</strong> is a named entity recognition (NER) tool that automatically detects and anonymizes personal information in your texts. It identifies <strong>persons</strong>, <strong>locations</strong>, <strong>organizations</strong> and <strong>miscellaneous</strong> entities and replaces them with pseudonymized tokens.",
+            tab_text: "Text",
+            tab_doc: "Document",
+            label_source: "Source text",
+            placeholder_source: "Enter text to anonymize...",
+            examples_label: "Examples:",
+            example_rapport: "Activity report",
+            example_email: "Professional email",
+            example_dotenv: ".env file",
+            label_anonymized: "Anonymized text",
+            placeholder_anonymized: "The anonymized text will appear here...",
+            label_deanonymized: "De-anonymized text",
+            placeholder_deanonymized: "The de-anonymized text will appear here...",
+            btn_anonymize: "Anonymize",
+            btn_deanonymize: "De-anonymize",
+            loading_text: "Processing...",
+            config_lang_strategy: "Language & strategy",
+            label_language: "Language",
+            loading_option: "Loading...",
+            label_strategy: "Strategy",
+            option_strategy_tag: "Token ([PERSON_1])",
+            option_strategy_redact: "Redact (████)",
+            option_strategy_hash: "Hash ([PER_a1b2c3])",
+            option_strategy_consistent: "Consistent",
+            config_filters: "Filters",
+            label_min_confidence: "Min. confidence",
+            label_max_tokens: "Max tokens (0 = unlimited)",
+            config_skip_types: "Skip types",
+            skip_ner_entities: "NER entities",
+            skip_regex_entities: "Regex entities",
+            skip_secrets: "Secrets / Authentication",
+            config_blocklist: "Excluded words",
+            label_blocklist: "Exclude (comma-separated)",
+            placeholder_blocklist: "e.g.: Mr., Mrs.",
+            config_ner_postprocess: "NER post-processing",
+            ner_reclassify: "Reclassify first names LOC→PER",
+            ner_merge: "Merge (PER+LOC → PER)",
+            ner_completion: "Name completion",
+            mappings_title: "Mappings",
+            th_placeholder: "Token",
+            th_original: "Original entity",
+            th_type: "Type",
+            th_confidence: "Confidence",
+            doc_upload_hint: "Drop a document here or",
+            btn_pick_file: "Choose a file",
+            doc_formats_accepted: "Accepted formats: ",
+            doc_size_limit: " — Max 2 MB",
+            btn_doc_anonymize: "Anonymize document",
+            err_load_langs: "Error loading languages",
+            err_no_text: "Please enter text to anonymize",
+            err_no_lang: "Please select a language",
+            err_anonymize: "Anonymization error: ",
+            status_anonymized: "Text successfully anonymized — {duration}",
+            err_no_anonymized: "No anonymized text to restore",
+            err_no_mapping: "No mappings available. Please anonymize first.",
+            status_deanonymized: "Text successfully de-anonymized — {duration}",
+            err_deanonymize: "De-anonymization error: ",
+            err_file_too_large: "File too large (max 2 MB). Current size: {size} MB",
+            status_doc_done: "Document anonymized and downloaded.",
+            err_generic: "Error: ",
+          },
+          fr: {
+            page_title: "GoAnon - Anonymisation de texte",
+            header_subtitle: "Reconnaissance d'entités nommées et anonymisation",
+            intro_text: "<strong>GoAnon</strong> est un outil de reconnaissance d'entités nommées (NER) qui détecte et anonymise automatiquement les informations personnelles dans vos textes. Il identifie les <strong>personnes</strong>, <strong>lieux</strong>, <strong>organisations</strong> et <strong>divers</strong> pour les remplacer par des jetons pseudonymisés.",
+            tab_text: "Texte",
+            tab_doc: "Document",
+            label_source: "Texte source",
+            placeholder_source: "Saisissez le texte à anonymiser...",
+            examples_label: "Exemples :",
+            example_rapport: "Rapport d'activité",
+            example_email: "E-mail professionnel",
+            example_dotenv: "Fichier .env",
+            label_anonymized: "Texte anonymisé",
+            placeholder_anonymized: "Le texte anonymisé apparaîtra ici...",
+            label_deanonymized: "Texte désanonymisé",
+            placeholder_deanonymized: "Le texte désanonymisé apparaîtra ici...",
+            btn_anonymize: "Anonymiser",
+            btn_deanonymize: "Désanonymiser",
+            loading_text: "Traitement en cours...",
+            config_lang_strategy: "Langue et stratégie",
+            label_language: "Langue",
+            loading_option: "Chargement...",
+            label_strategy: "Stratégie",
+            option_strategy_tag: "Jeton ([PERSON_1])",
+            option_strategy_redact: "Masquage (████)",
+            option_strategy_hash: "Hachage ([PER_a1b2c3])",
+            option_strategy_consistent: "Cohérent",
+            config_filters: "Filtres",
+            label_min_confidence: "Confiance min.",
+            label_max_tokens: "Nb max de tokens (0 = illimité)",
+            config_skip_types: "Types à ignorer",
+            skip_ner_entities: "Entités NER",
+            skip_regex_entities: "Entités regex",
+            skip_secrets: "Secrets / Authentification",
+            config_blocklist: "Mots exclus",
+            label_blocklist: "À exclure (séparés par virgules)",
+            placeholder_blocklist: "ex: Monsieur, Madame",
+            config_ner_postprocess: "Post-traitement NER",
+            ner_reclassify: "Reclassifier prénoms LOC→PER",
+            ner_merge: "Fusion (PER+LOC → PER)",
+            ner_completion: "Complétion des noms",
+            mappings_title: "Correspondances",
+            th_placeholder: "Jeton",
+            th_original: "Entité originale",
+            th_type: "Type",
+            th_confidence: "Confiance",
+            doc_upload_hint: "Glissez un document ici ou",
+            btn_pick_file: "Choisir un fichier",
+            doc_formats_accepted: "Formats acceptés : ",
+            doc_size_limit: " — Max 2 Mo",
+            btn_doc_anonymize: "Anonymiser le document",
+            err_load_langs: "Erreur lors du chargement des langues",
+            err_no_text: "Veuillez saisir un texte à anonymiser",
+            err_no_lang: "Veuillez sélectionner une langue",
+            err_anonymize: "Erreur d'anonymisation : ",
+            status_anonymized: "Texte anonymisé avec succès — {duration}",
+            err_no_anonymized: "Aucun texte anonymisé à restaurer",
+            err_no_mapping: "Aucune correspondance disponible. Veuillez d'abord anonymiser.",
+            status_deanonymized: "Texte désanonymisé avec succès — {duration}",
+            err_deanonymize: "Erreur de désanonymisation : ",
+            err_file_too_large: "Fichier trop volumineux (max 2 Mo). Taille actuelle : {size} Mo",
+            status_doc_done: "Document anonymisé et téléchargé.",
+            err_generic: "Erreur : ",
+          },
+          es: {
+            page_title: "GoAnon - Anonimización de texto",
+            header_subtitle: "Reconocimiento de entidades nombradas y anonimización",
+            intro_text: "<strong>GoAnon</strong> es una herramienta de reconocimiento de entidades nombradas (NER) que detecta y anonimiza automáticamente la información personal en sus textos. Identifica <strong>personas</strong>, <strong>lugares</strong>, <strong>organizaciones</strong> y entidades <strong>diversas</strong> para reemplazarlas con tokens pseudonimizados.",
+            tab_text: "Texto",
+            tab_doc: "Documento",
+            label_source: "Texto de origen",
+            placeholder_source: "Ingrese el texto a anonimizar...",
+            examples_label: "Ejemplos:",
+            example_rapport: "Informe de actividad",
+            example_email: "Correo profesional",
+            example_dotenv: "Archivo .env",
+            label_anonymized: "Texto anonimizado",
+            placeholder_anonymized: "El texto anonimizado aparecerá aquí...",
+            label_deanonymized: "Texto desanonimizado",
+            placeholder_deanonymized: "El texto desanonimizado aparecerá aquí...",
+            btn_anonymize: "Anonimizar",
+            btn_deanonymize: "Desanonimizar",
+            loading_text: "Procesando...",
+            config_lang_strategy: "Idioma y estrategia",
+            label_language: "Idioma",
+            loading_option: "Cargando...",
+            label_strategy: "Estrategia",
+            option_strategy_tag: "Token ([PERSON_1])",
+            option_strategy_redact: "Redactar (████)",
+            option_strategy_hash: "Hash ([PER_a1b2c3])",
+            option_strategy_consistent: "Consistente",
+            config_filters: "Filtros",
+            label_min_confidence: "Confianza mín.",
+            label_max_tokens: "Máx. tokens (0 = ilimitado)",
+            config_skip_types: "Tipos a ignorar",
+            skip_ner_entities: "Entidades NER",
+            skip_regex_entities: "Entidades regex",
+            skip_secrets: "Secretos / Autenticación",
+            config_blocklist: "Palabras excluidas",
+            label_blocklist: "Excluir (separadas por comas)",
+            placeholder_blocklist: "ej: Sr., Sra.",
+            config_ner_postprocess: "Postprocesamiento NER",
+            ner_reclassify: "Reclasificar nombres LOC→PER",
+            ner_merge: "Fusión (PER+LOC → PER)",
+            ner_completion: "Completar nombres",
+            mappings_title: "Correspondencias",
+            th_placeholder: "Token",
+            th_original: "Entidad original",
+            th_type: "Tipo",
+            th_confidence: "Confianza",
+            doc_upload_hint: "Arrastre un documento aquí o",
+            btn_pick_file: "Elegir archivo",
+            doc_formats_accepted: "Formatos aceptados: ",
+            doc_size_limit: " — Máx. 2 MB",
+            btn_doc_anonymize: "Anonimizar documento",
+            err_load_langs: "Error al cargar idiomas",
+            err_no_text: "Por favor, ingrese un texto para anonimizar",
+            err_no_lang: "Por favor, seleccione un idioma",
+            err_anonymize: "Error de anonimización: ",
+            status_anonymized: "Texto anonimizado con éxito — {duration}",
+            err_no_anonymized: "No hay texto anonimizado para restaurar",
+            err_no_mapping: "No hay correspondencias disponibles. Anonimice primero.",
+            status_deanonymized: "Texto desanonimizado con éxito — {duration}",
+            err_deanonymize: "Error de desanonimización: ",
+            err_file_too_large: "Archivo demasiado grande (máx. 2 MB). Tamaño actual: {size} MB",
+            status_doc_done: "Documento anonimizado y descargado.",
+            err_generic: "Error: ",
+          },
+        };
+
+        const EXAMPLES_BY_LANG = {
+          en: {
+            rapport: `**Client Activity Report – Account No. 2024-0876**
+
+On March 14, 2024, Ms. Emily Carter, Administrative Director of TechNova Solutions Ltd (Company No. 08234567, VAT GB123456789), contacted our London office to review the Premium contract signed in September 2023.
+
+The meeting was conducted by James Harrison, Senior Account Manager, in the presence of Michael Thompson, Head of Enterprise Accounts. The client expressed satisfaction regarding the recent migration of her servers to our Manchester data centre, an operation coordinated with partner company CloudBridge Ltd.
+
+Several points were discussed:
+
+1. **Billing**: A transfer of £12,450 was made on 28 February from account GB29 NWBK 6016 1331 9268 19 to our company IBAN. Ms. Carter now wishes to receive invoices at emily.carter@technova-solutions.co.uk rather than the general accounting department.
+
+2. **Technical support**: Three incidents have been recorded since January, including a network outage on 22 February that affected the main server (IP address 192.168.45.120) and a secondary IPv6 node (2001:0db8:85a3:0000:0000:8a2e:0370:7334). The team led by Sophie Martin, based in Manchester, resolved the incident in under two hours.
+
+3. **Contract development**: The client is considering extending the contract to her subsidiary TechNova Iberia, located in Barcelona, Spain. A meeting is scheduled for 5 April in London with Mr. Anthony Baker, Director for Southern Europe.
+
+Ms. Carter can be reached on +44 7845 123 456 for any further enquiries. A detailed report will also be sent to her assistant, Laura Fontaine, and to the audit firm Deloitte, appointed for the annual review.
+
+Report written by James Harrison, London office, 15 March 2024.`,
+
+            email: `From: peter.martin@acme-corp.co.uk
+To: sophie.bernard@partner.eu
+Subject: Follow-up meeting – Project Horizon
+
+Dear Sophie,
+
+Following our call on Friday, I confirm the meeting on 22 April at 2pm at our offices at 18 Baker Street, London W1U 3BX.
+
+Attending from our side: Paul Donaldson (Technical Director) and Natalie Green (Project Manager). Could you confirm whether your manager, Mr. Kevin Bennett, will be joining?
+
+For the billing of lot 2, the payment should be made to our IBAN: GB29 NWBK 6016 1331 9268 19. Our company registration number is 08234567.
+
+For any questions, you can reach me on 020 7946 0321 or on my mobile on +44 7700 900 123.
+
+Kind regards,
+Peter Martin
+Commercial Director – ACME Corp
+Companies House 08234567`,
+
+            dotenv: `# App configuration – production
+# DO NOT COMMIT THIS FILE
+
+APP_ENV=production
+APP_HOST=api.acme-corp.com
+APP_PORT=8443
+
+# Database
+DB_HOST=db-prod.internal.acme-corp.com
+DB_PORT=5432
+DB_NAME=acme_prod
+DB_USER=app_prod
+DB_PASSWORD=Tr0ub4dor&3
+
+# OpenAI
+OPENAI_API_KEY=sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz1234567890ABCDEFGHIJ
+
+# AWS
+AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+AWS_REGION=eu-west-1
+
+# GitHub Actions
+GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789
+
+# Stripe
+STRIPE_SECRET_KEY=sk_live_AbCdEfGhIjKlMnOpQrStUvWx
+
+# JWT
+JWT_SECRET=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhcHAtcHJvZCIsImlhdCI6MTcxNjY1NjAwMH0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+
+# Slack webhook
+SLACK_TOKEN=xoxb-123456789012-123456789012-AbCdEfGhIjKlMnOpQrStUvWx
+
+# SMTP (Mailgun)
+SMTP_HOST=smtp.mailgun.org
+SMTP_USER=postmaster@mg.acme-corp.com
+SMTP_PASSWORD=key-abcdef1234567890abcdef1234567890
+
+# Contact
+ADMIN_EMAIL=ops@acme-corp.com
+SUPPORT_PHONE=+1-800-555-0100`,
+          },
+          fr: {
+            rapport: `**Rapport d'activité client – Compte n°2024-0876**
 
 Le 14 mars 2024, Mme Camille Rousseau, directrice administrative de la société TechNova Solutions (SIRET 81234567800025, SIREN 812345678), a contacté notre agence de Lyon afin de faire le point sur le contrat Premium souscrit en septembre 2023.
 
@@ -994,7 +1278,7 @@ Mme Rousseau peut être jointe au 06 78 45 23 91 pour toute question complément
 
 Rapport rédigé par Julien Lefèvre, agence de Lyon, le 15 mars 2024.`,
 
-          email: `De : pierre.martin@acme-corp.fr
+            email: `De : pierre.martin@acme-corp.fr
 À : sophie.bernard@partenaire.eu
 Objet : Réunion de suivi – Projet Horizon
 
@@ -1013,7 +1297,7 @@ Pierre Martin
 Directeur commercial – ACME Corp
 RCS Paris 732 802 526`,
 
-          dotenv: `# Configuration application – production
+            dotenv: `# Configuration application – production
 # NE PAS VERSIONNER CE FICHIER
 
 APP_ENV=production
@@ -1055,7 +1339,124 @@ SMTP_PASSWORD=key-abcdef1234567890abcdef1234567890
 # Contact technique
 ADMIN_EMAIL=ops@acme-corp.fr
 SUPPORT_PHONE=+33 1 42 68 53 00`,
+          },
+          es: {
+            rapport: `**Informe de actividad del cliente – Cuenta n.º 2024-0876**
+
+El 14 de marzo de 2024, la Sra. Carmen López, directora administrativa de TechNova Solutions S.L. (CIF B12345678), se puso en contacto con nuestra oficina de Madrid para revisar el contrato Premium firmado en septiembre de 2023.
+
+La reunión fue llevada a cabo por Javier García, asesor de referencia, en presencia de Miguel Fernández, responsable de grandes cuentas. La clienta expresó su satisfacción por la reciente migración de sus servidores a nuestro centro de datos de Barcelona, operación coordinada con la empresa asociada CloudBridge S.A.
+
+Se trataron varios puntos:
+
+1. **Facturación**: Se realizó una transferencia de 12.450 € el 28 de febrero desde la cuenta ES91 2100 0418 4502 0005 1332 hacia nuestro IBAN empresarial. La Sra. López desea recibir las facturas en carmen.lopez@technova-solutions.es en lugar del departamento de contabilidad general.
+
+2. **Soporte técnico**: Se han registrado tres incidencias desde enero, incluyendo un corte de red el 22 de febrero que afectó al servidor principal (dirección IP 192.168.45.120) y a un nodo secundario en IPv6 (2001:0db8:85a3:0000:0000:8a2e:0370:7334). El equipo de Sofía Martín, con sede en Valencia, resolvió la incidencia en menos de dos horas.
+
+3. **Evolución contractual**: La clienta está considerando ampliar el contrato a su filial TechNova Iberia, situada en Barcelona. Está prevista una reunión el 5 de abril en Madrid con el Sr. Antonio Berger, director de Europa del Sur.
+
+La Sra. López puede ser contactada en el +34 678 452 391 para cualquier consulta adicional. También se enviará un informe detallado a su asistente, Lucía Fontaine, y a la firma de auditoría Deloitte, encargada de la revisión anual.
+
+Informe redactado por Javier García, oficina de Madrid, 15 de marzo de 2024.`,
+
+            email: `De: pedro.martin@acme-corp.es
+Para: sophie.bernard@partner.eu
+Asunto: Reunión de seguimiento – Proyecto Horizonte
+
+Estimada Sophie:
+
+Tras nuestra llamada del viernes, le confirmo la reunión del 22 de abril a las 14:00 h en nuestras oficinas de la Calle Gran Vía 18, Madrid 28013.
+
+Por nuestra parte asistirán: Pablo Domínguez (director técnico) y Natalia García (jefa de proyecto). ¿Puede confirmar la participación de su responsable, el Sr. Karim Benali?
+
+Para la facturación del lote 2, la transferencia deberá realizarse a nuestro IBAN: ES91 2100 0418 4502 0005 1332. Nuestro CIF es B12345678.
+
+Para cualquier consulta, puede contactarme en el 91 456 78 12 o en mi móvil en el 678 12 34 56.
+
+Atentamente,
+Pedro Martín
+Director comercial – ACME Corp
+CIF B12345678`,
+
+            dotenv: `# Configuración de la aplicación – producción
+# NO VERSIONAR ESTE ARCHIVO
+
+APP_ENV=production
+APP_HOST=api.acme-corp.es
+APP_PORT=8443
+
+# Base de datos
+DB_HOST=db-prod.internal.acme-corp.es
+DB_PORT=5432
+DB_NAME=acme_prod
+DB_USER=app_prod
+DB_PASSWORD=Tr0ub4dor&3
+
+# OpenAI
+OPENAI_API_KEY=sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz1234567890ABCDEFGHIJ
+
+# AWS
+AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+AWS_REGION=eu-west-1
+
+# GitHub Actions
+GITHUB_TOKEN=ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789
+
+# Stripe
+STRIPE_SECRET_KEY=sk_live_AbCdEfGhIjKlMnOpQrStUvWx
+
+# JWT
+JWT_SECRET=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhcHAtcHJvZCIsImlhdCI6MTcxNjY1NjAwMH0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+
+# Slack webhook
+SLACK_TOKEN=xoxb-123456789012-123456789012-AbCdEfGhIjKlMnOpQrStUvWx
+
+# SMTP (Mailgun)
+SMTP_HOST=smtp.mailgun.org
+SMTP_USER=postmaster@mg.acme-corp.es
+SMTP_PASSWORD=key-abcdef1234567890abcdef1234567890
+
+# Contacto
+ADMIN_EMAIL=ops@acme-corp.es
+SUPPORT_PHONE=+34 91 234 56 78`,
+          },
         };
+
+        let currentUiLang = localStorage.getItem("ui_lang") || "en";
+
+        function t(key) {
+          const tr = TRANSLATIONS[currentUiLang] || TRANSLATIONS["en"];
+          return tr[key] || key;
+        }
+
+        function applyI18n(lang) {
+          currentUiLang = lang;
+          const tr = TRANSLATIONS[lang] || TRANSLATIONS["en"];
+          document.querySelectorAll("[data-i18n]").forEach(function (el) {
+            const key = el.dataset.i18n;
+            if (tr[key] !== undefined) el.textContent = tr[key];
+          });
+          document.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
+            const key = el.dataset.i18nPlaceholder;
+            if (tr[key] !== undefined) el.placeholder = tr[key];
+          });
+          const introEl = document.getElementById("intro-text");
+          if (introEl && tr.intro_text) introEl.innerHTML = tr.intro_text;
+          if (tr.page_title) document.title = tr.page_title;
+          const examples = EXAMPLES_BY_LANG[lang] || EXAMPLES_BY_LANG["en"];
+          const activeLink = document.querySelector(".example-link.active");
+          if (activeLink) {
+            const key = activeLink.dataset.example;
+            if (examples[key]) sourceText.value = examples[key];
+          }
+          document.documentElement.lang = lang;
+          const sel = document.getElementById("ui-lang-select");
+          if (sel) sel.value = lang;
+          const langSel = document.getElementById("language");
+          if (langSel && langSel.querySelector('option[value="' + lang + '"]')) langSel.value = lang;
+          localStorage.setItem("ui_lang", lang);
+        }
 
         const sourceText = document.getElementById("source-text");
         const anonymizedText = document.getElementById("anonymized-text");
@@ -1096,7 +1497,7 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
               languageSelect.appendChild(opt);
             });
           } catch (err) {
-            showStatus("Erreur lors du chargement des langues", "error");
+            showStatus(t("err_load_langs"), "error");
           }
         }
 
@@ -1218,13 +1619,13 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
         async function anonymize() {
           const text = sourceText.value.trim();
           if (!text) {
-            showStatus("Veuillez saisir un texte à anonymiser", "error");
+            showStatus(t("err_no_text"), "error");
             return;
           }
 
           const language = languageSelect.value;
           if (!language) {
-            showStatus("Veuillez sélectionner une langue", "error");
+            showStatus(t("err_no_lang"), "error");
             return;
           }
 
@@ -1259,12 +1660,11 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
             deanonymizedText.value = "";
             updateMappingTable(data.entities, data.mapping);
             showStatus(
-              "Texte anonymisé avec succès — " +
-                formatDuration(data.durationMs),
+              t("status_anonymized").replace("{duration}", formatDuration(data.durationMs)),
               "success"
             );
           } catch (err) {
-            showStatus("Erreur d'anonymisation : " + err.message, "error");
+            showStatus(t("err_anonymize") + err.message, "error");
           } finally {
             showLoading(false);
           }
@@ -1273,15 +1673,12 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
         async function deanonymize() {
           const text = anonymizedText.value.trim();
           if (!text) {
-            showStatus("Aucun texte anonymisé à restaurer", "error");
+            showStatus(t("err_no_anonymized"), "error");
             return;
           }
 
           if (Object.keys(currentMapping).length === 0) {
-            showStatus(
-              "Aucune correspondance disponible. Veuillez d'abord anonymiser.",
-              "error"
-            );
+            showStatus(t("err_no_mapping"), "error");
             return;
           }
 
@@ -1304,12 +1701,11 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
             const data = await res.json();
             deanonymizedText.value = data.text;
             showStatus(
-              "Texte désanonymisé avec succès — " +
-                formatDuration(data.durationMs),
+              t("status_deanonymized").replace("{duration}", formatDuration(data.durationMs)),
               "success"
             );
           } catch (err) {
-            showStatus("Erreur de désanonymisation : " + err.message, "error");
+            showStatus(t("err_deanonymize") + err.message, "error");
           } finally {
             showLoading(false);
           }
@@ -1326,14 +1722,13 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
         anonymizeBtn.addEventListener("click", anonymize);
         deanonymizeBtn.addEventListener("click", deanonymize);
 
-        sourceText.value = EXAMPLES.rapport;
-
         document.querySelectorAll(".example-link").forEach(function (link) {
           link.addEventListener("click", function (e) {
             e.preventDefault();
             const key = this.dataset.example;
-            if (EXAMPLES[key]) {
-              sourceText.value = EXAMPLES[key];
+            const examples = EXAMPLES_BY_LANG[currentUiLang] || EXAMPLES_BY_LANG["en"];
+            if (examples[key]) {
+              sourceText.value = examples[key];
               document.querySelectorAll(".example-link").forEach(function (l) {
                 l.classList.remove("active");
               });
@@ -1342,6 +1737,12 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
           });
         });
 
+        const uiLangSelect = document.getElementById("ui-lang-select");
+        uiLangSelect.addEventListener("change", function () {
+          applyI18n(this.value);
+        });
+
+        applyI18n(currentUiLang);
         fetchLanguages();
 
         // ── Tabs ──────────────────────────────────────────────────────────────
@@ -1372,12 +1773,15 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
 
         activateTab(location.hash.replace("#", ""));
 
+        // ── Shared config section: move it out of tab-text so it's always visible ──
+        const configRow = document.querySelector("section.config-row");
+        if (configRow) document.querySelector("main").appendChild(configRow);
+
         // ── Document upload ───────────────────────────────────────────────────
         const docFileInput = document.getElementById("doc-file-input");
         const pickFileBtn = document.getElementById("pick-file-btn");
         const uploadCard = document.getElementById("upload-card");
         const docFileName = document.getElementById("doc-file-name");
-        const docLanguageSelect = document.getElementById("doc-language");
         const docAnonymizeBtn = document.getElementById("doc-anonymize-btn");
         const docLoading = document.getElementById("doc-loading");
         const docStatus = document.getElementById("doc-status");
@@ -1394,20 +1798,6 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
             docFormatsHint.textContent = ".docx";
             docFileInput.accept = ".docx";
           }
-        }
-
-        async function syncDocLanguages() {
-          try {
-            const res = await fetch("/api/languages");
-            const data = await res.json();
-            docLanguageSelect.innerHTML = "";
-            data.languages.forEach(function (lang) {
-              const opt = document.createElement("option");
-              opt.value = lang;
-              opt.textContent = lang.toUpperCase();
-              docLanguageSelect.appendChild(opt);
-            });
-          } catch (_) {}
         }
 
         function showDocLoading(show) {
@@ -1432,9 +1822,7 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
           }
           if (file.size > 2 * 1024 * 1024) {
             showDocStatus(
-              "Fichier trop volumineux (max 2 Mo). Taille actuelle : " +
-                (file.size / 1024 / 1024).toFixed(1) +
-                " Mo",
+              t("err_file_too_large").replace("{size}", (file.size / 1024 / 1024).toFixed(1)),
               "error"
             );
             docFileInput.value = "";
@@ -1474,9 +1862,9 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
           const file = docFileInput.files[0];
           if (!file) return;
 
-          const lang = docLanguageSelect.value;
+          const lang = languageSelect.value;
           if (!lang) {
-            showDocStatus("Veuillez sélectionner une langue", "error");
+            showDocStatus(t("err_no_lang"), "error");
             return;
           }
 
@@ -1485,6 +1873,14 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
             const form = new FormData();
             form.append("file", file);
             form.append("lang", lang);
+            form.append("strategy", strategySelect.value);
+            form.append("minConfidence", minConfidenceInput.value);
+            form.append("maxTokens", maxTokensInput.value);
+            form.append("skipTypes", getSkipTypes().join(","));
+            form.append("blocklist", JSON.stringify(parseBlocklist()));
+            form.append("firstNameReclassify", firstNameReclassifyCheckbox.checked);
+            form.append("merge", mergeCheckbox.checked);
+            form.append("nameCompletion", nameCompletionCheckbox.checked);
 
             const res = await fetch("/api/anonymize-doc", {
               method: "POST",
@@ -1510,16 +1906,15 @@ SUPPORT_PHONE=+33 1 42 68 53 00`,
               URL.revokeObjectURL(url);
             }, 10000);
 
-            showDocStatus("Document anonymisé et téléchargé.", "success");
+            showDocStatus(t("status_doc_done"), "success");
           } catch (err) {
-            showDocStatus("Erreur : " + err.message, "error");
+            showDocStatus(t("err_generic") + err.message, "error");
           } finally {
             showDocLoading(false);
           }
         });
 
         fetchDocFormats();
-        syncDocLanguages();
       })();
     </script>
   </body>

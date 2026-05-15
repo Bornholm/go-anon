@@ -44,7 +44,7 @@ var walkerFactories = map[string]walkerFactory{
 
 func main() {
 	modelPath := flag.String("model", "", "chemin vers le modèle .crf.gz (obligatoire)")
-	langCode := flag.String("lang", "fr", `langue : "fr" ou "en"`)
+	langCode := flag.String("lang", "fr", `langue : "fr", "en" ou "es"`)
 	inputPath := flag.String("input", "", "fichier d'entrée à anonymiser (obligatoire)")
 	outputPath := flag.String("output", "", "fichier de sortie (obligatoire)")
 	format := flag.String("format", "", `format du document : "docx" (auto-détecté si absent)`)

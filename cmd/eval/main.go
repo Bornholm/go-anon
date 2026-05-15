@@ -21,7 +21,7 @@ import (
 
 func main() {
 	modelPath := flag.String("model", "", "chemin vers le modèle .crf.gz (obligatoire)")
-	langCode := flag.String("lang", "en", `langue : "fr" ou "en"`)
+	langCode := flag.String("lang", "en", `langue : "fr", "en" ou "es"`)
 	testPath := flag.String("test", "", "corpus de test annoté (obligatoire)")
 	format := flag.String("format", "conll", `format corpus : "conll" ou "wikiner"`)
 	tagCol := flag.Int("tag-col", -1, "colonne NER dans CoNLL (-1 = dernière)")

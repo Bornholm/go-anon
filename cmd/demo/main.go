@@ -26,7 +26,7 @@ import (
 
 func main() {
 	modelPath := flag.String("model", "", "chemin vers le modèle .crf.gz (obligatoire)")
-	langCode := flag.String("lang", "fr", `langue : "fr" ou "en"`)
+	langCode := flag.String("lang", "fr", `langue : "fr", "en" ou "es"`)
 	text := flag.String("text", "", "texte à analyser (lit stdin si absent)")
 	doAnonymize := flag.Bool("anonymize", false, "appliquer l'anonymisation au lieu d'afficher les entités")
 	strategy := flag.String("strategy", "tag", `stratégie d'anonymisation : "tag", "redact" ou "hash"`)

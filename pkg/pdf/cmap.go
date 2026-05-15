@@ -91,13 +91,15 @@ func parseToUnicodeCMap(content []byte) *toUnicodeMap {
 			if line == "endcodespacerange" {
 				break
 			}
-			// e.g. <00> <FF>  or  <0000> <FFFF>
-			parts := strings.Fields(line)
-			if len(parts) >= 1 {
-				hexVal := strings.Trim(parts[0], "<>")
-				m.codeLen = len(hexVal) / 2
-				if m.codeLen < 1 {
-					m.codeLen = 1
+			// e.g. "<00> <FF>", "<0000> <FFFF>", or "<0000><ffff>" (no space)
+			// Extract the first <hex> token regardless of spacing.
+			if start := strings.Index(line, "<"); start >= 0 {
+				if end := strings.Index(line[start:], ">"); end > 0 {
+					hexVal := line[start+1 : start+end]
+					m.codeLen = len(hexVal) / 2
+					if m.codeLen < 1 {
+						m.codeLen = 1
+					}
 				}
 			}
 			inCodeSpace = false

@@ -24,7 +24,7 @@ import (
 func main() {
 	trainPath := flag.String("train", "", "corpus d'entraînement (obligatoire)")
 	devPath := flag.String("dev", "", "corpus de validation pour early stopping (optionnel)")
-	langCode := flag.String("lang", "en", `langue : "fr" ou "en"`)
+	langCode := flag.String("lang", "en", `langue : "fr", "en" ou "es"`)
 	outputPath := flag.String("output", "model.crf.gz", "chemin de sortie .crf.gz")
 	format := flag.String("format", "conll", `format corpus : "conll" ou "wikiner"`)
 	tagCol := flag.Int("tag-col", -1, "colonne NER dans CoNLL (-1 = dernière)")
@@ -209,6 +209,8 @@ func langProfile(code string) *lang.LangProfile {
 		return lang.NewFrenchProfile()
 	case "en":
 		return lang.NewEnglishProfile()
+	case "es":
+		return lang.NewSpanishProfile()
 	default:
 		log.Printf("avertissement : langue %q inconnue, pas de profil linguistique", code)
 		return nil

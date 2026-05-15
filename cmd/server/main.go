@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -345,73 +346,122 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := r.ParseMultipartForm(2 << 20); err != nil {
-		http.Error(w, "fichier trop volumineux (max 2 Mo)", http.StatusRequestEntityTooLarge)
+		http.Error(w, "file too large (max 2 MB)", http.StatusRequestEntityTooLarge)
 		return
 	}
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "fichier manquant", http.StatusBadRequest)
+		http.Error(w, "missing file", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
 	lang := strings.ToLower(r.FormValue("lang"))
 	if lang == "" {
-		lang = "fr"
+		http.Error(w, "lang parameter is required", http.StatusBadRequest)
+		return
 	}
 
 	s.mu.RLock()
 	model, ok := s.models[lang]
 	s.mu.RUnlock()
 	if !ok {
-		http.Error(w, fmt.Sprintf("langue %q non supportée", lang), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("language %q not supported", lang), http.StatusBadRequest)
 		return
 	}
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	factory, ok := walkerFactories[ext]
 	if !ok {
-		http.Error(w, fmt.Sprintf("format %q non supporté", ext), http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("format %q not supported", ext), http.StatusBadRequest)
 		return
+	}
+
+	// Parse shared config params (same as /api/anonymize)
+	minConfidence, _ := strconv.ParseFloat(r.FormValue("minConfidence"), 64)
+	maxTokens, _ := strconv.Atoi(r.FormValue("maxTokens"))
+	firstNameReclassify := r.FormValue("firstNameReclassify") == "true"
+	merge := r.FormValue("merge") == "true"
+	nameCompletion := r.FormValue("nameCompletion") == "true"
+	var skipTypes []string
+	if st := r.FormValue("skipTypes"); st != "" {
+		for _, v := range strings.Split(st, ",") {
+			if v = strings.TrimSpace(v); v != "" {
+				skipTypes = append(skipTypes, v)
+			}
+		}
+	}
+	var blocklist map[string][]string
+	if bl := r.FormValue("blocklist"); bl != "" {
+		_ = json.Unmarshal([]byte(bl), &blocklist)
 	}
 
 	tmpIn, err := os.CreateTemp("", "goanon-in-*"+ext)
 	if err != nil {
-		http.Error(w, "erreur interne", http.StatusInternalServerError)
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	defer os.Remove(tmpIn.Name())
 
 	if _, err := io.Copy(tmpIn, file); err != nil {
 		tmpIn.Close()
-		http.Error(w, "erreur lecture fichier", http.StatusInternalServerError)
+		http.Error(w, "error reading file", http.StatusInternalServerError)
 		return
 	}
 	tmpIn.Close()
 
 	tmpOut, err := os.CreateTemp("", "goanon-out-*"+ext)
 	if err != nil {
-		http.Error(w, "erreur interne", http.StatusInternalServerError)
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	tmpOutName := tmpOut.Name()
 	tmpOut.Close()
 	defer os.Remove(tmpOutName)
 
-	rec, err := goanon.NewRecognizer(model,
-		goanon.WithLanguage(lang),
-		goanon.WithBuiltinRegexPatterns(),
-		goanon.WithBuiltinSecretPatterns(),
-	)
+	var recognizerOpts []goanon.RecognizerOption
+	recognizerOpts = append(recognizerOpts, goanon.WithLanguage(lang))
+	if firstNameReclassify {
+		recognizerOpts = append(recognizerOpts, goanon.WithFirstNameReclassify(s.gazetteers["firstnames"]))
+	}
+	if merge {
+		recognizerOpts = append(recognizerOpts, goanon.WithMergePass())
+	}
+	if nameCompletion {
+		recognizerOpts = append(recognizerOpts, goanon.WithNameCompletionPass(s.gazetteers["firstnames"]))
+	}
+	if firstNameReclassify {
+		recognizerOpts = append(recognizerOpts, goanon.WithFirstNameDetectionPass(s.gazetteers["firstnames"]))
+	}
+	if minConfidence > 0 || maxTokens > 0 || len(blocklist) > 0 {
+		var filters []goanon.EntityFilter
+		if minConfidence > 0 {
+			filters = append(filters, goanon.MinConfidenceFilter(minConfidence))
+		}
+		if maxTokens > 0 {
+			filters = append(filters, goanon.MaxTokensFilter(maxTokens))
+		}
+		for et, words := range blocklist {
+			if len(words) > 0 {
+				filters = append(filters, goanon.BlocklistFilter(goanon.EntityType(et), words...))
+			}
+		}
+		recognizerOpts = append(recognizerOpts, goanon.WithPostFilters(filters...))
+	}
+	recognizerOpts = append(recognizerOpts, goanon.WithBuiltinRegexPatterns())
+	recognizerOpts = append(recognizerOpts, goanon.WithBuiltinSecretPatterns())
+
+	rec, err := goanon.NewRecognizer(model, recognizerOpts...)
 	if err != nil {
-		http.Error(w, "erreur initialisation: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "creating recognizer: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	cfg := goanon.Config{
-		Strategy:      goanon.TagReplace,
+		Strategy:      parseStrategy(r.FormValue("strategy")),
 		ConsistentMap: true,
+		EntityTypes:   parseSkipTypes(skipTypes),
 	}
 	anon := goanon.NewAnonymizer(rec, cfg)
 	proc := docprocessor.New(anon)

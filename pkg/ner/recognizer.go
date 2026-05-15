@@ -42,6 +42,10 @@ func WithLanguage(code string) RecognizerOption {
 			rec.tok = &tokenizer.UnicodeTokenizer{SplitHyphen: true}
 			rec.langProfile = lang.NewEnglishProfile()
 			rec.extractor.LangProfile = rec.langProfile
+		case "es":
+			rec.tok = &tokenizer.UnicodeTokenizer{SplitApostrophe: true}
+			rec.langProfile = lang.NewSpanishProfile()
+			rec.extractor.LangProfile = rec.langProfile
 		default:
 			return fmt.Errorf("ner: WithLanguage: unsupported language %q", code)
 		}
