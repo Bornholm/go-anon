@@ -6,10 +6,11 @@
 // Usage :
 //
 //	anon-doc -model model.crf.gz -lang fr -input rapport.docx -output rapport_anon.docx
-//	anon-doc -model model.crf.gz -lang fr -input doc.docx -output out.docx -save-mapping mapping.json
+//	anon-doc -model auto -lang fr -input doc.docx -output out.docx -save-mapping mapping.json
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -24,6 +25,8 @@ import (
 	"github.com/bornholm/go-anon/pkg/docprocessor"
 	pkgcsv "github.com/bornholm/go-anon/pkg/csv"
 	pkgdocx "github.com/bornholm/go-anon/pkg/docx"
+	"github.com/bornholm/go-anon/pkg/features"
+	"github.com/bornholm/go-anon/pkg/modelstore"
 	pkgodt "github.com/bornholm/go-anon/pkg/odt"
 	pkgpdf "github.com/bornholm/go-anon/pkg/pdf"
 )
@@ -43,7 +46,7 @@ var walkerFactories = map[string]walkerFactory{
 }
 
 func main() {
-	modelPath := flag.String("model", "", "chemin vers le modèle .crf.gz (obligatoire)")
+	modelFlag := flag.String("model", "", `chemin local ou "auto"/"auto:fr" pour téléchargement automatique`)
 	langCode := flag.String("lang", "fr", `langue : "fr", "en" ou "es"`)
 	inputPath := flag.String("input", "", "fichier d'entrée à anonymiser (obligatoire)")
 	outputPath := flag.String("output", "", "fichier de sortie (obligatoire)")
@@ -52,14 +55,19 @@ func main() {
 	saveMappingPath := flag.String("save-mapping", "", "chemin JSON pour sauvegarder le mapping (optionnel)")
 	gazetteerFlag := flag.String("gazetteers", "", `gazetteers à utiliser : "nom:fichier.txt,..."`)
 	clustersPath := flag.String("clusters", "", "fichier Brown clusters (optionnel)")
+	cacheDir := flag.String("models-cache", "", "répertoire de cache pour les modèles téléchargés (optionnel)")
+	refresh := flag.Bool("refresh-models", false, "forcer le rafraîchissement du manifeste des modèles")
+	offline := flag.Bool("offline", false, "interdire toute requête réseau")
 
 	flag.Parse()
 
-	if *modelPath == "" || *inputPath == "" || *outputPath == "" {
+	if *modelFlag == "" || *inputPath == "" || *outputPath == "" {
 		fmt.Fprintln(os.Stderr, "erreur : -model, -input et -output sont obligatoires")
 		flag.Usage()
 		os.Exit(1)
 	}
+
+	autoLang, isAuto := resolveAutoMode(*modelFlag)
 
 	// --- Résolution du format ---
 	ext := strings.ToLower(*format)
@@ -76,9 +84,20 @@ func main() {
 	}
 
 	// --- Chargement du modèle ---
-	mf, err := os.Open(*modelPath)
+	var modelPath string
+	if isAuto {
+		modelLang := autoLang
+		if modelLang == "" {
+			modelLang = *langCode
+		}
+		modelPath = resolveAutoModel(modelLang, *cacheDir, *refresh, *offline)
+	} else {
+		modelPath = *modelFlag
+	}
+
+	mf, err := os.Open(modelPath)
 	if err != nil {
-		log.Fatalf("ouverture modèle %q : %v", *modelPath, err)
+		log.Fatalf("ouverture modèle %q : %v", modelPath, err)
 	}
 	defer mf.Close()
 
@@ -91,6 +110,21 @@ func main() {
 	gazetteers, err := cmdutil.ParseGazetteers(*gazetteerFlag)
 	if err != nil {
 		log.Fatalf("chargement gazetteers : %v", err)
+	}
+
+	if gzLang, isAutoGz := resolveAutoMode(*gazetteerFlag); isAutoGz {
+		gzModelLang := gzLang
+		if gzModelLang == "" {
+			gzModelLang = *langCode
+		}
+		autoGz := resolveAutoGazetteers(gzModelLang, *cacheDir, *refresh, *offline)
+		if gazetteers == nil {
+			gazetteers = autoGz
+		} else {
+			for k, v := range autoGz {
+				gazetteers[k] = v
+			}
+		}
 	}
 
 	// --- Recognizer ---
@@ -177,4 +211,89 @@ func supportedFormats() string {
 		exts = append(exts, ext)
 	}
 	return strings.Join(exts, ", ")
+}
+
+func resolveAutoMode(modelFlag string) (lang string, auto bool) {
+	if modelFlag == "auto" {
+		return "", true
+	}
+	if strings.HasPrefix(modelFlag, "auto:") {
+		return strings.TrimPrefix(modelFlag, "auto:"), true
+	}
+	return "", false
+}
+
+func resolveAutoModel(lang, cacheDir string, refresh, offline bool) string {
+	opts := []modelstore.Option{
+		modelstore.WithProgress(func(l string, done, total int64) {}),
+		modelstore.WithOfflineMode(offline),
+	}
+	if cacheDir != "" {
+		opts = append(opts, modelstore.WithCacheDir(cacheDir))
+	}
+
+	store, err := modelstore.New(opts...)
+	if err != nil {
+		log.Fatalf("initialisation store modèles : %v", err)
+	}
+
+	ctx := context.Background()
+	if refresh {
+		if err := store.Refresh(ctx); err != nil {
+			log.Fatalf("rafraîchissement manifeste : %v", err)
+		}
+	}
+
+	path, err := store.Get(ctx, lang)
+	if err != nil {
+		log.Fatalf("téléchargement modèle %q : %v", lang, err)
+	}
+
+	log.Printf("modèle chargé : %s", path)
+	return path
+}
+
+func resolveAutoGazetteers(lang, cacheDir string, refresh, offline bool) map[string]*features.Gazetteer {
+	opts := []modelstore.Option{
+		modelstore.WithOfflineMode(offline),
+	}
+	if cacheDir != "" {
+		opts = append(opts, modelstore.WithCacheDir(cacheDir))
+	}
+
+	store, err := modelstore.New(opts...)
+	if err != nil {
+		log.Fatalf("initialisation store gazetteers : %v", err)
+	}
+
+	ctx := context.Background()
+	if refresh {
+		if err := store.Refresh(ctx); err != nil {
+			log.Fatalf("rafraîchissement manifeste : %v", err)
+		}
+	}
+
+	paths, err := store.GetGazetteers(ctx, lang)
+	if err != nil {
+		log.Fatalf("téléchargement gazetteers %q : %v", lang, err)
+	}
+
+	result := make(map[string]*features.Gazetteer, len(paths))
+	for gtype, gpath := range paths {
+		f, err := os.Open(gpath)
+		if err != nil {
+			log.Fatalf("ouverture gazetteer %q : %v", gtype, err)
+		}
+
+		gaz, err := features.LoadGazetteer(gtype, f)
+		f.Close()
+		if err != nil {
+			log.Fatalf("chargement gazetteer %q : %v", gtype, err)
+		}
+
+		result[gtype] = gaz
+		log.Printf("gazetteer chargé : %s (%s)", gtype, gpath)
+	}
+
+	return result
 }

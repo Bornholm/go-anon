@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -19,6 +20,7 @@ import (
 	goanon "github.com/bornholm/go-anon"
 	"github.com/bornholm/go-anon/cmd/internal/cmdutil"
 	"github.com/bornholm/go-anon/pkg/docprocessor"
+	"github.com/bornholm/go-anon/pkg/modelstore"
 	pkgcsv "github.com/bornholm/go-anon/pkg/csv"
 	pkgdocx "github.com/bornholm/go-anon/pkg/docx"
 	pkgodt "github.com/bornholm/go-anon/pkg/odt"
@@ -51,9 +53,10 @@ var docMimeTypes = map[string]string{
 var htmlContent embed.FS
 
 type Server struct {
-	models     map[string]*ner.Model
-	gazetteers map[string]*features.Gazetteer
-	mu         sync.RWMutex
+	models        map[string]*ner.Model
+	modelVersions map[string]string
+	gazetteers    map[string]*features.Gazetteer
+	mu            sync.RWMutex
 }
 
 type AnonymizeRequest struct {
@@ -93,9 +96,12 @@ type DeanonymizeResponse struct {
 }
 
 func main() {
-	modelsFlag := flag.String("models", "", "comma-separated list of lang:path pairs (e.g., fr:model_fr.crf.gz,en:model_en.crf.gz)")
+	modelsFlag := flag.String("models", "", `comma-separated lang:path pairs, "auto" for all, or lang:auto (e.g., fr:auto,en:model_en.crf.gz)`)
 	gazetteerFlag := flag.String("gazetteers", "", `gazetteers à charger : "nom:fichier.txt,nom:fichier.txt"`)
 	port := flag.String("port", "8080", "server port")
+	cacheDir := flag.String("models-cache", "", "répertoire de cache pour les modèles téléchargés (optionnel)")
+	refresh := flag.Bool("refresh-models", false, "forcer le rafraîchissement du manifeste des modèles")
+	offline := flag.Bool("offline", false, "interdire toute requête réseau")
 	flag.Parse()
 
 	if *modelsFlag == "" {
@@ -108,45 +114,49 @@ func main() {
 	}
 
 	srv := &Server{
-		models:     make(map[string]*ner.Model),
-		gazetteers: gazetteers,
+		models:        make(map[string]*ner.Model),
+		modelVersions: make(map[string]string),
+		gazetteers:    gazetteers,
 	}
 
-	for _, pair := range strings.Split(*modelsFlag, ",") {
-		pair = strings.TrimSpace(pair)
-		if pair == "" {
-			continue
-		}
-		parts := strings.SplitN(pair, ":", 2)
-		if len(parts) != 2 {
-			log.Fatalf("invalid model pair %q: expected lang:path", pair)
-		}
-		lang := strings.TrimSpace(parts[0])
-		path := strings.TrimSpace(parts[1])
-
-		log.Printf("loading model for %s: %s", lang, path)
-		mf, err := os.Open(path)
-		if err != nil {
-			log.Fatalf("opening model %s: %v", path, err)
-		}
-
-		m, err := goanon.LoadModel(mf)
-		if err != nil {
-			mf.Close()
-			log.Fatalf("loading model %s: %v", path, err)
-		}
-		mf.Close()
-
-		srv.models[strings.ToLower(lang)] = m
-		log.Printf("loaded model for language: %s", lang)
+	// Détection du mode auto global
+	if *modelsFlag == "auto" {
+		loadAllAutoModels(srv, *cacheDir, *refresh, *offline)
+	} else {
+		loadModelsFromPairs(srv, *modelsFlag, *cacheDir, *refresh, *offline)
 	}
 
 	if len(srv.models) == 0 {
 		log.Fatal("error: no models loaded")
 	}
 
+	// Auto-download gazetteers si demandé ou si des modèles auto sont chargés
+	gzLang, isAutoGz := parseGazetteersAuto(*gazetteerFlag)
+
+	hasAutoModels := false
+	for _, v := range srv.modelVersions {
+		if v == "auto" {
+			hasAutoModels = true
+			break
+		}
+	}
+
+	shouldAutoGz := isAutoGz || (hasAutoModels && len(srv.gazetteers) == 0)
+	if shouldAutoGz {
+		if !isAutoGz {
+			gzLang = ""
+		}
+		autoGz := loadAutoGazetteers(gzLang, srv.models, *cacheDir, *refresh, *offline)
+		for k, v := range autoGz {
+			if _, exists := srv.gazetteers[k]; !exists {
+				srv.gazetteers[k] = v
+			}
+		}
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", srv.serveHTML)
+	mux.HandleFunc("/health", srv.handleHealth)
 	mux.HandleFunc("/api/anonymize", srv.handleAnonymize)
 	mux.HandleFunc("/api/deanonymize", srv.handleDeanonymize)
 	mux.HandleFunc("/api/languages", srv.handleLanguages)
@@ -504,6 +514,200 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+outFilename+`"`)
 	io.Copy(w, outFile)
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	models := make(map[string]string)
+	for lang, v := range s.modelVersions {
+		models[lang] = v
+	}
+
+	langs := make([]string, 0, len(s.models))
+	for lang := range s.models {
+		langs = append(langs, lang)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"version": version,
+		"models":  models,
+		"languages": langs,
+	})
+}
+
+func loadModelsFromPairs(srv *Server, modelsFlag, cacheDir string, refresh, offline bool) {
+	store, err := newModelStore(cacheDir, offline)
+	if err != nil {
+		log.Fatalf("initialisation store modèles : %v", err)
+	}
+
+	ctx := context.Background()
+	if refresh {
+		if err := store.Refresh(ctx); err != nil {
+			log.Printf("warning: refresh manifest: %v", err)
+		}
+	}
+
+	for _, pair := range strings.Split(modelsFlag, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) != 2 {
+			log.Fatalf("invalid model pair %q: expected lang:path", pair)
+		}
+		lang := strings.TrimSpace(parts[0])
+		path := strings.TrimSpace(parts[1])
+
+		var modelPath string
+		var modelVersion string
+
+		if path == "auto" {
+			p, err := store.Get(ctx, lang)
+			if err != nil {
+				log.Fatalf("auto-download model %s: %v", lang, err)
+			}
+			modelPath = p
+			modelVersion = "auto"
+		} else {
+			modelPath = path
+			modelVersion = "local"
+		}
+
+		log.Printf("loading model for %s: %s", lang, modelPath)
+		mf, err := os.Open(modelPath)
+		if err != nil {
+			log.Fatalf("opening model %s: %v", modelPath, err)
+		}
+
+		m, err := goanon.LoadModel(mf)
+		if err != nil {
+			mf.Close()
+			log.Fatalf("loading model %s: %v", modelPath, err)
+		}
+		mf.Close()
+
+		langKey := strings.ToLower(lang)
+		srv.models[langKey] = m
+		srv.modelVersions[langKey] = modelVersion
+		log.Printf("loaded model for language: %s (version: %s)", lang, modelVersion)
+	}
+}
+
+func loadAllAutoModels(srv *Server, cacheDir string, refresh, offline bool) {
+	store, err := newModelStore(cacheDir, offline)
+	if err != nil {
+		log.Fatalf("initialisation store modèles : %v", err)
+	}
+
+	ctx := context.Background()
+	if refresh {
+		if err := store.Refresh(ctx); err != nil {
+			log.Printf("warning: refresh manifest: %v", err)
+		}
+	}
+
+	paths, err := store.GetAll(ctx)
+	if err != nil {
+		log.Fatalf("auto-download models: %v", err)
+	}
+
+	for lang, modelPath := range paths {
+		log.Printf("loading model for %s: %s", lang, modelPath)
+		mf, err := os.Open(modelPath)
+		if err != nil {
+			log.Fatalf("opening model %s: %v", modelPath, err)
+		}
+
+		m, err := goanon.LoadModel(mf)
+		if err != nil {
+			mf.Close()
+			log.Fatalf("loading model %s: %v", modelPath, err)
+		}
+		mf.Close()
+
+		srv.models[lang] = m
+		srv.modelVersions[lang] = "auto"
+		log.Printf("loaded model for language: %s", lang)
+	}
+}
+
+func newModelStore(cacheDir string, offline bool) (*modelstore.Store, error) {
+	opts := []modelstore.Option{
+		modelstore.WithOfflineMode(offline),
+	}
+	if cacheDir != "" {
+		opts = append(opts, modelstore.WithCacheDir(cacheDir))
+	}
+	return modelstore.New(opts...)
+}
+
+func parseGazetteersAuto(flagValue string) (lang string, isAuto bool) {
+	v := strings.TrimSpace(flagValue)
+	if v == "auto" {
+		return "", true
+	}
+	if strings.HasPrefix(v, "auto:") {
+		return strings.TrimPrefix(v, "auto:"), true
+	}
+	return "", false
+}
+
+func loadAutoGazetteers(gzLang string, models map[string]*ner.Model, cacheDir string, refresh, offline bool) map[string]*features.Gazetteer {
+	store, err := newModelStore(cacheDir, offline)
+	if err != nil {
+		log.Fatalf("initialisation store gazetteers : %v", err)
+	}
+
+	ctx := context.Background()
+	if refresh {
+		if err := store.Refresh(ctx); err != nil {
+			log.Printf("warning: refresh manifest: %v", err)
+		}
+	}
+
+	var langs []string
+	if gzLang != "" {
+		langs = []string{gzLang}
+	} else {
+		for lang := range models {
+			langs = append(langs, lang)
+		}
+	}
+
+	result := make(map[string]*features.Gazetteer)
+	for _, lang := range langs {
+		paths, err := store.GetGazetteers(ctx, lang)
+		if err != nil {
+			log.Printf("warning: téléchargement gazetteers %q: %v", lang, err)
+			continue
+		}
+		for gtype, gpath := range paths {
+			if _, exists := result[gtype]; exists {
+				continue
+			}
+			f, err := os.Open(gpath)
+			if err != nil {
+				log.Printf("warning: ouverture gazetteer %q: %v", gtype, err)
+				continue
+			}
+			gaz, err := features.LoadGazetteer(gtype, f)
+			f.Close()
+			if err != nil {
+				log.Printf("warning: chargement gazetteer %q: %v", gtype, err)
+				continue
+			}
+			result[gtype] = gaz
+			log.Printf("gazetteer chargé : %s", gtype)
+		}
+	}
+
+	return result
 }
 
 func parseStrategy(name string) goanon.Strategy {

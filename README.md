@@ -54,7 +54,7 @@ r, _ = goanon.NewRecognizer(m,
 )
 ```
 
-Voir [`docs/tutoriel-modele-fr.md`](./docs/tutoriel-modele-fr.md) pour entraîner un modèle français.
+Voir [`docs/tutoriel-modele.md`](./docs/tutoriel-modele.md) pour entraîner un modèle français.
 
 ## Licence
 
