@@ -19,14 +19,14 @@ import (
 
 	goanon "github.com/bornholm/go-anon"
 	"github.com/bornholm/go-anon/cmd/internal/cmdutil"
-	"github.com/bornholm/go-anon/pkg/docprocessor"
-	"github.com/bornholm/go-anon/pkg/modelstore"
 	pkgcsv "github.com/bornholm/go-anon/pkg/csv"
+	"github.com/bornholm/go-anon/pkg/docprocessor"
 	pkgdocx "github.com/bornholm/go-anon/pkg/docx"
+	"github.com/bornholm/go-anon/pkg/features"
+	"github.com/bornholm/go-anon/pkg/modelstore"
+	"github.com/bornholm/go-anon/pkg/ner"
 	pkgodt "github.com/bornholm/go-anon/pkg/odt"
 	pkgpdf "github.com/bornholm/go-anon/pkg/pdf"
-	"github.com/bornholm/go-anon/pkg/features"
-	"github.com/bornholm/go-anon/pkg/ner"
 )
 
 var version = "dev"
@@ -156,9 +156,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", srv.serveHTML)
-	mux.HandleFunc("/health", srv.handleHealth)
-	mux.HandleFunc("/api/anonymize", srv.handleAnonymize)
-	mux.HandleFunc("/api/deanonymize", srv.handleDeanonymize)
+	mux.HandleFunc("/api/pseudonymize", srv.handlePseudonymize)
+	mux.HandleFunc("/api/depseudonymize", srv.handleDepseudonymize)
 	mux.HandleFunc("/api/languages", srv.handleLanguages)
 	mux.HandleFunc("/api/doc-formats", srv.handleDocFormats)
 	mux.HandleFunc("/api/anonymize-doc", srv.handleAnonymizeDoc)
@@ -184,7 +183,7 @@ func (s *Server) serveHTML(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handlePseudonymize(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -296,7 +295,7 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func (s *Server) handleDeanonymize(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDepseudonymize(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -514,29 +513,6 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+outFilename+`"`)
 	io.Copy(w, outFile)
-}
-
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	models := make(map[string]string)
-	for lang, v := range s.modelVersions {
-		models[lang] = v
-	}
-
-	langs := make([]string, 0, len(s.models))
-	for lang := range s.models {
-		langs = append(langs, lang)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "ok",
-		"version": version,
-		"models":  models,
-		"languages": langs,
-	})
 }
 
 func loadModelsFromPairs(srv *Server, modelsFlag, cacheDir string, refresh, offline bool) {
