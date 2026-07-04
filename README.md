@@ -4,7 +4,9 @@
 
 # `go-anon`
 
-Pipeline de **reconnaissance d'entités nommées (NER) et d'anonymisation** pour le français et l'anglais, sans dépendance externe.
+Pipeline de **reconnaissance d'entités nommées (NER) et d'anonymisation** pour le français, l'anglais et l'espagnol.
+
+Le cœur du pipeline NER (modèle CRF, features, tokenisation, anonymisation) est écrit en Go pur, sans dépendance externe. Le traitement des documents bureautiques (DOCX, PDF) et la détection automatique de langue s'appuient sur quelques bibliothèques tierces.
 
 ## Fonctionnalités
 
@@ -13,7 +15,9 @@ Pipeline de **reconnaissance d'entités nommées (NER) et d'anonymisation** pour
 - Détection de jetons d'authentification et clés d'API : JWT, OpenAI, AWS, GitHub, Slack, Stripe, Bearer ;
 - Anonymisation configurable : remplacement par tag, caviardage, empreinte SHA-256 ou pseudonymes cohérents ;
 - Traitement de documents bureautiques : DOCX, ODT, CSV/TSV, PDF ;
-- Support du français et de l'anglais avec profils linguistiques dédiés ;
+- Support du français, de l'anglais et de l'espagnol avec profils linguistiques dédiés ;
+- Détection automatique de la langue (fr/en/es) pour éviter de la spécifier en amont ;
+- Téléchargement automatique des modèles pré-entraînés depuis GitHub Releases ;
 - Post-filtres chaînables : seuil de confiance, longueur de span, liste noire ;
 - Enrichissement optionnel via gazetteers et Brown clusters ;
 - Serveur HTTP intégré via `cmd/server`.
@@ -52,6 +56,20 @@ r, _ = goanon.NewRecognizer(m,
     goanon.WithLanguage("fr"),
     goanon.WithBuiltinSecretPatterns(), // JWT, OpenAI sk-, AWS AKIA, GitHub ghp_, Slack xox*, Stripe sk_live_, Bearer…
 )
+
+// Détecter automatiquement la langue avant de choisir le modèle
+det := goanon.NewWhatlangDetector(goanon.SupportedLanguages()...)
+res, _ := det.Detect("Jean Dupont habite à Paris.")
+// res.Lang → "fr" (si res.Reliable)
+```
+
+En ligne de commande, la langue est détectée automatiquement par défaut :
+
+```bash
+# La langue est détectée à partir du contenu du document (-lang auto par défaut)
+anon-doc -model auto -input rapport.docx -output rapport_anon.docx
+# ou forcée explicitement
+anon-doc -model auto -lang fr -input rapport.docx -output rapport_anon.docx
 ```
 
 Voir [`docs/tutoriel-modele.md`](./docs/tutoriel-modele.md) pour entraîner un modèle français.
