@@ -22,8 +22,8 @@ import (
 	goanon "github.com/bornholm/go-anon"
 	"github.com/bornholm/go-anon/cmd/internal/cmdutil"
 	"github.com/bornholm/go-anon/pkg/anonymizer"
-	"github.com/bornholm/go-anon/pkg/docprocessor"
 	pkgcsv "github.com/bornholm/go-anon/pkg/csv"
+	"github.com/bornholm/go-anon/pkg/docprocessor"
 	pkgdocx "github.com/bornholm/go-anon/pkg/docx"
 	"github.com/bornholm/go-anon/pkg/features"
 	"github.com/bornholm/go-anon/pkg/modelstore"
@@ -47,7 +47,7 @@ var walkerFactories = map[string]walkerFactory{
 
 func main() {
 	modelFlag := flag.String("model", "", `chemin local ou "auto"/"auto:fr" pour téléchargement automatique`)
-	langCode := flag.String("lang", "fr", `langue : "fr", "en" ou "es"`)
+	langCode := flag.String("lang", "auto", `langue : "auto" (détection automatique), "fr", "en" ou "es"`)
 	inputPath := flag.String("input", "", "fichier d'entrée à anonymiser (obligatoire)")
 	outputPath := flag.String("output", "", "fichier de sortie (obligatoire)")
 	format := flag.String("format", "", `format du document : "docx" (auto-détecté si absent)`)
@@ -83,12 +83,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	// --- Détection automatique de la langue ---
+	lang := *langCode
+	if lang == "auto" {
+		sampleWalker, err := factory(*inputPath)
+		if err != nil {
+			log.Fatalf("ouverture %q : %v", *inputPath, err)
+		}
+		sample, err := docprocessor.SampleText(sampleWalker, 4000)
+		if err != nil {
+			log.Fatalf("échantillonnage du document : %v", err)
+		}
+		lang, err = cmdutil.DetectLanguage(sample, goanon.SupportedLanguages())
+		if err != nil {
+			log.Fatalf("détection de langue : %v", err)
+		}
+		log.Printf("langue détectée : %s", lang)
+	}
+
 	// --- Chargement du modèle ---
 	var modelPath string
 	if isAuto {
 		modelLang := autoLang
 		if modelLang == "" {
-			modelLang = *langCode
+			modelLang = lang
 		}
 		modelPath = resolveAutoModel(modelLang, *cacheDir, *refresh, *offline)
 	} else {
@@ -115,7 +133,7 @@ func main() {
 	if gzLang, isAutoGz := resolveAutoMode(*gazetteerFlag); isAutoGz {
 		gzModelLang := gzLang
 		if gzModelLang == "" {
-			gzModelLang = *langCode
+			gzModelLang = lang
 		}
 		autoGz := resolveAutoGazetteers(gzModelLang, *cacheDir, *refresh, *offline)
 		if gazetteers == nil {
@@ -128,7 +146,7 @@ func main() {
 	}
 
 	// --- Recognizer ---
-	recOpts := []goanon.RecognizerOption{goanon.WithLanguage(*langCode)}
+	recOpts := []goanon.RecognizerOption{goanon.WithLanguage(lang)}
 	if len(gazetteers) > 0 {
 		recOpts = append(recOpts, goanon.WithGazetteers(gazetteers))
 	}

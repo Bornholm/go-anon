@@ -80,9 +80,38 @@ type Entity struct {
 
 type AnonymizeResponse struct {
 	Text       string            `json:"text"`
+	Language   string            `json:"language"`
 	Mapping    map[string]string `json:"mapping"`
 	Entities   []Entity          `json:"entities"`
 	DurationMs float64           `json:"durationMs"`
+}
+
+// modelLanguages retourne, triés, les codes des langues actuellement chargées.
+func (s *Server) modelLanguages() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	langs := make([]string, 0, len(s.models))
+	for l := range s.models {
+		langs = append(langs, l)
+	}
+	sort.Strings(langs)
+	return langs
+}
+
+// detectLanguage détecte la langue de text en la restreignant aux langues
+// chargées. Renvoie une erreur si la détection est peu fiable (le résultat est
+// alors nécessairement l'une des langues disponibles).
+func (s *Server) detectLanguage(text string) (string, error) {
+	candidates := s.modelLanguages()
+	det := goanon.NewWhatlangDetector(candidates...)
+	res, err := det.Detect(text)
+	if err != nil {
+		return "", err
+	}
+	if res.Lang == "" || !res.Reliable {
+		return "", fmt.Errorf("could not reliably detect language (confidence %.2f); specify one of: %s", res.Confidence, strings.Join(candidates, ", "))
+	}
+	return res.Lang, nil
 }
 
 type DeanonymizeRequest struct {
@@ -197,6 +226,14 @@ func (s *Server) handlePseudonymize(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	lang := strings.ToLower(req.Language)
+	if lang == "" || lang == "auto" {
+		detected, err := s.detectLanguage(req.Text)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		lang = detected
+	}
 	s.mu.RLock()
 	model, ok := s.models[lang]
 	s.mu.RUnlock()
@@ -286,6 +323,7 @@ func (s *Server) handlePseudonymize(w http.ResponseWriter, r *http.Request) {
 
 	resp := AnonymizeResponse{
 		Text:       result.Text,
+		Language:   lang,
 		Mapping:    mapping,
 		Entities:   entities,
 		DurationMs: float64(time.Since(anonStart).Microseconds()) / 1000.0,
@@ -367,18 +405,6 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	lang := strings.ToLower(r.FormValue("lang"))
-	if lang == "" {
-		http.Error(w, "lang parameter is required", http.StatusBadRequest)
-		return
-	}
-
-	s.mu.RLock()
-	model, ok := s.models[lang]
-	s.mu.RUnlock()
-	if !ok {
-		http.Error(w, fmt.Sprintf("language %q not supported", lang), http.StatusBadRequest)
-		return
-	}
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	factory, ok := walkerFactories[ext]
@@ -419,6 +445,35 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tmpIn.Close()
+
+	// Détection automatique de la langue si non spécifiée (ou "auto") : on
+	// échantillonne le texte du document via un walker de lecture seule.
+	if lang == "" || lang == "auto" {
+		sampleWalker, err := factory(tmpIn.Name())
+		if err != nil {
+			http.Error(w, "error reading file", http.StatusInternalServerError)
+			return
+		}
+		sample, err := docprocessor.SampleText(sampleWalker, 4000)
+		if err != nil {
+			http.Error(w, "error sampling document: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		detected, err := s.detectLanguage(sample)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		lang = detected
+	}
+
+	s.mu.RLock()
+	model, ok := s.models[lang]
+	s.mu.RUnlock()
+	if !ok {
+		http.Error(w, fmt.Sprintf("language %q not supported", lang), http.StatusBadRequest)
+		return
+	}
 
 	tmpOut, err := os.CreateTemp("", "goanon-out-*"+ext)
 	if err != nil {

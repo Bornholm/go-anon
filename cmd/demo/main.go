@@ -26,7 +26,7 @@ import (
 
 func main() {
 	modelPath := flag.String("model", "", "chemin vers le modèle .crf.gz (obligatoire)")
-	langCode := flag.String("lang", "fr", `langue : "fr", "en" ou "es"`)
+	langCode := flag.String("lang", "auto", `langue : "auto" (détection automatique), "fr", "en" ou "es"`)
 	text := flag.String("text", "", "texte à analyser (lit stdin si absent)")
 	doAnonymize := flag.Bool("anonymize", false, "appliquer l'anonymisation au lieu d'afficher les entités")
 	strategy := flag.String("strategy", "tag", `stratégie d'anonymisation : "tag", "redact" ou "hash"`)
@@ -77,8 +77,29 @@ func main() {
 		log.Fatalf("chargement gazetteers : %v", err)
 	}
 
+	// --- Lecture du texte ---
+	input := *text
+	if input == "" {
+		input = readStdin()
+	}
+	input = strings.TrimSpace(input)
+	if input == "" {
+		fmt.Fprintln(os.Stderr, "erreur : aucun texte fourni (utiliser -text ou stdin)")
+		os.Exit(1)
+	}
+
+	// --- Détection automatique de la langue ---
+	lang := *langCode
+	if lang == "auto" {
+		lang, err = cmdutil.DetectLanguage(input, goanon.SupportedLanguages())
+		if err != nil {
+			log.Fatalf("détection de langue : %v", err)
+		}
+		log.Printf("langue détectée : %s", lang)
+	}
+
 	// --- Construction du Recognizer ---
-	opts := []goanon.RecognizerOption{goanon.WithLanguage(*langCode)}
+	opts := []goanon.RecognizerOption{goanon.WithLanguage(lang)}
 
 	if len(gazetteers) > 0 {
 		opts = append(opts, goanon.WithGazetteers(gazetteers))
@@ -130,17 +151,6 @@ func main() {
 	rec, err := goanon.NewRecognizer(m, opts...)
 	if err != nil {
 		log.Fatalf("initialisation recognizer : %v", err)
-	}
-
-	// --- Lecture du texte ---
-	input := *text
-	if input == "" {
-		input = readStdin()
-	}
-	input = strings.TrimSpace(input)
-	if input == "" {
-		fmt.Fprintln(os.Stderr, "erreur : aucun texte fourni (utiliser -text ou stdin)")
-		os.Exit(1)
 	}
 
 	if *doAnonymize {

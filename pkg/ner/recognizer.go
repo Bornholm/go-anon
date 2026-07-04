@@ -29,8 +29,15 @@ type Recognizer struct {
 // RecognizerOption configure un Recognizer via le pattern d'option fonctionnel.
 type RecognizerOption func(*Recognizer) error
 
+// SupportedLanguages retourne les codes ISO 639-1 des langues gérées par le
+// pipeline (cf. WithLanguage). Source de vérité unique pour les appelants qui
+// doivent restreindre la détection automatique de langue.
+func SupportedLanguages() []string {
+	return []string{"fr", "en", "es"}
+}
+
 // WithLanguage configure le tokenizer et le LangProfile selon le code ISO 639-1.
-// Langues supportées : "fr", "en".
+// Langues supportées : "fr", "en", "es" (cf. SupportedLanguages).
 func WithLanguage(code string) RecognizerOption {
 	return func(rec *Recognizer) error {
 		switch code {

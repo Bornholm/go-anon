@@ -18,6 +18,7 @@ package goanon
 import (
 	"github.com/bornholm/go-anon/pkg/anonymizer"
 	"github.com/bornholm/go-anon/pkg/features"
+	"github.com/bornholm/go-anon/pkg/langdetect"
 	"github.com/bornholm/go-anon/pkg/ner"
 )
 
@@ -49,6 +50,18 @@ const (
 )
 
 var DefaultSentenceBoundaries = ner.DefaultSentenceBoundaries
+
+// SupportedLanguages retourne les codes ISO 639-1 gérés par le pipeline (fr/en/es).
+var SupportedLanguages = ner.SupportedLanguages
+
+// — Détection de langue —
+
+type LanguageDetector = langdetect.Detector
+type LanguageResult = langdetect.Result
+
+// NewWhatlangDetector construit un détecteur de langue basé sur whatlanggo,
+// restreint aux codes ISO 639-1 fournis.
+var NewWhatlangDetector = langdetect.NewWhatlangDetector
 
 // — Types Anonymizer —
 

@@ -48,6 +48,10 @@ cat test.txt | ./bin/demo -lang fr -model model_fr_pruned.crf.gz -anonymize
 echo "Jean Dupont habite à Paris." | ./bin/demo -lang fr -model model_fr.crf.gz
 
 # Anonymisation de documents bureautiques (téléchargement automatique)
+# La langue est détectée automatiquement par défaut (-lang auto) ; on peut la
+# forcer avec -lang fr|en|es. La détection échantillonne le texte du document.
+./bin/anon-doc -model auto \
+  -input rapport.docx -output rapport_anon.docx
 ./bin/anon-doc -model auto -lang fr \
   -input rapport.docx -output rapport_anon.docx
 ./bin/anon-doc -model auto:fr \
@@ -103,6 +107,7 @@ texte brut
 | `pkg/corpus`       | Lecture CoNLL et WikiNER, normalisation BIO, conversion BIO↔BIOES                                            |
 | `pkg/tokenizer`    | `UnicodeTokenizer` — offsets byte-précis, options FR/EN (apostrophe, trait d'union)                          |
 | `pkg/lang`         | Profils linguistiques : stop-words, préfixes honorifiques, features spécifiques FR/EN                        |
+| `pkg/langdetect`   | Interface `Detector` de détection automatique de langue ; implémentation `WhatlangDetector` (whatlanggo)      |
 | `pkg/modelstore`   | Téléchargement automatique, cache, vérification SHA-256 et découverte des modèles depuis GitHub Releases      |
 
 ## Modèles pré-entraînés
