@@ -486,3 +486,60 @@ func TestFirstNameDetectionFilter_StopWordsExcluded(t *testing.T) {
 		t.Errorf("attendu 0 entités pour stop words, got %d", len(entities))
 	}
 }
+
+// --- Correctifs Unicode (byte vs rune) ---
+
+func TestFirstNameDetectionFilter_AccentedFirstNames(t *testing.T) {
+	text := "Éric travaille avec Frédéric."
+	filter := FirstNameDetectionFilter(func() string { return text }, testFirstNames("Éric", "Frédéric"), nil)
+	entities := filter(nil)
+
+	if len(entities) != 2 {
+		t.Fatalf("attendu 2 entités PER accentuées, got %d: %v", len(entities), entities)
+	}
+	if entities[0].Text != "Éric" || entities[0].Start != 0 || entities[0].End != len("Éric") {
+		t.Errorf("première entité incorrecte : %+v", entities[0])
+	}
+	if entities[1].Text != "Frédéric" {
+		t.Errorf("seconde entité incorrecte : %+v", entities[1])
+	}
+}
+
+func TestNameCompletionPass_AccentedSurname(t *testing.T) {
+	text := "Jean Sémard est développeur."
+	entities := buildEntities(text, []struct {
+		substr string
+		typ    EntityType
+		conf   float64
+	}{
+		{"Jean", TypePER, 0.9},
+	})
+	got := NameCompletionPass(func() string { return text }, testFirstNames("Jean"))(entities)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité, got %d", len(got))
+	}
+	if got[0].Text != "Jean Sémard" {
+		t.Errorf("nom accentué mal complété : %q", got[0].Text)
+	}
+	if got[0].End != len("Jean Sémard") {
+		t.Errorf("offset End incorrect : %d (attendu %d)", got[0].End, len("Jean Sémard"))
+	}
+}
+
+func TestNameCompletionPass_AccentedInitialSurname(t *testing.T) {
+	text := "Marc Étienne est là."
+	entities := buildEntities(text, []struct {
+		substr string
+		typ    EntityType
+		conf   float64
+	}{
+		{"Marc", TypePER, 0.9},
+	})
+	got := NameCompletionPass(func() string { return text }, testFirstNames("Marc"))(entities)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité, got %d", len(got))
+	}
+	if got[0].Text != "Marc Étienne" {
+		t.Errorf("nom à initiale accentuée mal complété : %q", got[0].Text)
+	}
+}

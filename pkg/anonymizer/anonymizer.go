@@ -433,18 +433,10 @@ func SurnameCompletionPass() AnonymizePass {
 						continue
 					}
 
-					candidateEnd := origEnd
-					for candidateEnd < len(original) {
-						r := rune(original[candidateEnd])
-						if unicode.IsLetter(r) || r == '\'' || r == '-' {
-							candidateEnd++
-						} else {
-							break
-						}
-					}
+					candidateEnd := scanNameToken(original, origEnd)
 
 					candidate := original[origEnd:candidateEnd]
-					if len(candidate) < 2 {
+					if utf8.RuneCountInString(candidate) < 2 {
 						continue
 					}
 
@@ -504,6 +496,28 @@ func applyReplacements(text string, repls []textReplacement) string {
 	}
 	b.WriteString(text[prev:])
 	return b.String()
+}
+
+// isNameRune signale les caractères autorisés à l'intérieur d'un nom propre :
+// lettres, apostrophes (ASCII et typographique) et traits d'union
+// (ASCII et typographiques) — même ensemble que pkg/ner et le tokenizer.
+func isNameRune(r rune) bool {
+	return unicode.IsLetter(r) || r == '\'' || r == '’' ||
+		r == '-' || r == '‐' || r == '‑'
+}
+
+// scanNameToken retourne l'offset de fin (exclusif) du token de type nom
+// commençant à start dans text, en décodant rune par rune (UTF-8 safe).
+func scanNameToken(text string, start int) int {
+	end := start
+	for end < len(text) {
+		r, size := utf8.DecodeRuneInString(text[end:])
+		if !isNameRune(r) {
+			break
+		}
+		end += size
+	}
+	return end
 }
 
 // isWordBoundary retourne true si le span [start, end) dans text est délimité

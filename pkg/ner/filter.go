@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/bornholm/go-anon/pkg/features"
 )
@@ -145,31 +146,20 @@ func FirstNameDetectionFilter(getText func() string, firstNames *features.Gazett
 				continue
 			}
 
-			if !unicode.IsUpper(rune(text[pos])) {
-				pos++
+			r, size := utf8.DecodeRuneInString(text[pos:])
+			if !unicode.IsUpper(r) {
+				pos += size
 				continue
 			}
 
-			end := pos
-			for end < len(text) {
-				r := rune(text[end])
-				if unicode.IsLetter(r) || r == '\'' || r == '-' {
-					end++
-				} else {
-					break
-				}
-			}
+			end := scanNameToken(text, pos)
 
 			token := text[pos:end]
-			if len(token) < 3 {
+			if utf8.RuneCountInString(token) < 3 {
 				pos = end
 				continue
 			}
 			if stopWords != nil && stopWords[strings.ToLower(token)] {
-				pos = end
-				continue
-			}
-			if end < len(text) && unicode.IsLower(rune(text[end])) {
 				pos = end
 				continue
 			}
@@ -212,6 +202,28 @@ var defaultStopWords = map[string]bool{
 	"sans": true, "sur": true, "sous": true, "chez": true, "un": true,
 	"une": true, "au": true, "aux": true, "par": true, "en": true,
 	"dans": true, "que": true, "qui": true, "dont": true, "lors": true,
+}
+
+// isNameRune signale les caractères autorisés à l'intérieur d'un nom propre :
+// lettres, apostrophes (ASCII et typographique) et traits d'union
+// (ASCII et typographiques) — même ensemble que le tokenizer.
+func isNameRune(r rune) bool {
+	return unicode.IsLetter(r) || r == '\'' || r == '’' ||
+		r == '-' || r == '‐' || r == '‑'
+}
+
+// scanNameToken retourne l'offset de fin (exclusif) du token de type nom
+// commençant à start dans text, en décodant rune par rune (UTF-8 safe).
+func scanNameToken(text string, start int) int {
+	end := start
+	for end < len(text) {
+		r, size := utf8.DecodeRuneInString(text[end:])
+		if !isNameRune(r) {
+			break
+		}
+		end += size
+	}
+	return end
 }
 
 func isUppercaseToken(s string) bool {
@@ -361,18 +373,10 @@ func NameCompletionPass(getText func() string, firstNames *features.Gazetteer) E
 				continue
 			}
 
-			candidateEnd := candidateStart
-			for candidateEnd < len(text) {
-				r := rune(text[candidateEnd])
-				if unicode.IsLetter(r) || r == '\'' || r == '-' {
-					candidateEnd++
-				} else {
-					break
-				}
-			}
+			candidateEnd := scanNameToken(text, candidateStart)
 
 			candidate := text[candidateStart:candidateEnd]
-			if candidateEnd <= candidateStart || len(candidate) < 2 {
+			if candidateEnd <= candidateStart || utf8.RuneCountInString(candidate) < 2 {
 				result = append(result, e)
 				continue
 			}

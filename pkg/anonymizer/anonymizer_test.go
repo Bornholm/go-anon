@@ -3,6 +3,7 @@ package anonymizer
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/bornholm/go-anon/pkg/ner"
 )
@@ -533,6 +534,26 @@ func TestPostProcess_AdjacentSurnameWithSpace(t *testing.T) {
 	expected := "[PERSON_1] Dupont est là."
 	if result.Text != expected {
 		t.Errorf("PostProcess failed\n  expected: %q\n  got:      %q", expected, result.Text)
+	}
+}
+
+func TestPostProcess_AccentedAdjacentSurname(t *testing.T) {
+	original := "Bonjour, PierreSémard est ici."
+	first := spanEntity(original, "Pierre", ner.TypePER)
+	rec := &mockRecognizer{entities: []ner.Entity{first}}
+	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
+
+	result, err := anon.Anonymize(original)
+	if err != nil {
+		t.Fatalf("Anonymize: %v", err)
+	}
+
+	if !utf8.ValidString(result.Text) {
+		t.Fatalf("texte anonymisé UTF-8 invalide : %q", result.Text)
+	}
+	expected := "Bonjour, [PERSON_1][PERSON_1] est ici."
+	if result.Text != expected {
+		t.Errorf("nom accentué non absorbé\n  expected: %q\n  got:      %q", expected, result.Text)
 	}
 }
 
