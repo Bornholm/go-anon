@@ -270,13 +270,19 @@ C'est la configuration qui produit les modèles de production :
   -format conll
 ```
 
-Performances de référence sur WikiNER (configuration 5b) :
+Performances de référence sur WikiNER (configuration 5b, splits seed 42,
+inférence avec ponctuation conservée et frontières de phrase par défaut —
+mesures 2026-07) :
 
 | Langue | F1 global | PER   | LOC   | ORG   | MISC  |
 | ------ | --------- | ----- | ----- | ----- | ----- |
-| `fr`   | 82.4%     | ~87%  | ~83%  | ~74%  | ~70%  |
-| `en`   | 88.8%     | 94.0% | 86.9% | 88.8% | 84.1% |
-| `es`   | 93.8%     | 96.2% | 93.8% | 90.7% | 90.6% |
+| `fr`   | 93.0%     | 96.5% | 91.8% | 92.2% | 90.3% |
+| `en`   | 90.5%     | 94.1% | 89.1% | 90.6% | 87.0% |
+| `es`   | 95.1%     | 97.4% | 94.4% | 93.4% | 94.3% |
+
+> **Important** : passer à l'évaluation les mêmes `-gazetteers` et `-clusters`
+> qu'à l'entraînement. Depuis l'ajout de `Recognizer.Warnings()`, tout écart
+> (gazetteer ou clusters manquants, langue différente) est signalé sur stderr.
 
 ## Étape 7 — Réduire la taille du modèle (optionnel)
 

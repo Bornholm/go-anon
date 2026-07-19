@@ -11,8 +11,11 @@ import (
 )
 
 // DefaultSentenceBoundaries est l'ensemble des tokens non-mots reconnus comme
-// fins de phrase par défaut.
-var DefaultSentenceBoundaries = []string{".", "!", "?", ";", ",", ":", "…", "—", "(", ")"}
+// fins de phrase par défaut. Seules les vraies fins de phrase y figurent :
+// couper aux virgules, deux-points ou parenthèses détruit le contexte des
+// appositions (« Jean Dupont, directeur de Renault ») et fait chuter le F1
+// (mesuré : −1,1 pt sur WikiNER fr avec l'ancienne liste étendue).
+var DefaultSentenceBoundaries = []string{".", "!", "?", "…"}
 
 // Recognizer orchestre le pipeline NER complet :
 // tokenisation → extraction de features → décodage Viterbi → entités.
@@ -21,8 +24,11 @@ type Recognizer struct {
 	crf                *model.CRF
 	extractor          *features.FeatureExtractor
 	langProfile        *lang.LangProfile // profil linguistique (pour FirstNameDetectionPass)
+	langCode           string            // code ISO 639-1 configuré via WithLanguage
 	sentenceBoundaries map[string]bool   // tokens non-mots qui délimitent les phrases
+	includePunctuation bool              // inclure les tokens de ponctuation dans les séquences CRF
 	postFilters        []EntityFilter    // filtres appliqués après la reconnaissance
+	warnings           []string          // écarts détectés entre la config du modèle et celle de l'inférence
 	lastText           string            // texte de la dernière reconnaissance (pour NameCompletionPass)
 }
 
@@ -56,6 +62,7 @@ func WithLanguage(code string) RecognizerOption {
 		default:
 			return fmt.Errorf("ner: WithLanguage: unsupported language %q", code)
 		}
+		rec.langCode = code
 		return nil
 	}
 }
@@ -79,6 +86,22 @@ func WithSentenceBoundaries(tokens ...string) RecognizerOption {
 		for _, t := range tokens {
 			rec.sentenceBoundaries[t] = true
 		}
+		return nil
+	}
+}
+
+// WithPunctuationTokens contrôle l'inclusion des tokens de ponctuation dans
+// les séquences soumises au CRF (activé par défaut). Les corpus d'entraînement
+// (CoNLL, WikiNER) contiennent la ponctuation comme tokens ordinaires
+// (étiquetés O) : l'inclure aussi à l'inférence aligne la distribution des
+// features de contexte (bigrammes, w[±k], BOS/EOS) sur celle vue à
+// l'entraînement (mesuré : +0,6 pt de F1 sur WikiNER fr, +1,7 combiné aux
+// frontières de phrase réduites). Passer false restaure l'ancien comportement
+// (mots seuls).
+// Les offsets des entités restent inchangés (byte-précis dans le texte original).
+func WithPunctuationTokens(enabled bool) RecognizerOption {
+	return func(rec *Recognizer) error {
+		rec.includePunctuation = enabled
 		return nil
 	}
 }
@@ -165,6 +188,7 @@ func New(m *Model, opts ...RecognizerOption) (*Recognizer, error) {
 			WindowSize: 2,
 		},
 		sentenceBoundaries: boundaries,
+		includePunctuation: true, // aligné sur l'entraînement (cf. WithPunctuationTokens)
 		crf:                m.crf,
 	}
 
@@ -182,7 +206,47 @@ func New(m *Model, opts ...RecognizerOption) (*Recognizer, error) {
 		rec.extractor.WindowSize = w
 	}
 
+	rec.warnings = configWarnings(m.crf.FeatureCfg, rec)
+
 	return rec, nil
+}
+
+// Warnings retourne les écarts détectés entre la configuration d'entraînement
+// du modèle (FeatureConfig sérialisée) et la configuration d'inférence courante.
+// Chaque écart dégrade silencieusement le F1 : les features correspondantes,
+// apprises à l'entraînement, ne sont jamais générées à l'inférence (ou l'inverse).
+// La slice est vide si les configurations concordent.
+func (r *Recognizer) Warnings() []string {
+	return r.warnings
+}
+
+// configWarnings compare la FeatureConfig du modèle à la configuration effective
+// du Recognizer et retourne un message par écart détecté.
+func configWarnings(cfg model.FeatureConfig, rec *Recognizer) []string {
+	var warnings []string
+
+	if cfg.LangCode != "" && rec.langCode != "" && cfg.LangCode != rec.langCode {
+		warnings = append(warnings, fmt.Sprintf(
+			"modèle entraîné pour la langue %q mais inférence configurée en %q", cfg.LangCode, rec.langCode))
+	}
+
+	for _, name := range cfg.GazetteerNames {
+		if _, ok := rec.extractor.Gazetteers[name]; !ok {
+			warnings = append(warnings, fmt.Sprintf(
+				"modèle entraîné avec le gazetteer %q mais celui-ci n'est pas chargé à l'inférence (WithGazetteers)", name))
+		}
+	}
+
+	if cfg.HasClusters && rec.extractor.Clusters == nil {
+		warnings = append(warnings,
+			"modèle entraîné avec des Brown clusters mais aucun cluster chargé à l'inférence (WithBrownClusters)")
+	}
+	if cfg.HasEmbeddings && rec.extractor.Embeddings == nil {
+		warnings = append(warnings,
+			"modèle entraîné avec des word embeddings mais aucun embedding chargé à l'inférence")
+	}
+
+	return warnings
 }
 
 // Recognize détecte les entités nommées dans text.
@@ -234,23 +298,29 @@ func (r *Recognizer) recognizeLine(line string, byteOffset int, labelIndex map[s
 
 	flushSegment := func() {
 		wordTokens := extractWordTokens(segment)
+		// Séquence soumise au CRF : mots seuls, ou tous les tokens (ponctuation
+		// comprise) si WithPunctuationTokens est actif — comme à l'entraînement.
+		seqTokens := wordTokens
+		if r.includePunctuation {
+			seqTokens = append([]tokenizer.Token(nil), segment...)
+		}
 		segment = segment[:0]
 		if len(wordTokens) == 0 {
 			return
 		}
-		words := tokenTexts(wordTokens)
+		words := tokenTexts(seqTokens)
 		lowerWords := make([]string, len(words))
 		for i, w := range words {
 			lowerWords[i] = strings.ToLower(w)
 		}
-		feats := make([]map[string]float64, len(wordTokens))
-		for i := range wordTokens {
+		feats := make([]map[string]float64, len(seqTokens))
+		for i := range seqTokens {
 			feats[i] = r.extractor.FeaturesEx(words, lowerWords, i)
 		}
 		labels := r.crf.Predict(feats)
 		marginals := r.crf.PredictMarginals(feats)
 		fixedLabels := FixBIOViolations(labels)
-		segEntities := decodeEntitiesWithScores(wordTokens, fixedLabels, marginals, labelIndex)
+		segEntities := decodeEntitiesWithScores(seqTokens, fixedLabels, marginals, labelIndex)
 		for i := range segEntities {
 			segEntities[i].Start += byteOffset
 			segEntities[i].End += byteOffset

@@ -140,3 +140,54 @@ func TestRecognizer_WithLanguage(t *testing.T) {
 		t.Error("expected non-nil Recognizer")
 	}
 }
+
+func TestRecognizer_PunctuationTokens_NoCrashValidOffsets(t *testing.T) {
+	m := &Model{crf: newTestCRF()}
+	rec, err := New(m, WithLanguage("fr"), WithPunctuationTokens(true))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	text := "Jean Dupont, directeur de Renault, habite à Paris."
+	entities, err := rec.Recognize(text)
+	if err != nil {
+		t.Fatalf("Recognize: %v", err)
+	}
+	for _, e := range entities {
+		if e.Start < 0 || e.End > len(text) || text[e.Start:e.End] != e.Text {
+			t.Errorf("offsets invalides avec ponctuation incluse : %+v", e)
+		}
+	}
+}
+
+func TestRecognizer_ConfigWarnings_Mismatch(t *testing.T) {
+	crf := newTestCRF()
+	crf.FeatureCfg = model.FeatureConfig{
+		WindowSize:     3,
+		LangCode:       "fr",
+		GazetteerNames: []string{"firstnames"},
+		HasClusters:    true,
+	}
+	rec, err := New(&Model{crf: crf}, WithLanguage("en"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	warnings := rec.Warnings()
+	if len(warnings) != 3 {
+		t.Fatalf("attendu 3 avertissements (langue, gazetteer, clusters), got %d : %v", len(warnings), warnings)
+	}
+}
+
+func TestRecognizer_ConfigWarnings_NoneWhenAligned(t *testing.T) {
+	crf := newTestCRF()
+	crf.FeatureCfg = model.FeatureConfig{WindowSize: 3, LangCode: "en"}
+	rec, err := New(&Model{crf: crf}, WithLanguage("en"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if w := rec.Warnings(); len(w) != 0 {
+		t.Errorf("attendu 0 avertissement, got %v", w)
+	}
+}

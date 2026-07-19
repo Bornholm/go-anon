@@ -101,6 +101,7 @@ var SurnameCompletionPass = anonymizer.SurnameCompletionPass
 var WithLanguage = ner.WithLanguage
 var WithGazetteers = ner.WithGazetteers
 var WithSentenceBoundaries = ner.WithSentenceBoundaries
+var WithPunctuationTokens = ner.WithPunctuationTokens
 var WithBrownClusters = ner.WithBrownClusters
 var WithPostFilters = ner.WithPostFilters
 var WithFirstNameReclassify = ner.WithFirstNameReclassify

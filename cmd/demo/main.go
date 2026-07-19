@@ -152,6 +152,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("initialisation recognizer : %v", err)
 	}
+	for _, w := range rec.Warnings() {
+		log.Printf("avertissement : %s", w)
+	}
 
 	if *doAnonymize {
 		runAnonymize(rec, input, *strategy, skipTypes)

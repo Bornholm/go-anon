@@ -167,6 +167,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("initialisation recognizer : %v", err)
 	}
+	for _, w := range rec.Warnings() {
+		log.Printf("avertissement : %s", w)
+	}
 
 	// --- Anonymizer + Processor ---
 	cfg := anonymizer.Config{

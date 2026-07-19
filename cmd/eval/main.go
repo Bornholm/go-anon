@@ -13,9 +13,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/bornholm/go-anon/cmd/internal/cmdutil"
 	"github.com/bornholm/go-anon/pkg/corpus"
+	"github.com/bornholm/go-anon/pkg/features"
 	"github.com/bornholm/go-anon/pkg/ner"
 )
 
@@ -27,6 +29,9 @@ func main() {
 	tagCol := flag.Int("tag-col", -1, "colonne NER dans CoNLL (-1 = dernière)")
 	useBIOES := flag.Bool("bioes", false, "le corpus est en BIOES (les tags BIOES sont convertis en BIO pour l'évaluation)")
 	gazetteerFlag := flag.String("gazetteers", "", `gazetteers à utiliser : "nom:fichier.txt,nom:fichier.txt" (doivent correspondre à ceux utilisés à l'entraînement)`)
+	clustersPath := flag.String("clusters", "", "fichier Brown clusters (doit correspondre à celui utilisé à l'entraînement)")
+	keepPunct := flag.Bool("keep-punct", true, "inclure la ponctuation dans les séquences CRF (comme à l'entraînement) ; -keep-punct=false restaure l'ancien comportement")
+	boundaries := flag.String("boundaries", "", `tokens délimiteurs de phrases, séparés par des espaces (ex: ". ! ? …") ; vide = défaut`)
 
 	flag.Parse()
 
@@ -81,9 +86,32 @@ func main() {
 		opts = append(opts, ner.WithGazetteers(gazetteers))
 	}
 
+	if *clustersPath != "" {
+		cf, err := os.Open(*clustersPath)
+		if err != nil {
+			log.Fatalf("ouverture clusters %q : %v", *clustersPath, err)
+		}
+		clusters, err := features.LoadBrownClusters(cf)
+		cf.Close()
+		if err != nil {
+			log.Fatalf("chargement clusters : %v", err)
+		}
+		opts = append(opts, ner.WithBrownClusters(clusters))
+	}
+
+	opts = append(opts, ner.WithPunctuationTokens(*keepPunct))
+
+	if *boundaries != "" {
+		opts = append(opts, ner.WithSentenceBoundaries(strings.Fields(*boundaries)...))
+	}
+
 	rec, err := ner.New(m, opts...)
 	if err != nil {
 		log.Fatalf("initialisation recognizer : %v", err)
+	}
+
+	for _, w := range rec.Warnings() {
+		log.Printf("avertissement : %s", w)
 	}
 
 	// --- Évaluation ---

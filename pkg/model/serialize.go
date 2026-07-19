@@ -20,6 +20,8 @@ type FeatureConfig struct {
 	WindowSize     int
 	GazetteerNames []string // noms des gazetteers chargés
 	LangCode       string   // "fr", "en", "" = pas de profil langue
+	HasClusters    bool     // Brown clusters utilisés à l'entraînement
+	HasEmbeddings  bool     // word embeddings utilisés à l'entraînement
 }
 
 // SerializableModel est la représentation sérialisable d'un CRF.

@@ -164,6 +164,8 @@ func main() {
 		WindowSize:     *window,
 		GazetteerNames: cmdutil.GazetteerNames(gazetteers),
 		LangCode:       *langCode,
+		HasClusters:    clusters != nil,
+		HasEmbeddings:  embeddings != nil,
 	}
 
 	// --- Sauvegarde ---
