@@ -2,10 +2,65 @@ package features
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/bornholm/go-anon/pkg/lang"
+)
+
+// Préfixes de fenêtre précalculés : "w[-2]." … "w[+2]." et "wshape[-2]=" …
+// Évite un fmt.Sprintf par (token × delta) dans le chemin chaud. Les chaînes
+// produites doivent rester identiques aux formats "w[%+d]." et "wshape[%+d]="
+// (les features sont hachées dans les modèles sérialisés).
+const maxCachedDelta = 8
+
+var (
+	ctxPrefixTable   [2*maxCachedDelta + 1]string
+	shapePrefixTable [2*maxCachedDelta + 1]string
+)
+
+func init() {
+	for d := -maxCachedDelta; d <= maxCachedDelta; d++ {
+		if d == 0 {
+			continue
+		}
+		ctxPrefixTable[d+maxCachedDelta] = fmt.Sprintf("w[%+d].", d)
+		shapePrefixTable[d+maxCachedDelta] = fmt.Sprintf("wshape[%+d]=", d)
+	}
+}
+
+// ctxPrefix retourne "w[%+d]." sans allocation pour |delta| ≤ maxCachedDelta.
+func ctxPrefix(delta int) string {
+	if delta >= -maxCachedDelta && delta <= maxCachedDelta {
+		return ctxPrefixTable[delta+maxCachedDelta]
+	}
+	return fmt.Sprintf("w[%+d].", delta)
+}
+
+// shapePrefix retourne "wshape[%+d]=" sans allocation pour |delta| ≤ maxCachedDelta.
+func shapePrefix(delta int) string {
+	if delta >= -maxCachedDelta && delta <= maxCachedDelta {
+		return shapePrefixTable[delta+maxCachedDelta]
+	}
+	return fmt.Sprintf("wshape[%+d]=", delta)
+}
+
+// Schémas de features. Les chaînes de features sont hachées dans les modèles
+// sérialisés : toute modification doit être versionnée ici et gated par
+// FeatureExtractor.Schema, sinon les modèles existants se dégradent en silence.
+//
+//	Schéma 0 (historique, gelé) : word.len via itos (bogué pour ≥ 10),
+//	  gazseq marquant uniquement le premier token d'un span multi-mots.
+//	Schéma 1 : word.len via strconv.Itoa, spans gazetteers multi-mots (2-3
+//	  tokens) marqués gazseq.<nom>.B sur le premier token et .I sur les autres.
+const (
+	SchemaLegacy = 0
+	SchemaV1     = 1
+
+	// LatestSchema est le schéma utilisé pour les nouveaux entraînements.
+	LatestSchema = SchemaV1
 )
 
 // FeatureExtractor génère les features pour chaque token d'une phrase.
@@ -15,6 +70,11 @@ type FeatureExtractor struct {
 	// WindowSize est la demi-taille de la fenêtre de contexte (valeur typique : 2).
 	// Avec WindowSize=2, les tokens à [-2, -1, +1, +2] sont pris en compte.
 	WindowSize int
+
+	// Schema sélectionne la version des chaînes de features (cf. SchemaLegacy,
+	// SchemaV1). Doit valoir exactement la valeur utilisée à l'entraînement du
+	// modèle (FeatureConfig.FeatureSchema) — propagé par ner.New.
+	Schema int
 
 	// Gazetteers est un ensemble nommé de dictionnaires de lookup.
 	// Chaque hit génère une feature "gaz.<name>"=1.0.
@@ -44,7 +104,9 @@ func (fe *FeatureExtractor) Features(tokens []string, idx int) map[string]float6
 // FeaturesEx est identique à Features mais accepte lowerTokens pré-calculés,
 // évitant de recalculer strings.ToLower pour chaque token de la phrase.
 func (fe *FeatureExtractor) FeaturesEx(tokens []string, lowerTokens []string, idx int) map[string]float64 {
-	f := make(map[string]float64)
+	// ~60-100 entrées par token selon les ressources chargées :
+	// pré-dimensionner évite les réallocations de la map dans le chemin chaud.
+	f := make(map[string]float64, 96)
 	word := tokens[idx]
 	wordLower := lowerTokens[idx]
 
@@ -59,12 +121,17 @@ func (fe *FeatureExtractor) FeaturesEx(tokens []string, lowerTokens []string, id
 	f["word.prefix2="+prefix(word, 2)] = 1.0
 	f["word.prefix3="+prefix(word, 3)] = 1.0
 	f["word.prefix4="+prefix(word, 4)] = 1.0
-	f["word.len="+itos(len([]rune(word)))] = 1.0
+	runeLen := utf8.RuneCountInString(word)
+	if fe.Schema >= SchemaV1 {
+		f["word.len="+strconv.Itoa(runeLen)] = 1.0
+	} else {
+		f["word.len="+itos(runeLen)] = 1.0
+	}
 	// Bucket de longueur (plus robuste que la valeur exacte)
-	switch l := len([]rune(word)); {
-	case l <= 2:
+	switch {
+	case runeLen <= 2:
 		f["word.lenBucket=short"] = 1.0
-	case l <= 5:
+	case runeLen <= 5:
 		f["word.lenBucket=medium"] = 1.0
 	default:
 		f["word.lenBucket=long"] = 1.0
@@ -94,7 +161,7 @@ func (fe *FeatureExtractor) FeaturesEx(tokens []string, lowerTokens []string, id
 			continue
 		}
 		pos := idx + delta
-		ctxKey := fmt.Sprintf("w[%+d].", delta)
+		ctxKey := ctxPrefix(delta)
 
 		if pos < 0 {
 			f[ctxKey+"BOS"] = 1.0 // Begin of Sentence
@@ -113,38 +180,56 @@ func (fe *FeatureExtractor) FeaturesEx(tokens []string, lowerTokens []string, id
 
 	// --- Features gazetteers avec niveaux de confiance ---
 	for name, gaz := range fe.Gazetteers {
-		if gaz.Contains(word) {
+		// freq couvre aussi Contains (freq > 0) et IsUnique (freq == 1) :
+		// un seul lookup au lieu de trois.
+		freq := gaz.FrequencyLower(wordLower)
+		if freq > 0 {
 			f["gaz."+name] = 1.0
 
-			// Feature de confiance basée sur la fréquence
-			freq := gaz.Frequency(word)
-			if freq > 0 {
-				// Entries très fréquentes (prénoms populaires) = moins spécifiques
-				if freq > 10000 {
-					f["gaz."+name+".common"] = 1.0
-				} else if freq > 1000 {
-					f["gaz."+name+".medium"] = 1.0
-				} else {
-					f["gaz."+name+".rare"] = 1.0
-				}
+			// Feature de confiance basée sur la fréquence.
+			// Entries très fréquentes (prénoms populaires) = moins spécifiques
+			if freq > 10000 {
+				f["gaz."+name+".common"] = 1.0
+			} else if freq > 1000 {
+				f["gaz."+name+".medium"] = 1.0
+			} else {
+				f["gaz."+name+".rare"] = 1.0
 			}
 
 			// Entry unique = très spécifique (ex: nom de ville rare)
-			if gaz.IsUnique(word) {
+			if freq == 1 {
 				f["gaz."+name+".unique"] = 1.0
 			}
 		}
-		// Multi-word gazetteer lookup
-		if idx > 0 {
-			for end := idx + 1; end <= len(tokens) && end-idx <= 3; end++ {
-				if gaz.ContainsSequenceLower(lowerTokens, idx, end) {
-					f["gazseq."+name] = 1.0
-					break
+		// Multi-word gazetteer lookup.
+		if fe.Schema >= SchemaV1 {
+			// Schéma 1 : chaque token d'un span multi-mots (2-3 tokens) du
+			// gazetteer est marqué — .B sur le premier token, .I sur les
+			// suivants. (Le schéma 0 ne marquait que le token de départ :
+			// « York » dans « New York » n'avait aucune feature gazetteer.)
+			for start := max(0, idx-2); start <= idx; start++ {
+				endMin := max(start+2, idx+1)
+				endMax := min(len(tokens), start+3)
+				for end := endMin; end <= endMax; end++ {
+					if gaz.ContainsSequenceLower(lowerTokens, start, end) {
+						if start == idx {
+							f["gazseq."+name+".B"] = 1.0
+						} else {
+							f["gazseq."+name+".I"] = 1.0
+						}
+					}
 				}
 			}
-		}
-		if idx < len(tokens)-1 {
-			for end := idx + 2; end <= len(tokens) && end-idx <= 3; end++ {
+		} else {
+			// Schéma 0 (gelé) : séquences démarrant à idx uniquement —
+			// longueurs 1..3 si un token précède (ancienne première boucle),
+			// sinon longueurs 2..3 (ancienne seconde boucle ; les deux se
+			// recouvraient pour idx > 0).
+			seqStart := idx + 1
+			if idx == 0 {
+				seqStart = idx + 2
+			}
+			for end := seqStart; end <= len(tokens) && end-idx <= 3; end++ {
 				if gaz.ContainsSequenceLower(lowerTokens, idx, end) {
 					f["gazseq."+name] = 1.0
 					break
@@ -159,10 +244,10 @@ func (fe *FeatureExtractor) FeaturesEx(tokens []string, lowerTokens []string, id
 		currentInGaz := false
 		prevInGaz := false
 		for _, gaz := range fe.Gazetteers {
-			if gaz.Contains(word) {
+			if gaz.ContainsLower(wordLower) {
 				currentInGaz = true
 			}
-			if gaz.Contains(tokens[idx-1]) {
+			if gaz.ContainsLower(lowerTokens[idx-1]) {
 				prevInGaz = true
 			}
 			if currentInGaz && prevInGaz {
@@ -220,7 +305,7 @@ func (fe *FeatureExtractor) FeaturesEx(tokens []string, lowerTokens []string, id
 			continue
 		}
 		pos := idx + delta
-		ctxKey := fmt.Sprintf("wshape[%+d]=", delta)
+		ctxKey := shapePrefix(delta)
 
 		if pos < 0 {
 			f[ctxKey+"BOS"] = 1.0
@@ -246,7 +331,7 @@ func (fe *FeatureExtractor) FeaturesEx(tokens []string, lowerTokens []string, id
 			if pos >= 0 && pos < len(tokens) {
 				cp := fe.Clusters.Prefixes(tokens[pos])
 				for k, v := range cp {
-					f[fmt.Sprintf("w[%+d].%s=%s", delta, k, v)] = 1.0
+					f[ctxPrefix(delta)+k+"="+v] = 1.0
 				}
 			}
 		}
@@ -264,17 +349,18 @@ func (fe *FeatureExtractor) FeaturesEx(tokens []string, lowerTokens []string, id
 			}
 			for d := 0; d < maxDims; d++ {
 				val := vec[d]
+				dim := strconv.Itoa(d)
 				// Seuils plus nuancés pour capturer plus d'information
 				if val > 1.0 {
-					f[fmt.Sprintf("emb%dxl", d)] = 1.0
+					f["emb"+dim+"xl"] = 1.0
 				} else if val > 0.5 {
-					f[fmt.Sprintf("emb%dlg", d)] = 1.0
+					f["emb"+dim+"lg"] = 1.0
 				} else if val > 0.0 {
-					f[fmt.Sprintf("emb%dsm", d)] = 1.0
+					f["emb"+dim+"sm"] = 1.0
 				} else if val > -0.5 {
-					f[fmt.Sprintf("emb%dnl", d)] = 1.0
+					f["emb"+dim+"nl"] = 1.0
 				} else {
-					f[fmt.Sprintf("emb%dxn", d)] = 1.0
+					f["emb"+dim+"xn"] = 1.0
 				}
 			}
 		}
@@ -295,9 +381,9 @@ func (fe *FeatureExtractor) FeaturesEx(tokens []string, lowerTokens []string, id
 					for d := 0; d < maxDims; d++ {
 						val := ctxVec[d]
 						if val > 0.5 {
-							f[fmt.Sprintf("w[%+d].emb%dlg", delta, d)] = 1.0
+							f[ctxPrefix(delta)+"emb"+strconv.Itoa(d)+"lg"] = 1.0
 						} else if val < -0.5 {
-							f[fmt.Sprintf("w[%+d].emb%dxn", delta, d)] = 1.0
+							f[ctxPrefix(delta)+"emb"+strconv.Itoa(d)+"xn"] = 1.0
 						}
 					}
 				}
@@ -317,24 +403,35 @@ func (fe *FeatureExtractor) FeaturesEx(tokens []string, lowerTokens []string, id
 
 // --- Helpers privés ---
 
-// suffix retourne les n dernières runes de s (UTF-8 safe).
-// Si s contient moins de n runes, retourne s en entier.
+// suffix retourne les n dernières runes de s (UTF-8 safe) sans allocation.
+// Si s contient au plus n runes, retourne s en entier.
 func suffix(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
+	i := len(s)
+	for c := 0; c < n; c++ {
+		if i == 0 {
+			return s
+		}
+		_, size := utf8.DecodeLastRuneInString(s[:i])
+		i -= size
 	}
-	return string(runes[len(runes)-n:])
+	return s[i:]
 }
 
-// prefix retourne les n premières runes de s (UTF-8 safe).
-// Si s contient moins de n runes, retourne s en entier.
+// prefix retourne les n premières runes de s (UTF-8 safe) sans allocation.
+// Si s contient au plus n runes, retourne s en entier.
 func prefix(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
+	i := 0
+	for c := 0; c < n; c++ {
+		if i >= len(s) {
+			return s
+		}
+		_, size := utf8.DecodeRuneInString(s[i:])
+		i += size
+	}
+	if i >= len(s) {
 		return s
 	}
-	return string(runes[:n])
+	return s[:i]
 }
 
 // isAllUpper retourne true si toutes les lettres de s sont majuscules
@@ -354,16 +451,13 @@ func isAllUpper(s string) bool {
 
 // isTitleCase retourne true si la première rune est une lettre majuscule
 // et que le mot contient au moins une lettre minuscule
-// (pour distinguer "Paris" de "PARIS").
+// (pour distinguer "Paris" de "PARIS"). Sans allocation []rune.
 func isTitleCase(s string) bool {
-	runes := []rune(s)
-	if len(runes) == 0 {
+	first, size := utf8.DecodeRuneInString(s)
+	if size == 0 || !unicode.IsUpper(first) {
 		return false
 	}
-	if !unicode.IsUpper(runes[0]) {
-		return false
-	}
-	for _, r := range runes[1:] {
+	for _, r := range s[size:] {
 		if unicode.IsLower(r) {
 			return true
 		}
@@ -452,7 +546,11 @@ func boolToFloat(b bool) float64 {
 	return 0.0
 }
 
-// itos convertit un entier en string.
+// itos convertit un entier en un caractère unique ('0'+i).
+// ATTENTION : faux pour i ≥ 10 (produit ':', ';', …) mais utilisé de façon
+// identique à l'entraînement et à l'inférence — les chaînes de features sont
+// hachées dans les modèles sérialisés, donc NE PAS remplacer par strconv.Itoa
+// sans ré-entraîner tous les modèles.
 func itos(i int) string {
 	return string(rune('0' + i))
 }

@@ -517,3 +517,63 @@ func TestContextSuffix3Right(t *testing.T) {
 	f := fe.Features(tokens, 0)
 	assertFeature(t, f, "w[+1].suf3=ris", 1.0)
 }
+
+// --- Schéma de features v1 ---
+
+func TestFeatureSchema_WordLen(t *testing.T) {
+	tokens := []string{"anticonstitutionnellement"} // 25 runes
+	legacy := &features.FeatureExtractor{WindowSize: 1, Schema: features.SchemaLegacy}
+	v1 := &features.FeatureExtractor{WindowSize: 1, Schema: features.SchemaV1}
+
+	fLegacy := legacy.Features(tokens, 0)
+	fV1 := v1.Features(tokens, 0)
+
+	// Schéma 0 gelé : itos(25) = '0'+25 = 'I'.
+	if _, ok := fLegacy["word.len=I"]; !ok {
+		t.Errorf("schéma 0 : feature word.len historique absente, features: %v", keysWithPrefix(fLegacy, "word.len"))
+	}
+	if _, ok := fV1["word.len=25"]; !ok {
+		t.Errorf("schéma 1 : word.len=25 absente, features: %v", keysWithPrefix(fV1, "word.len"))
+	}
+}
+
+func TestFeatureSchema_GazseqBI(t *testing.T) {
+	gaz, _ := features.LoadGazetteer("cities", strings.NewReader("new york\n"))
+	tokens := []string{"in", "New", "York", "today"}
+
+	legacy := &features.FeatureExtractor{WindowSize: 1, Schema: features.SchemaLegacy, Gazetteers: map[string]*features.Gazetteer{"cities": gaz}}
+	v1 := &features.FeatureExtractor{WindowSize: 1, Schema: features.SchemaV1, Gazetteers: map[string]*features.Gazetteer{"cities": gaz}}
+
+	// Schéma 0 : seul le token de départ ("New", idx 1) est marqué.
+	fNew := legacy.Features(tokens, 1)
+	fYork := legacy.Features(tokens, 2)
+	if _, ok := fNew["gazseq.cities"]; !ok {
+		t.Error("schéma 0 : gazseq.cities attendu sur le token de départ")
+	}
+	if _, ok := fYork["gazseq.cities"]; ok {
+		t.Error("schéma 0 : York ne doit pas être marqué (comportement historique gelé)")
+	}
+
+	// Schéma 1 : B sur "New", I sur "York".
+	fNew = v1.Features(tokens, 1)
+	fYork = v1.Features(tokens, 2)
+	if _, ok := fNew["gazseq.cities.B"]; !ok {
+		t.Errorf("schéma 1 : gazseq.cities.B attendu sur New, got %v", keysWithPrefix(fNew, "gazseq"))
+	}
+	if _, ok := fYork["gazseq.cities.I"]; !ok {
+		t.Errorf("schéma 1 : gazseq.cities.I attendu sur York, got %v", keysWithPrefix(fYork, "gazseq"))
+	}
+	if _, ok := fNew["gazseq.cities.I"]; ok {
+		t.Error("schéma 1 : New ne doit pas porter .I")
+	}
+}
+
+func keysWithPrefix(f map[string]float64, prefix string) []string {
+	var out []string
+	for k := range f {
+		if strings.HasPrefix(k, prefix) {
+			out = append(out, k)
+		}
+	}
+	return out
+}

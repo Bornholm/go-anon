@@ -20,6 +20,9 @@ Le cœur du pipeline NER (modèle CRF, features, tokenisation, anonymisation) es
 - Téléchargement automatique des modèles pré-entraînés depuis GitHub Releases ;
 - Post-filtres chaînables : seuil de confiance, longueur de span, liste noire ;
 - Enrichissement optionnel via gazetteers et Brown clusters ;
+- Configuration d'inférence auto-propagée depuis le modèle (schéma de features,
+  fenêtre de contexte) et `Recognizer.Warnings()` qui signale toute ressource
+  manquante (gazetteer/clusters) par rapport à l'entraînement ;
 - Serveur HTTP intégré via `cmd/server`.
 
 ## Utilisation

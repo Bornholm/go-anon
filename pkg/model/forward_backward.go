@@ -11,9 +11,7 @@ func computeEmissions(crf *CRF, feats []map[string]float64) [][]float64 {
 	emissions := make([][]float64, n)
 	for t := range emissions {
 		emissions[t] = make([]float64, L)
-		for l := 0; l < L; l++ {
-			emissions[t][l] = crf.Weights.Score(feats[t], l)
-		}
+		crf.Weights.ScoreAll(feats[t], emissions[t])
 	}
 	return emissions
 }

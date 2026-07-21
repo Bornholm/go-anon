@@ -1,5 +1,5 @@
 // Package goanon fournit une API de haut niveau pour la reconnaissance d'entités
-// nommées (NER) et l'anonymisation de texte en français et en anglais.
+// nommées (NER) et l'anonymisation de texte en français, anglais et espagnol.
 //
 // Usage minimal :
 //
@@ -7,6 +7,14 @@
 //	m, err := goanon.LoadModel(f)
 //	r, err := goanon.NewRecognizer(m, goanon.WithLanguage("fr"))
 //	entities, err := r.Recognize("Jean Dupont habite à Paris.")
+//
+// Le Recognizer applique par défaut la configuration d'inférence validée sur
+// WikiNER : ponctuation conservée dans les séquences CRF et découpage aux
+// seules fins de phrase (cf. WithPunctuationTokens, WithSentenceBoundaries).
+// NewRecognizer propage automatiquement le schéma de features et la fenêtre de
+// contexte enregistrés dans le modèle ; Recognizer.Warnings() signale tout
+// écart entre la configuration du modèle et celle de l'inférence (gazetteers
+// ou Brown clusters manquants, langue différente).
 //
 // Anonymisation :
 //
@@ -102,6 +110,7 @@ var WithLanguage = ner.WithLanguage
 var WithGazetteers = ner.WithGazetteers
 var WithSentenceBoundaries = ner.WithSentenceBoundaries
 var WithPunctuationTokens = ner.WithPunctuationTokens
+var WithConfidenceScores = ner.WithConfidenceScores
 var WithBrownClusters = ner.WithBrownClusters
 var WithPostFilters = ner.WithPostFilters
 var WithFirstNameReclassify = ner.WithFirstNameReclassify

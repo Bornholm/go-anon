@@ -7,7 +7,7 @@ import (
 )
 
 // UnicodeTokenizer est un tokenizer basé sur les catégories Unicode.
-// Il fonctionne pour le français et l'anglais sans dépendance externe.
+// Il fonctionne pour le français, l'anglais et l'espagnol sans dépendance externe.
 //
 // Stratégie : machine à états rune-par-rune.
 //   - Lettres et chiffres forment des tokens de type mot (IsWord=true).
@@ -15,7 +15,7 @@ import (
 //   - Chaque symbole ou signe de ponctuation isolé devient un token (IsWord=false).
 //
 // Les options SplitHyphen et SplitApostrophe permettent d'adapter le
-// comportement aux conventions linguistiques FR/EN.
+// comportement aux conventions linguistiques (FR/ES : apostrophe ; EN : trait d'union).
 type UnicodeTokenizer struct {
 	// SplitHyphen contrôle le traitement du trait d'union en position de mot.
 	// false (défaut FR) : "peut-être" → un seul token.

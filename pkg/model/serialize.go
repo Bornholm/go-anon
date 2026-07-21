@@ -5,13 +5,23 @@ import (
 	"encoding/gob"
 	"fmt"
 	"io"
+	"log"
 	"sort"
 )
 
-// modelVersion "2" stores weights as WeightKeys []uint64 + WeightVals []float32,
-// eliminating the intermediate map[uint64]float64 and reducing peak loading memory
-// from ~1.4 GB to ~420 MB for large models.
-const modelVersion = "2"
+// Versions du format de sérialisation :
+//   - "1" : poids dans Weights map[uint64]float64 (héritage).
+//   - "2" : poids dans WeightKeys []uint64 + WeightVals []float32 — élimine la
+//     map intermédiaire, mémoire de chargement ~1.4 GB → ~420 MB.
+//   - "3" : poids groupés par feature (BaseKeys []uint64 + BlockVals, bloc de
+//     L poids contigus par feature) — une seule recherche binaire par feature
+//     à l'inférence au lieu de L. Ne peut être produit qu'à l'entraînement,
+//     où les features en clair sont connues (les clés v1/v2 sont des hachés
+//     à sens unique).
+const (
+	modelVersionFlat    = "2"
+	modelVersionGrouped = "3"
+)
 
 // FeatureConfig décrit la configuration du FeatureExtractor utilisé à l'entraînement.
 // Elle est sérialisée avec le modèle pour permettre de reproduire le même pipeline
@@ -22,18 +32,23 @@ type FeatureConfig struct {
 	LangCode       string   // "fr", "en", "" = pas de profil langue
 	HasClusters    bool     // Brown clusters utilisés à l'entraînement
 	HasEmbeddings  bool     // word embeddings utilisés à l'entraînement
+	// FeatureSchema versionne les chaînes de features produites par
+	// l'extracteur (0 = schéma historique gelé, 1 = word.len corrigé +
+	// gazseq B/I). L'inférence doit utiliser exactement le schéma
+	// d'entraînement : il est propagé au FeatureExtractor par ner.New.
+	FeatureSchema int
 }
 
 // SerializableModel est la représentation sérialisable d'un CRF.
-// Version "1" : poids dans Weights map[uint64]float64 (héritage).
-// Version "2" : poids dans WeightKeys []uint64 + WeightVals []float32 (format compact).
 type SerializableModel struct {
 	Version    string
 	Lang       string
 	Labels     []string
 	Weights    map[uint64]float64 // v1 uniquement, conservé pour rétrocompatibilité
-	WeightKeys []uint64           // v2 : clés triées
+	WeightKeys []uint64           // v2 : clés (feature, label) triées
 	WeightVals []float32          // v2 : valeurs parallèles à WeightKeys
+	BaseKeys   []uint64           // v3 : hachés de base des features, triés
+	BlockVals  []float32          // v3 : blocs de len(Labels) poids par feature
 	Transition [][]float64
 	Features   FeatureConfig
 }
@@ -48,7 +63,10 @@ func (crf *CRF) Save(w io.Writer) error {
 	return gz.Close()
 }
 
-// toSerializable crée une représentation sérialisable v2 (copie profonde).
+// toSerializable crée une représentation sérialisable (copie profonde).
+// Le format v3 (groupé par feature) est émis si les bases de features sont
+// connues : après un entraînement (featureBases collectées par le Trainer) ou
+// après le chargement mutable d'un modèle v3 (cycle prune). Sinon, v2.
 func (crf *CRF) toSerializable() *SerializableModel {
 	L := len(crf.Labels)
 
@@ -62,7 +80,6 @@ func (crf *CRF) toSerializable() *SerializableModel {
 	}
 
 	sm := &SerializableModel{
-		Version:    modelVersion,
 		Labels:     labels,
 		Transition: trans,
 		Features:   crf.FeatureCfg,
@@ -71,8 +88,51 @@ func (crf *CRF) toSerializable() *SerializableModel {
 	crf.Weights.mu.RLock()
 	defer crf.Weights.mu.RUnlock()
 
-	if crf.Weights.W != nil {
-		// Mode training/mutable : convertir map → clés triées + vals float32.
+	switch {
+	case crf.Weights.BaseKeys != nil:
+		// Mode inférence groupé (chargé depuis un v3) : copie directe.
+		sm.Version = modelVersionGrouped
+		sm.BaseKeys = crf.Weights.BaseKeys
+		sm.BlockVals = crf.Weights.BlockVals
+
+	case crf.Weights.W != nil && len(crf.featureBases) > 0:
+		// Mode training avec bases connues : regrouper les poids par feature.
+		// Les blocs entièrement nuls (features élaguées) sont omis.
+		sm.Version = modelVersionGrouped
+		bases := make([]uint64, len(crf.featureBases))
+		copy(bases, crf.featureBases)
+		sort.Slice(bases, func(i, j int) bool { return bases[i] < bases[j] })
+
+		keptBases := make([]uint64, 0, len(bases))
+		blockVals := make([]float32, 0, len(bases)*L)
+		block := make([]float32, L)
+		covered := 0
+		for _, base := range bases {
+			nonZero := false
+			for l := 0; l < L; l++ {
+				block[l] = 0
+				if w, ok := crf.Weights.W[hashFeatureLabelFromBase(base, l)]; ok {
+					block[l] = float32(w)
+					nonZero = true
+					covered++
+				}
+			}
+			if nonZero {
+				keptBases = append(keptBases, base)
+				blockVals = append(blockVals, block...)
+			}
+		}
+		sm.BaseKeys = keptBases
+		sm.BlockVals = blockVals
+
+		if covered < len(crf.Weights.W) {
+			log.Printf("model: sérialisation v3 : %d poids sur %d non couverts par les bases de features (perdus)",
+				len(crf.Weights.W)-covered, len(crf.Weights.W))
+		}
+
+	case crf.Weights.W != nil:
+		// Mode training/mutable sans bases : format v2 (clés triées + float32).
+		sm.Version = modelVersionFlat
 		n := len(crf.Weights.W)
 		keys := make([]uint64, 0, n)
 		for k := range crf.Weights.W {
@@ -85,8 +145,10 @@ func (crf *CRF) toSerializable() *SerializableModel {
 		}
 		sm.WeightKeys = keys
 		sm.WeightVals = vals
-	} else {
-		// Mode compact : copier les tranches directement.
+
+	default:
+		// Mode compact plat : copier les tranches directement.
+		sm.Version = modelVersionFlat
 		sm.WeightKeys = crf.Weights.Keys
 		sm.WeightVals = crf.Weights.Vals
 	}
@@ -144,22 +206,37 @@ func (sm *SerializableModel) toCRFMutable() *CRF {
 	}
 
 	var weights map[uint64]float64
-	if sm.Version == "2" {
+	var featureBases []uint64
+	switch sm.Version {
+	case modelVersionGrouped:
+		// v3 : reconstruire la map plate depuis les blocs. Les bases sont
+		// conservées pour que Save ré-émette du v3 (cycle prune).
+		weights = make(map[uint64]float64, len(sm.BlockVals))
+		featureBases = sm.BaseKeys
+		for i, base := range sm.BaseKeys {
+			for l := 0; l < L; l++ {
+				if w := sm.BlockVals[i*L+l]; w != 0 {
+					weights[hashFeatureLabelFromBase(base, l)] = float64(w)
+				}
+			}
+		}
+	case modelVersionFlat:
 		// v2 : reconvertir float32 → map float64 pour permettre les mutations.
 		weights = make(map[uint64]float64, len(sm.WeightKeys))
 		for i, k := range sm.WeightKeys {
 			weights[k] = float64(sm.WeightVals[i])
 		}
-	} else {
+	default:
 		weights = sm.Weights
 	}
 
 	return &CRF{
-		Labels:     sm.Labels,
-		LabelIndex: labelIndex,
-		Weights:    &SparseWeights{W: weights},
-		Transition: trans,
-		FeatureCfg: sm.Features,
+		Labels:       sm.Labels,
+		LabelIndex:   labelIndex,
+		Weights:      &SparseWeights{W: weights},
+		Transition:   trans,
+		FeatureCfg:   sm.Features,
+		featureBases: featureBases,
 	}
 }
 
@@ -189,11 +266,18 @@ func (sm *SerializableModel) toCRF() *CRF {
 		FeatureCfg: sm.Features,
 	}
 
-	if sm.Version == "2" {
-		// v2 : poids déjà au format compact, assignation directe.
+	switch sm.Version {
+	case modelVersionGrouped:
+		// v3 : poids groupés par feature, assignation directe.
+		crf.Weights.BaseKeys = sm.BaseKeys
+		crf.Weights.BlockVals = sm.BlockVals
+		crf.Weights.BlockL = L
+		crf.featureBases = sm.BaseKeys
+	case modelVersionFlat:
+		// v2 : poids déjà au format compact plat, assignation directe.
 		crf.Weights.Keys = sm.WeightKeys
 		crf.Weights.Vals = sm.WeightVals
-	} else {
+	default:
 		// v1 : poids dans la map, compacter pour réduire l'empreinte mémoire.
 		crf.Weights.W = sm.Weights
 		crf.Weights.Compact()

@@ -27,6 +27,7 @@ type Recognizer struct {
 	langCode           string            // code ISO 639-1 configuré via WithLanguage
 	sentenceBoundaries map[string]bool   // tokens non-mots qui délimitent les phrases
 	includePunctuation bool              // inclure les tokens de ponctuation dans les séquences CRF
+	computeConfidence  bool              // calculer les marginales (scores de confiance des entités)
 	postFilters        []EntityFilter    // filtres appliqués après la reconnaissance
 	warnings           []string          // écarts détectés entre la config du modèle et celle de l'inférence
 	lastText           string            // texte de la dernière reconnaissance (pour NameCompletionPass)
@@ -102,6 +103,18 @@ func WithSentenceBoundaries(tokens ...string) RecognizerOption {
 func WithPunctuationTokens(enabled bool) RecognizerOption {
 	return func(rec *Recognizer) error {
 		rec.includePunctuation = enabled
+		return nil
+	}
+}
+
+// WithConfidenceScores contrôle le calcul des scores de confiance des entités
+// (probabilités marginales par forward-backward, activé par défaut).
+// Désactivé, Entity.Confidence vaut toujours 1.0 et le forward-backward est
+// évité — à utiliser pour le débit quand aucun MinConfidenceFilter n'est
+// configuré.
+func WithConfidenceScores(enabled bool) RecognizerOption {
+	return func(rec *Recognizer) error {
+		rec.computeConfidence = enabled
 		return nil
 	}
 }
@@ -189,6 +202,7 @@ func New(m *Model, opts ...RecognizerOption) (*Recognizer, error) {
 		},
 		sentenceBoundaries: boundaries,
 		includePunctuation: true, // aligné sur l'entraînement (cf. WithPunctuationTokens)
+		computeConfidence:  true,
 		crf:                m.crf,
 	}
 
@@ -205,6 +219,16 @@ func New(m *Model, opts ...RecognizerOption) (*Recognizer, error) {
 	if w := m.crf.FeatureCfg.WindowSize; w > 0 {
 		rec.extractor.WindowSize = w
 	}
+
+	// Propager le schéma de features du modèle : les chaînes de features de
+	// l'inférence doivent être identiques à celles de l'entraînement.
+	schema := m.crf.FeatureCfg.FeatureSchema
+	if schema > features.LatestSchema {
+		return nil, fmt.Errorf(
+			"ner: le modèle utilise le schéma de features %d, non géré par cette version de la bibliothèque (max %d) — mettre à jour go-anon",
+			schema, features.LatestSchema)
+	}
+	rec.extractor.Schema = schema
 
 	rec.warnings = configWarnings(m.crf.FeatureCfg, rec)
 
@@ -317,8 +341,16 @@ func (r *Recognizer) recognizeLine(line string, byteOffset int, labelIndex map[s
 		for i := range seqTokens {
 			feats[i] = r.extractor.FeaturesEx(words, lowerWords, i)
 		}
-		labels := r.crf.Predict(feats)
-		marginals := r.crf.PredictMarginals(feats)
+		// Émissions calculées une seule fois pour le Viterbi et les marginales ;
+		// marginales omises si les scores de confiance sont désactivés
+		// (decodeEntitiesWithScores retourne alors Confidence=1.0).
+		var labels []string
+		var marginals [][]float64
+		if r.computeConfidence {
+			labels, marginals = r.crf.PredictWithMarginals(feats)
+		} else {
+			labels = r.crf.Predict(feats)
+		}
 		fixedLabels := FixBIOViolations(labels)
 		segEntities := decodeEntitiesWithScores(seqTokens, fixedLabels, marginals, labelIndex)
 		for i := range segEntities {

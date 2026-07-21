@@ -150,10 +150,41 @@ func (tr *Trainer) Train(train, dev []corpus.Sentence) (*CRF, error) {
 		}
 	}
 
+	result := crf
 	if bestCRF != nil {
-		return bestCRF, nil
+		result = bestCRF
 	}
-	return crf, nil
+
+	// Collecter les bases de features pour la sérialisation groupée v3.
+	// Passe dédiée sans dropout : le dropout des époques ne garantit pas
+	// d'avoir vu chaque feature, et Save doit couvrir tous les poids.
+	log.Printf("collecte des bases de features pour la sérialisation v3…")
+	result.featureBases = tr.collectFeatureBases(train)
+	log.Printf("bases de features collectées : %d features uniques", len(result.featureBases))
+
+	return result, nil
+}
+
+// collectFeatureBases énumère les hachés de base (hashFeatureBase) de toutes
+// les features extraites du corpus, sans dropout.
+func (tr *Trainer) collectFeatureBases(train []corpus.Sentence) []uint64 {
+	seen := make(map[uint64]struct{}, 1<<20)
+	for _, sent := range train {
+		if len(sent) == 0 {
+			continue
+		}
+		words := extractWords(sent)
+		for i := range sent {
+			for feat := range tr.Extractor.Features(words, i) {
+				seen[hashFeatureBase(feat)] = struct{}{}
+			}
+		}
+	}
+	bases := make([]uint64, 0, len(seen))
+	for b := range seen {
+		bases = append(bases, b)
+	}
+	return bases
 }
 
 // sgdUpdate effectue une mise à jour SGD sur une phrase.

@@ -35,9 +35,14 @@ go build -o bin/brown-cluster ./cmd/brown-cluster/
   -prune-threshold 0.001 \
   -output model_fr.crf.gz
 
-# Évaluation F1 (matching strict type + span)
+# Évaluation F1 (matching strict type + span).
+# Passer les MÊMES -gazetteers/-clusters qu'à l'entraînement (sinon F1 sous-évalué ;
+# Recognizer.Warnings() alerte sur stderr). -keep-punct et -boundaries pilotent la
+# configuration d'inférence (défauts : ponctuation conservée, coupure . ! ? …).
 ./bin/eval -model model_fr.crf.gz -lang fr \
-  -test data/wikiner_fr.test.conll -format conll
+  -test data/wikiner_fr.test.conll -format conll \
+  -clusters data/brown_clusters_fr.txt \
+  -gazetteers "firstnames:data/eu_prenoms.txt,lastnames:data/eu_patronymes.txt"
 
 # Réduction d'un modèle existant sans ré-entraînement
 ./bin/prune -model model_fr_full_bio.crf.gz \
@@ -83,20 +88,35 @@ Le projet est un pipeline NER (Named Entity Recognition) autonome, sans dépenda
 ```
 texte brut
   → UnicodeTokenizer        (pkg/tokenizer)   — segmentation rune-par-rune, offsets byte-accurate
-  → découpage ligne/phrase  (pkg/ner)          — chaque ligne puis chaque phrase (délimiteurs configurables)
-  → FeatureExtractor        (pkg/features)     — ~40-60 features/token : morpho, shape, contexte, clusters, gazetteers
-  → CRF.Predict / Viterbi   (pkg/model)        — décodage optimal en BIO
+  → découpage ligne/phrase  (pkg/ner)          — chaque ligne puis chaque phrase ; par défaut la ponctuation
+                                                 est conservée dans la séquence CRF et le découpage se fait
+                                                 aux seules fins de phrase (. ! ? …), aligné sur l'entraînement
+  → FeatureExtractor        (pkg/features)     — ~40-60 features/token : morpho, shape, contexte, clusters,
+                                                 gazetteers ; chaînes versionnées par FeatureSchema
+  → CRF.PredictWithMarginals (pkg/model)       — Viterbi + marginales en une passe d'émissions (BIO)
   → decodeEntitiesWithScores (pkg/ner)         — reconstruction des spans avec scores de confiance
-  → EntityFilter[]          (pkg/ner)          — post-filtres chaînables (confiance, longueur, blocklist)
+  → EntityFilter[]          (pkg/ner)          — post-filtres chaînables (confiance, longueur, blocklist, regex)
   → Anonymizer.Anonymize    (pkg/anonymizer)   — remplacement en ordre inverse des offsets
 ```
+
+Points de configuration importants (cf. `pkg/ner` et `goanon.go`) :
+
+- `WithPunctuationTokens(bool)` — inclusion de la ponctuation dans la séquence
+  CRF (défaut : activé). `WithSentenceBoundaries(...)` — délimiteurs de phrase
+  (défaut : `. ! ? …`). Ces deux défauts valent **+1,7 pt de F1** sur WikiNER fr
+  par rapport à l'ancien comportement (ponctuation retirée, découpage aux virgules).
+- `WithConfidenceScores(bool)` — calcul des marginales de confiance (défaut :
+  activé) ; le désactiver saute le forward-backward pour le débit maximal.
+- `Recognizer.Warnings()` — écarts détectés entre la `FeatureConfig` du modèle
+  et la configuration d'inférence (gazetteers/clusters manquants, langue
+  différente). Affiché par `eval`, `demo` et `anon-doc`.
 
 ### Packages
 
 | Package            | Rôle                                                                                                         |
 | ------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `pkg/model`        | CRF linéaire : poids, Viterbi, forward-backward, entraînement SGD/Adam, sérialisation gob+gzip               |
-| `pkg/features`     | Extraction de features : morphologie, n-grammes, shape, Brown clusters, word embeddings (GloVe), gazetteers  |
+| `pkg/model`        | CRF linéaire : poids, Viterbi, forward-backward, entraînement SGD/Adam, sérialisation gob+gzip (formats v1/v2/v3, cf. ci-dessous) |
+| `pkg/features`     | Extraction de features : morphologie, n-grammes, shape, Brown clusters, word embeddings (GloVe), gazetteers ; schéma versionné (`FeatureSchema`) |
 | `pkg/ner`          | Orchestration : `Recognizer`, décodage BIO→entités, évaluation F1, post-filtres, corrections BIO             |
 | `pkg/anonymizer`   | Remplacement des entités : stratégies (tag/redact/hash), `Session` cross-segments, passes de post-traitement |
 | `pkg/docprocessor` | Interface `Walker` + `Processor` — orchestration de l'anonymisation de documents format-agnostique           |
@@ -105,8 +125,8 @@ texte brut
 | `pkg/csv`          | `Walker` CSV/TSV : détection auto du séparateur, anonymisation cellule par cellule                           |
 | `pkg/pdf`          | `Walker` PDF (lecture seule via pdfcpu) : extraction texte avec offsets, redact dans le flux de contenu      |
 | `pkg/corpus`       | Lecture CoNLL et WikiNER, normalisation BIO, conversion BIO↔BIOES                                            |
-| `pkg/tokenizer`    | `UnicodeTokenizer` — offsets byte-précis, options FR/EN (apostrophe, trait d'union)                          |
-| `pkg/lang`         | Profils linguistiques : stop-words, préfixes honorifiques, features spécifiques FR/EN                        |
+| `pkg/tokenizer`    | `UnicodeTokenizer` — offsets byte-précis, options FR/ES (apostrophe) et EN (trait d'union)                   |
+| `pkg/lang`         | Profils linguistiques : stop-words, préfixes honorifiques, features spécifiques FR/EN/ES                     |
 | `pkg/langdetect`   | Interface `Detector` de détection automatique de langue ; implémentation `WhatlangDetector` (whatlanggo)      |
 | `pkg/modelstore`   | Téléchargement automatique, cache, vérification SHA-256 et découverte des modèles depuis GitHub Releases      |
 
@@ -130,3 +150,46 @@ Utilisation avec téléchargement automatique :
 ```
 
 Voir `pkg/modelstore` pour l'API et le fonctionnement.
+
+## Format des modèles et schéma de features
+
+**Formats de sérialisation** (`pkg/model/serialize.go`, champ `Version`) :
+
+- **v1** : poids dans une `map[uint64]float64` (héritage).
+- **v2** : `WeightKeys []uint64` triés + `WeightVals []float32` — une entrée par
+  paire (feature, label). Format des modèles publiés jusqu'à mi-2026.
+- **v3** : poids **groupés par feature** (`BaseKeys` + blocs contigus de L poids).
+  Une seule recherche binaire par feature à l'inférence au lieu de L. Émis par
+  l'entraînement (le `Trainer` collecte les bases de features). Chargement
+  rétrocompatible v1/v2/v3 ; le cycle `prune` préserve le format d'origine.
+
+Gains v3 : ~×4,6 de latence d'inférence cumulée (chemin chaud) et modèles
+~30–50 % plus petits, à qualité égale.
+
+**Schéma de features** (`FeatureConfig.FeatureSchema`, propagé à l'inférence par
+`ner.New`) :
+
+- **Schéma 0** (historique, gelé) : comportement des modèles v1/v2 existants,
+  conservé **bit-à-bit** pour ne rien casser. Contient deux bugs assumés
+  (`word.len` faux pour les mots ≥ 10 caractères via `itos`, feature `gazseq`
+  posée uniquement sur le premier token d'un span gazetteer multi-mots).
+- **Schéma 1** : `word.len` correct (`strconv.Itoa`) et `gazseq.<nom>.B`/`.I`
+  sur chaque token d'un span multi-mots. Utilisé par tout nouvel entraînement
+  (`features.LatestSchema`).
+
+**Règle d'or** : les chaînes de features sont hachées dans les modèles. Toute
+modification de l'extracteur qui change une chaîne doit être gardée par un
+nouveau `FeatureSchema` (sinon dégradation silencieuse des modèles existants).
+`ner.New` refuse un modèle dont le schéma dépasse `features.LatestSchema`.
+
+## Performances de référence (WikiNER, matching strict)
+
+| Langue | F1    | Schéma / format |
+| ------ | ----- | --------------- |
+| fr     | 93,6 % | schéma 1 / v3   |
+| en     | 90,7 % | schéma 1 / v3   |
+| es     | 95,6 % | schéma 1 / v3 (`-early-stop 8 -epochs 30`, cf. `FIX.md`) |
+
+Évaluer **toujours** avec les mêmes `-gazetteers` et `-clusters` qu'à
+l'entraînement ; `Recognizer.Warnings()` signale les écarts. Voir
+`docs/tutoriel-modele.md` pour la reproduction complète.

@@ -43,6 +43,17 @@ func (g *Gazetteer) Contains(word string) bool {
 	return g.entries[strings.ToLower(word)] > 0
 }
 
+// ContainsLower est identique à Contains mais attend un mot déjà en
+// minuscules, évitant l'allocation ToLower dans le chemin chaud.
+func (g *Gazetteer) ContainsLower(lowerWord string) bool {
+	return g.entries[lowerWord] > 0
+}
+
+// FrequencyLower est identique à Frequency mais attend un mot déjà en minuscules.
+func (g *Gazetteer) FrequencyLower(lowerWord string) int {
+	return int(g.entries[lowerWord])
+}
+
 // Frequency retourne le nombre d'occurrences du mot dans le gazetteer.
 // Retourne 0 si le mot n'est pas dans le gazetteer.
 func (g *Gazetteer) Frequency(word string) int {

@@ -116,8 +116,12 @@ func main() {
 	}
 
 	// --- Configuration du FeatureExtractor ---
+	// Les nouveaux entraînements utilisent toujours le dernier schéma de
+	// features ; il est enregistré dans le modèle (FeatureCfg.FeatureSchema)
+	// et propagé automatiquement à l'inférence par ner.New.
 	extractor := &features.FeatureExtractor{
 		WindowSize:  *window,
+		Schema:      features.LatestSchema,
 		LangProfile: langProfile(*langCode),
 		Gazetteers:  gazetteers,
 		Clusters:    clusters,
@@ -166,6 +170,7 @@ func main() {
 		LangCode:       *langCode,
 		HasClusters:    clusters != nil,
 		HasEmbeddings:  embeddings != nil,
+		FeatureSchema:  features.LatestSchema,
 	}
 
 	// --- Sauvegarde ---

@@ -8,7 +8,16 @@ import "math"
 // Complexité : O(n × L²) où n = longueur de la phrase, L = nombre de labels.
 // Retourne nil si featureSequence est vide.
 func (crf *CRF) Predict(featureSequence []map[string]float64) []string {
-	n := len(featureSequence)
+	if len(featureSequence) == 0 {
+		return nil
+	}
+	return crf.viterbiFromEmissions(computeEmissions(crf, featureSequence))
+}
+
+// viterbiFromEmissions exécute le décodage Viterbi sur des émissions déjà
+// calculées (partagées avec le forward-backward via PredictWithMarginals).
+func (crf *CRF) viterbiFromEmissions(emissions [][]float64) []string {
+	n := len(emissions)
 	if n == 0 {
 		return nil
 	}
@@ -25,13 +34,12 @@ func (crf *CRF) Predict(featureSequence []map[string]float64) []string {
 
 	// Initialisation t=0 : uniquement score d'émission (pas de transition initiale).
 	for l := 0; l < L; l++ {
-		dp[0][l] = crf.Weights.Score(featureSequence[0], l)
+		dp[0][l] = emissions[0][l]
 	}
 
 	// Récurrence t=1..n-1.
 	for t := 1; t < n; t++ {
 		for l := 0; l < L; l++ {
-			emission := crf.Weights.Score(featureSequence[t], l)
 			bestScore := math.Inf(-1)
 			bestPrev := 0
 
@@ -43,7 +51,7 @@ func (crf *CRF) Predict(featureSequence []map[string]float64) []string {
 				}
 			}
 
-			dp[t][l] = bestScore + emission
+			dp[t][l] = bestScore + emissions[t][l]
 			bp[t][l] = bestPrev
 		}
 	}

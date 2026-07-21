@@ -10,7 +10,11 @@ Les exemples utilisent `<LANG>` comme variable de langue. Remplacez-la par `fr`,
 
 - Go 1.21+ installé et `go build` fonctionnel
 - ~4 Go de RAM disponible (entraînement corpus complet)
-- ~15–20 min de temps CPU par langue (workers = 1)
+- **Plusieurs heures de CPU par langue** (`-workers 1`, obligatoire) : sur le
+  corpus WikiNER complet (~250–280 k phrases), une époque prend ~8–11 min ; un
+  entraînement de 20 époques (souvent écourté par l'early-stopping) représente
+  ~2 à 3,5 h par langue. Le tutoriel citait auparavant « 15–20 min » — c'était
+  sous-évalué d'un ordre de grandeur pour le corpus complet.
 
 ## Étape 1 — Compiler les binaires
 
@@ -264,25 +268,46 @@ C'est la configuration qui produit les modèles de production :
 
 ```bash
 ./bin/eval \
-  -model  models/model_<LANG>_pruned.crf.gz \
-  -lang   <LANG> \
-  -test   data/<LANG>/wikiner_<LANG>.test.conll \
-  -format conll
+  -model      models/model_<LANG>_pruned.crf.gz \
+  -lang       <LANG> \
+  -test       data/<LANG>/wikiner_<LANG>.test.conll \
+  -format     conll \
+  -clusters   data/<LANG>/brown_clusters_<LANG>.txt \
+  -gazetteers "firstnames:data/eu_prenoms.txt,lastnames:data/eu_patronymes.txt"
 ```
 
+> **Important** : passer à l'évaluation exactement les mêmes `-gazetteers` et
+> `-clusters` qu'à l'entraînement, sinon les features gazetteers/clusters
+> manquent et le F1 chute de plusieurs points. `Recognizer.Warnings()` (affiché
+> sur stderr par `eval`, `demo` et `anon-doc`) signale ces écarts.
+
+Flags d'évaluation liés à la configuration d'inférence :
+
+| Flag           | Défaut  | Effet                                                          |
+| -------------- | ------- | -------------------------------------------------------------- |
+| `-keep-punct`  | `true`  | Conserve la ponctuation dans la séquence CRF (aligné train)    |
+| `-boundaries`  | `. ! ? …` | Délimiteurs de phrase ; `-keep-punct=false` + anciens délimiteurs reproduit l'inférence pré-2026 |
+| `-clusters`    | —       | Fichier Brown clusters (doit correspondre à l'entraînement)    |
+| `-gazetteers`  | —       | Gazetteers `nom:fichier.txt,...` (idem)                        |
+
 Performances de référence sur WikiNER (configuration 5b, splits seed 42,
-inférence avec ponctuation conservée et frontières de phrase par défaut —
-mesures 2026-07) :
+matching strict, inférence par défaut — mesures 2026-07) :
 
-| Langue | F1 global | PER   | LOC   | ORG   | MISC  |
-| ------ | --------- | ----- | ----- | ----- | ----- |
-| `fr`   | 93.0%     | 96.5% | 91.8% | 92.2% | 90.3% |
-| `en`   | 90.5%     | 94.1% | 89.1% | 90.6% | 87.0% |
-| `es`   | 95.1%     | 97.4% | 94.4% | 93.4% | 94.3% |
+| Langue | F1 global | PER   | LOC   | ORG   | MISC  | Schéma / format |
+| ------ | --------- | ----- | ----- | ----- | ----- | --------------- |
+| `fr`   | 93.6%     | 96.7% | 93.1% | 91.7% | 89.9% | schéma 1 / v3   |
+| `en`   | 90.7%     | 94.1% | 89.0% | 90.8% | 87.8% | schéma 1 / v3   |
+| `es`   | 95.6%     | 97.5% | 94.9% | 93.7% | 95.3% | schéma 1 / v3   |
 
-> **Important** : passer à l'évaluation les mêmes `-gazetteers` et `-clusters`
-> qu'à l'entraînement. Depuis l'ajout de `Recognizer.Warnings()`, tout écart
-> (gazetteer ou clusters manquants, langue différente) est signalé sur stderr.
+> Les nouveaux entraînements produisent des modèles au **schéma de features 1**
+> (deux bugs corrigés : `word.len`, gazetteers multi-mots) et au **format v3**
+> (poids groupés par feature, inférence ~×4,6, modèles ~30–50 % plus petits).
+> Ces deux évolutions sont enregistrées dans le modèle et propagées
+> automatiquement à l'inférence — aucune option à passer.
+>
+> **Note espagnol** : le F1 dev de l'espagnol est bruité ; utiliser une patience
+> d'early-stopping élargie (`-early-stop 8 -epochs 30`). Avec la valeur par
+> défaut (`-early-stop 5`), l'entraînement s'arrête sur un plateau et perd ~1 pt.
 
 ## Étape 7 — Réduire la taille du modèle (optionnel)
 
