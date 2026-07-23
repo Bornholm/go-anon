@@ -16,6 +16,14 @@ func (m *mockRecognizer) Recognize(text string) ([]ner.Entity, error) {
 	return m.entities, nil
 }
 
+// expandPH réécrit les placeholders legacy `[LABEL_N]` d'une chaîne attendue au
+// format moderne `⟦LABEL_N_nonce⟧`, le nonce étant tiré au hasard par session.
+func expandPH(nonce, s string) string {
+	return legacyPlaceholderPattern.ReplaceAllStringFunc(s, func(m string) string {
+		return phOpen + m[1:len(m)-1] + "_" + nonce + phClose
+	})
+}
+
 func TestAnonymize_TagReplace(t *testing.T) {
 	entities := []ner.Entity{
 		{Text: "John Doe", Type: ner.TypePER, Start: 0, End: 8, Confidence: 1.0},
@@ -24,17 +32,19 @@ func TestAnonymize_TagReplace(t *testing.T) {
 	rec := &mockRecognizer{entities: entities}
 	anon := New(rec, Config{Strategy: TagReplace})
 
-	result, err := anon.Anonymize("John Doe works at Acme.")
+	sess := NewSession()
+	result, err := anon.Anonymize("John Doe works at Acme.", WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
 
-	if !strings.Contains(result.Text, "[PERSON_1]") {
-		t.Errorf("expected [PERSON_1] in result, got %q", result.Text)
+	person := expandPH(sess.Nonce(), "[PERSON_1]")
+	if !strings.Contains(result.Text, person) {
+		t.Errorf("expected %s in result, got %q", person, result.Text)
 	}
 
-	if result.Mapping["[PERSON_1]"] != "John Doe" {
-		t.Errorf("mapping incorrect: got %s", result.Mapping["[PERSON_1]"])
+	if result.Mapping[person] != "John Doe" {
+		t.Errorf("mapping incorrect: got %s", result.Mapping[person])
 	}
 }
 
@@ -64,17 +74,18 @@ func TestAnonymize_Hash(t *testing.T) {
 	rec := &mockRecognizer{entities: entities}
 	anon := New(rec, Config{Strategy: Hash})
 
-	result, err := anon.Anonymize("Alice is here.")
+	result, err := anon.Anonymize("Alice is here.", WithHashKey(testHashKey))
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
 
-	if !strings.Contains(result.Text, "[PER_") {
-		t.Errorf("expected [PER_...] in result, got %q", result.Text)
+	if !strings.Contains(result.Text, phOpen+"PER_") {
+		t.Errorf("expected ⟦PER_...⟧ in result, got %q", result.Text)
 	}
 
 	for placeholder := range result.Mapping {
-		expectedLen := 12
+		// ⟦ (3o) + "PER_" (4o) + 16 hex + ⟧ (3o)
+		expectedLen := 3 + 4 + 16 + 3
 		if len(placeholder) != expectedLen {
 			t.Errorf("expected placeholder length %d, got %d", expectedLen, len(placeholder))
 		}
@@ -90,22 +101,24 @@ func TestAnonymize_ConsistentMap_Fuzzy(t *testing.T) {
 	rec := &mockRecognizer{entities: entities}
 	anon := New(rec, Config{Strategy: Consistent, ConsistentMap: true})
 
-	result, err := anon.Anonymize("John Doe works with JOHN DOE.")
+	sess := NewSession()
+	result, err := anon.Anonymize("John Doe works with JOHN DOE.", WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
 
-	count := strings.Count(result.Text, "[PERSON_1]")
+	person := expandPH(sess.Nonce(), "[PERSON_1]")
+	count := strings.Count(result.Text, person)
 	if count != 2 {
-		t.Errorf("expected 2 occurrences of [PERSON_1], got %d", count)
+		t.Errorf("expected 2 occurrences of %s, got %d", person, count)
 	}
 
 	firstOriginal, ok := result.OriginalToPlaceholder["John Doe"]
 	if !ok {
 		t.Error("expected OriginalToPlaceholder entry for 'John Doe'")
 	}
-	if firstOriginal != "[PERSON_1]" {
-		t.Errorf("expected [PERSON_1], got %s", firstOriginal)
+	if firstOriginal != person {
+		t.Errorf("expected %s, got %s", person, firstOriginal)
 	}
 }
 
@@ -147,13 +160,15 @@ func TestAnonymize_FilterByType(t *testing.T) {
 		EntityTypes: []ner.EntityType{ner.TypePER},
 	})
 
-	result, err := anon.Anonymize("John Doe lives in Paris.")
+	sess := NewSession()
+	result, err := anon.Anonymize("John Doe lives in Paris.", WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
 
-	if !strings.Contains(result.Text, "[PERSON_1]") {
-		t.Errorf("expected [PERSON_1], got %q", result.Text)
+	person := expandPH(sess.Nonce(), "[PERSON_1]")
+	if !strings.Contains(result.Text, person) {
+		t.Errorf("expected %s, got %q", person, result.Text)
 	}
 
 	if strings.Contains(result.Text, "LOCATION") {
@@ -263,7 +278,8 @@ func TestAnonymize_MultipleEntities(t *testing.T) {
 	rec := &mockRecognizer{entities: entities}
 	anon := New(rec, Config{Strategy: TagReplace})
 
-	result, err := anon.Anonymize("John Doe lives in Paris and works at Acme.")
+	sess := NewSession()
+	result, err := anon.Anonymize("John Doe lives in Paris and works at Acme.", WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
@@ -272,13 +288,14 @@ func TestAnonymize_MultipleEntities(t *testing.T) {
 		t.Errorf("expected 3 mappings, got %d", len(result.Mapping))
 	}
 
-	if result.Mapping["[PERSON_1]"] != "John Doe" {
+	nonce := sess.Nonce()
+	if result.Mapping[expandPH(nonce, "[PERSON_1]")] != "John Doe" {
 		t.Errorf("expected PERSON_1 -> John Doe")
 	}
-	if result.Mapping["[LOCATION_1]"] != "Paris" {
+	if result.Mapping[expandPH(nonce, "[LOCATION_1]")] != "Paris" {
 		t.Errorf("expected LOCATION_1 -> Paris")
 	}
-	if result.Mapping["[ORGANIZATION_1]"] != "Acme" {
+	if result.Mapping[expandPH(nonce, "[ORGANIZATION_1]")] != "Acme" {
 		t.Errorf("expected ORGANIZATION_1 -> Acme")
 	}
 }
@@ -291,7 +308,8 @@ func TestAnonymize_BidirectionalMapping(t *testing.T) {
 	rec := &mockRecognizer{entities: entities}
 	anon := New(rec, Config{Strategy: TagReplace})
 
-	result, err := anon.Anonymize("John Doe is here.")
+	sess := NewSession()
+	result, err := anon.Anonymize("John Doe is here.", WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
@@ -304,9 +322,10 @@ func TestAnonymize_BidirectionalMapping(t *testing.T) {
 		t.Error("expected non-empty OriginalToPlaceholder")
 	}
 
-	if result.OriginalToPlaceholder["John Doe"] != "[PERSON_1]" {
-		t.Errorf("expected OriginalToPlaceholder[John Doe] = [PERSON_1], got %s",
-			result.OriginalToPlaceholder["John Doe"])
+	person := expandPH(sess.Nonce(), "[PERSON_1]")
+	if result.OriginalToPlaceholder["John Doe"] != person {
+		t.Errorf("expected OriginalToPlaceholder[John Doe] = %s, got %s",
+			person, result.OriginalToPlaceholder["John Doe"])
 	}
 }
 
@@ -341,12 +360,13 @@ func TestEnsureConsistency_CatchesMissedEntities(t *testing.T) {
 	rec := &mockRecognizer{entities: []ner.Entity{first}}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
-	result, err := anon.Anonymize(original)
+	sess := NewSession()
+	result, err := anon.Anonymize(original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
 
-	expected := "[PERSON_1] est la responsable. [PERSON_1] gère les finances."
+	expected := expandPH(sess.Nonce(), "[PERSON_1] est la responsable. [PERSON_1] gère les finances.")
 	if result.Text != expected {
 		t.Errorf("consistency pass failed\n  expected: %q\n  got:      %q", expected, result.Text)
 	}
@@ -361,13 +381,14 @@ func TestEnsureConsistency_TypeMismatch(t *testing.T) {
 	rec := &mockRecognizer{entities: []ner.Entity{first, second}}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
-	result, err := anon.Anonymize(original)
+	sess := NewSession()
+	result, err := anon.Anonymize(original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
 
-	countPerson := strings.Count(result.Text, "[PERSON_1]")
-	countLocation := strings.Count(result.Text, "[LOCATION_1]")
+	countPerson := strings.Count(result.Text, expandPH(sess.Nonce(), "[PERSON_1]"))
+	countLocation := strings.Count(result.Text, expandPH(sess.Nonce(), "[LOCATION_1]"))
 	if countPerson+countLocation != 2 {
 		t.Errorf("expected 2 total placeholders, got PERSON=%d + LOCATION=%d", countPerson, countLocation)
 	}
@@ -388,12 +409,13 @@ func TestEnsureConsistency_AlreadyCorrect(t *testing.T) {
 	rec := &mockRecognizer{entities: []ner.Entity{first, second}}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
-	result, err := anon.Anonymize(original)
+	sess := NewSession()
+	result, err := anon.Anonymize(original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
 
-	if result.Text != "[PERSON_1] et [PERSON_1]." {
+	if result.Text != expandPH(sess.Nonce(), "[PERSON_1] et [PERSON_1].") {
 		t.Errorf("unexpected modification\n  got: %q", result.Text)
 	}
 }
@@ -492,12 +514,13 @@ func TestPostProcess_CompletesSurnameAfterPer(t *testing.T) {
 	rec := &mockRecognizer{entities: []ner.Entity{first}}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
 
-	result, err := anon.Anonymize(original)
+	sess := NewSession()
+	result, err := anon.Anonymize(original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
 
-	expected := "[PERSON_1] Martin est ici."
+	expected := expandPH(sess.Nonce(), "[PERSON_1] Martin est ici.")
 	if result.Text != expected {
 		t.Errorf("PostProcess failed\n  expected: %q\n  got:      %q", expected, result.Text)
 	}
@@ -509,12 +532,13 @@ func TestPostProcess_NoSurname_NoChange(t *testing.T) {
 	rec := &mockRecognizer{entities: []ner.Entity{first}}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
 
-	result, err := anon.Anonymize(original)
+	sess := NewSession()
+	result, err := anon.Anonymize(original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
 
-	expected := "[PERSON_1] est ici."
+	expected := expandPH(sess.Nonce(), "[PERSON_1] est ici.")
 	if result.Text != expected {
 		t.Errorf("unexpected modification\n  got: %q", result.Text)
 	}
@@ -526,12 +550,13 @@ func TestPostProcess_AdjacentSurnameWithSpace(t *testing.T) {
 	rec := &mockRecognizer{entities: []ner.Entity{first}}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
 
-	result, err := anon.Anonymize(original)
+	sess := NewSession()
+	result, err := anon.Anonymize(original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
 
-	expected := "[PERSON_1] Dupont est là."
+	expected := expandPH(sess.Nonce(), "[PERSON_1] Dupont est là.")
 	if result.Text != expected {
 		t.Errorf("PostProcess failed\n  expected: %q\n  got:      %q", expected, result.Text)
 	}
@@ -543,7 +568,8 @@ func TestPostProcess_AccentedAdjacentSurname(t *testing.T) {
 	rec := &mockRecognizer{entities: []ner.Entity{first}}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
 
-	result, err := anon.Anonymize(original)
+	sess := NewSession()
+	result, err := anon.Anonymize(original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -551,7 +577,7 @@ func TestPostProcess_AccentedAdjacentSurname(t *testing.T) {
 	if !utf8.ValidString(result.Text) {
 		t.Fatalf("texte anonymisé UTF-8 invalide : %q", result.Text)
 	}
-	expected := "Bonjour, [PERSON_1][PERSON_1] est ici."
+	expected := expandPH(sess.Nonce(), "Bonjour, [PERSON_1][PERSON_1] est ici.")
 	if result.Text != expected {
 		t.Errorf("nom accentué non absorbé\n  expected: %q\n  got:      %q", expected, result.Text)
 	}
@@ -565,12 +591,13 @@ func TestAnonymize_SharedSurname_DoesNotConflict(t *testing.T) {
 	rec := &mockRecognizer{entities: entities}
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
-	result, err := anon.Anonymize("Marie Dupont\n\nPierre Dupont")
+	sess := NewSession()
+	result, err := anon.Anonymize("Marie Dupont\n\nPierre Dupont", WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
 
-	if strings.Contains(result.Text, "[PERSON_1] [PERSON_2]") {
+	if strings.Contains(result.Text, expandPH(sess.Nonce(), "[PERSON_1] [PERSON_2]")) {
 		t.Errorf("shared surname should not cause partial replacement\n  got: %q", result.Text)
 	}
 }

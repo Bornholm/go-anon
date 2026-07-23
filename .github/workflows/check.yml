@@ -42,3 +42,55 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+  # Le détecteur de courses exige CGO ; les jobs ci-dessus restent en CGO_ENABLED=0
+  # pour valider la compilation Go pur.
+  race:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Test (race detector)
+        run: go test -race ./...
+
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  gosec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      # Informatif tant que les chantiers S5 (permissions du MappingStore) et S7
+      # (timeouts HTTP, limite de corps, traversée de chemin dans cmd/server) ne
+      # sont pas livrés : ces chantiers ferment l'essentiel des constats
+      # MEDIUM/HIGH actuels. À passer bloquant à la fin de S7.
+      - name: gosec
+        continue-on-error: true
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -severity medium ./...

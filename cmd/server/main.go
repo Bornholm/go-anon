@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -56,7 +57,23 @@ type Server struct {
 	models        map[string]*ner.Model
 	modelVersions map[string]string
 	gazetteers    map[string]*features.Gazetteer
-	mu            sync.RWMutex
+	// hashKey est chargée une fois au démarrage depuis GOANON_HASH_KEY. Vide, la
+	// stratégie "hash" est refusée plutôt que dégradée en SHA-256 nu.
+	hashKey goanon.HashKey
+	mu      sync.RWMutex
+}
+
+// anonymizeOptions construit les options d'anonymisation d'une requête.
+// L'erreur retournée est destinée au client : elle ne contient aucun contenu.
+func (s *Server) anonymizeOptions(strategy goanon.Strategy) ([]goanon.AnonymizeOption, error) {
+	if strategy != goanon.Hash {
+		return nil, nil
+	}
+	if len(s.hashKey) == 0 {
+		return nil, fmt.Errorf("stratégie \"hash\" indisponible : le serveur a été démarré sans %s",
+			goanon.HashKeyEnvVar)
+	}
+	return []goanon.AnonymizeOption{goanon.WithHashKey(s.hashKey)}, nil
 }
 
 type AnonymizeRequest struct {
@@ -146,6 +163,18 @@ func main() {
 		models:        make(map[string]*ner.Model),
 		modelVersions: make(map[string]string),
 		gazetteers:    gazetteers,
+	}
+
+	// La clé HMAC de la stratégie "hash" est optionnelle au démarrage mais
+	// obligatoire à l'usage : sans elle, les requêtes hash sont refusées.
+	switch key, err := goanon.HashKeyFromEnv(); {
+	case err == nil:
+		srv.hashKey = key
+		log.Printf("clé de hachage chargée depuis %s (stratégie \"hash\" disponible)", goanon.HashKeyEnvVar)
+	case errors.Is(err, goanon.ErrHashKeyNotSet):
+		log.Printf("%s non définie : la stratégie \"hash\" sera refusée", goanon.HashKeyEnvVar)
+	default:
+		log.Fatalf("chargement de %s : %v", goanon.HashKeyEnvVar, err)
 	}
 
 	// Détection du mode auto global
@@ -289,17 +318,28 @@ func (s *Server) handlePseudonymize(w http.ResponseWriter, r *http.Request) {
 		EntityTypes:   parseSkipTypes(req.SkipTypes),
 	}
 
-	anon := goanon.NewAnonymizer(rec, cfg)
-	anonStart := time.Now()
-	result, err := anon.Anonymize(req.Text)
+	anonOpts, err := s.anonymizeOptions(strat)
 	if err != nil {
-		http.Error(w, "anonymization failed: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	log.Printf("anonymize: %d chars, %d entities, took %s", len(req.Text), len(result.Entities), time.Since(anonStart))
-	for _, e := range result.Entities {
-		log.Printf("  entity type=%s text=%q start=%d end=%d conf=%.2f", e.Type, e.Text, e.Start, e.End, e.Confidence)
+
+	anon := goanon.NewAnonymizer(rec, cfg)
+	anonStart := time.Now()
+	result, err := anon.Anonymize(req.Text, anonOpts...)
+	if err != nil {
+		http.Error(w, "anonymization failed", http.StatusInternalServerError)
+		log.Printf("anonymize: échec : %v", err)
+		return
 	}
+	// Politique de logs « métadonnées seulement » : comptes par type, jamais de
+	// forme de surface ni de fragment du texte source.
+	countsByType := make(map[goanon.EntityType]int, len(result.Entities))
+	for _, e := range result.Entities {
+		countsByType[e.Type]++
+	}
+	log.Printf("anonymize: %d chars, %d entities %v, took %s",
+		len(req.Text), len(result.Entities), countsByType, time.Since(anonStart))
 
 	entities := make([]Entity, len(result.Entities))
 	for i, e := range result.Entities {
@@ -347,9 +387,11 @@ func (s *Server) handleDepseudonymize(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	deanonStart := time.Now()
-	text := req.Text
-	for placeholder, original := range req.Mapping {
-		text = strings.ReplaceAll(text, placeholder, original)
+	text, err := goanon.Deanonymize(req.Text, req.Mapping)
+	if err != nil {
+		http.Error(w, "deanonymization failed", http.StatusBadRequest)
+		log.Printf("deanonymize: échec : %v", err)
+		return
 	}
 	log.Printf("deanonymize: %d chars, %d mappings, took %s", len(req.Text), len(req.Mapping), time.Since(deanonStart))
 
@@ -527,6 +569,11 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 		ConsistentMap: true,
 		EntityTypes:   parseSkipTypes(skipTypes),
 	}
+	anonOpts, err := s.anonymizeOptions(cfg.Strategy)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	anon := goanon.NewAnonymizer(rec, cfg)
 	proc := docprocessor.New(anon)
 
@@ -536,9 +583,10 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := proc.Process(walker)
+	session, err := proc.Process(walker, anonOpts...)
 	if err != nil {
-		http.Error(w, "erreur anonymisation: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "erreur anonymisation", http.StatusInternalServerError)
+		log.Printf("anonymize-doc: échec : %v", err)
 		return
 	}
 	log.Printf("anonymize-doc: lang=%s format=%s entities=%d", lang, ext, len(session.Mapping))

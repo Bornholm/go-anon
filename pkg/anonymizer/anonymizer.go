@@ -1,11 +1,11 @@
 package anonymizer
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
@@ -91,9 +91,11 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 	if params.session != nil {
 		counters = params.session.counters
 		consistentCache = params.session.consistentCache
+		params.nonce = params.session.Nonce()
 	} else {
 		counters = make(map[ner.EntityType]int)
 		consistentCache = make(map[string]string)
+		params.nonce = newNonce()
 	}
 
 	if text == "" {
@@ -103,6 +105,13 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 			Mapping:               make(map[string]string),
 			OriginalToPlaceholder: make(map[string]string),
 		}, nil
+	}
+
+	// Un placeholder déjà présent dans la source corromprait le round-trip :
+	// Deanonymize restaurerait du texte qui n'a jamais été anonymisé.
+	text, err := checkPlaceholderCollisions(text, params)
+	if err != nil {
+		return nil, err
 	}
 
 	entities, err := a.recognizer.Recognize(text)
@@ -133,6 +142,12 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 	})
 
 	for _, ent := range assignOrder {
+		// Les secrets court-circuitent toute stratégie : ni mapping, ni cache de
+		// cohérence, ni pseudonyme stable. Ils sont caviardés et perdus.
+		if ner.IsSecretType(ent.Type) {
+			continue
+		}
+
 		var replacement string
 		if a.config.ConsistentMap {
 			if cached, ok := consistentCache[normalizeForFuzzy(ent.Text)]; ok {
@@ -141,7 +156,10 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 		}
 		if replacement == "" {
 			counters[ent.Type]++
-			replacement = a.replace(ent, counters[ent.Type])
+			replacement, err = a.replace(ent, counters[ent.Type], params)
+			if err != nil {
+				return nil, err
+			}
 			if a.config.ConsistentMap {
 				consistentCache[normalizeForFuzzy(ent.Text)] = replacement
 			}
@@ -153,9 +171,12 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 	// Associer chaque entité à son replacement.
 	entityReplacements := make([]string, len(entities))
 	for i, ent := range entities {
-		if a.config.ConsistentMap {
+		switch {
+		case ner.IsSecretType(ent.Type):
+			entityReplacements[i] = params.secretPlaceholder(ent.Type)
+		case a.config.ConsistentMap:
 			entityReplacements[i] = consistentCache[normalizeForFuzzy(ent.Text)]
-		} else {
+		default:
 			entityReplacements[i] = result.OriginalToPlaceholder[ent.Text]
 		}
 	}
@@ -190,6 +211,12 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 		result.Text = pass(text, result)
 	}
 
+	// La forme de surface d'un secret ne doit pas ressortir dans le Result :
+	// l'appelant la sérialiserait dans une réponse HTTP ou un log.
+	if !params.exposeSecrets {
+		result.Entities = redactSecretEntities(result.Entities)
+	}
+
 	if params.session != nil {
 		for k, v := range result.Mapping {
 			params.session.Mapping[k] = v
@@ -202,38 +229,64 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 	return result, nil
 }
 
-func (a *Anonymizer) replace(ent ner.Entity, index int) string {
+func (a *Anonymizer) replace(ent ner.Entity, index int, params *anonymizeParams) (string, error) {
 	if fn, ok := a.config.CustomReplacers[ent.Type]; ok {
-		return fn(ent, index)
+		return fn(ent, index), nil
 	}
 
 	switch a.config.Strategy {
-	case TagReplace:
-		return fmt.Sprintf("[%s_%d]", typeToLabel(ent.Type), index)
 	case Redact:
-		return strings.Repeat("█", len(ent.Text))
+		return strings.Repeat("█", len(ent.Text)), nil
 	case Hash:
-		h := sha256.Sum256([]byte(ent.Text))
-		return fmt.Sprintf("[%s_%s]", ent.Type, hex.EncodeToString(h[:])[:6])
-	case Consistent:
-		return fmt.Sprintf("[%s_%d]", typeToLabel(ent.Type), index)
-	default:
-		return fmt.Sprintf("[%s_%d]", typeToLabel(ent.Type), index)
+		return a.hashReplacement(ent, params)
+	default: // TagReplace, Consistent
+		return params.tagPlaceholder(typeToLabel(ent.Type), index), nil
 	}
 }
 
-// Deanonymize restaure le texte original à partir du texte anonymisé.
-// mapping doit contenir les correspondances placeholder → texte original.
-func (a *Anonymizer) Deanonymize(text string, mapping map[string]string) (string, error) {
-	if len(mapping) == 0 {
-		return text, nil
+// insecureHashWarning ne prévient qu'une fois par processus : l'avertissement
+// doit être visible, pas noyer les logs d'un traitement de masse.
+var insecureHashWarning sync.Once
+
+func (a *Anonymizer) hashReplacement(ent ner.Entity, params *anonymizeParams) (string, error) {
+	if len(params.hashKey) == 0 {
+		if !params.insecureHash {
+			return "", ErrHashKeyRequired
+		}
+		insecureHashWarning.Do(func() {
+			log.Printf("anonymizer: AVERTISSEMENT — stratégie Hash sans clé (SHA-256 non salé, " +
+				"cassable par dictionnaire). Définir " + HashKeyEnvVar + " en production.")
+		})
+		return params.hashPlaceholder(ent.Type, insecureHashEntity(ent.Text)), nil
+	}
+	if err := params.hashKey.Validate(); err != nil {
+		return "", err
+	}
+	return params.hashPlaceholder(ent.Type, hashEntity(params.hashKey, params.hashScope, ent.Type, ent.Text)), nil
+}
+
+// redactSecretEntities remplace la forme de surface des entités secrètes par un
+// résumé sans contenu. La slice d'origine n'est copiée que si nécessaire.
+func redactSecretEntities(entities []ner.Entity) []ner.Entity {
+	hasSecret := false
+	for _, e := range entities {
+		if ner.IsSecretType(e.Type) {
+			hasSecret = true
+			break
+		}
+	}
+	if !hasSecret {
+		return entities
 	}
 
-	result := text
-	for placeholder, original := range mapping {
-		result = strings.ReplaceAll(result, placeholder, original)
+	out := make([]ner.Entity, len(entities))
+	copy(out, entities)
+	for i := range out {
+		if ner.IsSecretType(out[i].Type) {
+			out[i].Text = fmt.Sprintf("[redacted %d bytes]", len(out[i].Text))
+		}
 	}
-	return result, nil
+	return out
 }
 
 // ConsistencyPass retourne une AnonymizePass qui remplace dans le texte anonymisé
@@ -253,9 +306,15 @@ func ConsistencyPass() AnonymizePass {
 			return typePriority(sortedByType[i].Type) > typePriority(sortedByType[j].Type)
 		})
 		for _, ent := range sortedByType {
+			placeholder := result.OriginalToPlaceholder[ent.Text]
+			// Une entité sans placeholder (secret caviardé, entité filtrée)
+			// produirait une entrée vide, donc un remplacement par chaîne vide.
+			if placeholder == "" {
+				continue
+			}
 			cacheKey := normalizeForFuzzy(ent.Text)
 			if _, exists := canonicalMap[cacheKey]; !exists {
-				canonicalMap[cacheKey] = result.OriginalToPlaceholder[ent.Text]
+				canonicalMap[cacheKey] = placeholder
 			}
 		}
 
@@ -402,72 +461,74 @@ func SurnameCompletionPass() AnonymizePass {
 			}
 		}
 
+		// Indexer les placeholders PER. La recherche se fait par occurrence du
+		// placeholder plutôt que par scan des crochets ASCII : le format des
+		// placeholders est configurable (cf. WithLegacyPlaceholders).
 		placeholderToEntity := make(map[string]ner.Entity)
 		for _, e := range result.Entities {
-			placeholder := result.OriginalToPlaceholder[e.Text]
-			if placeholder != "" {
+			if e.Type != ner.TypePER {
+				continue
+			}
+			if placeholder := result.OriginalToPlaceholder[e.Text]; placeholder != "" {
 				placeholderToEntity[placeholder] = e
 			}
 		}
+		placeholders := make([]string, 0, len(placeholderToEntity))
+		for placeholder := range placeholderToEntity {
+			placeholders = append(placeholders, placeholder)
+		}
+		sort.Strings(placeholders) // ordre de parcours déterministe
 
 		var repls []textReplacement
-		for pos := len(text) - 1; pos >= 0; pos-- {
-			if pos+1 < len(text) && text[pos] == ']' {
-				bracketStart := pos
-				for bracketStart > 0 && text[bracketStart] != '[' {
-					bracketStart--
+		for _, placeholder := range placeholders {
+			ent := placeholderToEntity[placeholder]
+
+			origEnd := ent.End
+			for origEnd < len(original) && original[origEnd] == ' ' {
+				origEnd++
+			}
+			if origEnd >= len(original) {
+				continue
+			}
+
+			candidate := original[origEnd:scanNameToken(original, origEnd)]
+			if utf8.RuneCountInString(candidate) < 2 {
+				continue
+			}
+
+			for pos := 0; ; {
+				idx := strings.Index(text[pos:], placeholder)
+				if idx < 0 {
+					break
 				}
-				if bracketStart > 0 && text[bracketStart] == '[' {
-					placeholder := text[bracketStart : pos+1]
-					ent, ok := placeholderToEntity[placeholder]
-					if !ok || ent.Type != ner.TypePER {
-						continue
-					}
+				candidateStart := pos + idx + len(placeholder)
+				pos = candidateStart
 
-					origEnd := ent.End
-					for origEnd < len(original) && original[origEnd] == ' ' {
-						origEnd++
-					}
+				candidateEnd := candidateStart + len(candidate)
+				if candidateEnd > len(text) || text[candidateStart:candidateEnd] != candidate {
+					continue
+				}
 
-					if origEnd >= len(original) {
-						continue
+				alreadyCovered := false
+				for i := candidateStart; i < candidateEnd && i < len(covered); i++ {
+					if covered[i] {
+						alreadyCovered = true
+						break
 					}
+				}
+				if alreadyCovered {
+					continue
+				}
 
-					candidateEnd := scanNameToken(original, origEnd)
-
-					candidate := original[origEnd:candidateEnd]
-					if utf8.RuneCountInString(candidate) < 2 {
-						continue
-					}
-
-					candidateStart := pos + 1
-					if candidateStart >= len(text) {
-						continue
-					}
-
-					alreadyCovered := false
-					for i := candidateStart; i < candidateStart+len(candidate) && i < len(covered); i++ {
-						if covered[i] {
-							alreadyCovered = true
-							break
-						}
-					}
-					if alreadyCovered {
-						continue
-					}
-
-					if candidateStart+len(candidate) <= len(text) {
-						curr := text[candidateStart : candidateStart+len(candidate)]
-						if curr == candidate {
-							repls = append(repls, textReplacement{candidateStart, candidateStart + len(candidate), placeholder})
-							for i := candidateStart; i < candidateStart+len(candidate); i++ {
-								covered[i] = true
-							}
-						}
-					}
+				repls = append(repls, textReplacement{candidateStart, candidateEnd, placeholder})
+				for i := candidateStart; i < candidateEnd; i++ {
+					covered[i] = true
 				}
 			}
 		}
+
+		// applyReplacements attend des remplacements triés par start décroissant.
+		sort.Slice(repls, func(i, j int) bool { return repls[i].start > repls[j].start })
 
 		return applyReplacements(text, repls)
 	}

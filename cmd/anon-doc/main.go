@@ -52,6 +52,8 @@ func main() {
 	outputPath := flag.String("output", "", "fichier de sortie (obligatoire)")
 	format := flag.String("format", "", `format du document : "docx" (auto-détecté si absent)`)
 	strategy := flag.String("strategy", "tag", `stratégie : "tag", "redact" ou "hash"`)
+	hashScope := flag.String("hash-scope", "", `scope de la stratégie "hash" : casse la corrélation des pseudonymes entre scopes`)
+	insecureHash := flag.Bool("insecure-hash", false, `autoriser la stratégie "hash" sans clé (SHA-256 non salé, hors production)`)
 	saveMappingPath := flag.String("save-mapping", "", "chemin JSON pour sauvegarder le mapping (optionnel)")
 	gazetteerFlag := flag.String("gazetteers", "", `gazetteers à utiliser : "nom:fichier.txt,..."`)
 	clustersPath := flag.String("clusters", "", "fichier Brown clusters (optionnel)")
@@ -176,6 +178,10 @@ func main() {
 		Strategy:      parseStrategy(*strategy),
 		ConsistentMap: true,
 	}
+	anonOpts, err := cmdutil.HashOptions(cfg.Strategy, *hashScope, *insecureHash)
+	if err != nil {
+		log.Fatalf("anonymisation : %v", err)
+	}
 	anon := anonymizer.New(rec, cfg)
 	proc := docprocessor.New(anon)
 
@@ -185,7 +191,7 @@ func main() {
 		log.Fatalf("ouverture %q : %v", *inputPath, err)
 	}
 
-	session, err := proc.Process(walker)
+	session, err := proc.Process(walker, anonOpts...)
 	if err != nil {
 		log.Fatalf("anonymisation : %v", err)
 	}
@@ -208,10 +214,15 @@ func main() {
 		if err != nil {
 			log.Fatalf("sérialisation mapping : %v", err)
 		}
-		if err := os.WriteFile(*saveMappingPath, data, 0o644); err != nil {
+		// 0600 : le mapping est la table de ré-identification, donc une donnée
+		// personnelle à part entière. Il reste écrit en clair — le chiffrement
+		// et la rétention relèvent du MappingStore (chantier S5).
+		if err := os.WriteFile(*saveMappingPath, data, 0o600); err != nil {
 			log.Fatalf("écriture mapping %q : %v", *saveMappingPath, err)
 		}
 		fmt.Printf("Mapping sauvegardé : %s\n", *saveMappingPath)
+		fmt.Fprintf(os.Stderr, "avertissement : %s contient la table de ré-identification en clair "+
+			"(donnée personnelle) — le protéger et le purger après usage\n", *saveMappingPath)
 	}
 }
 

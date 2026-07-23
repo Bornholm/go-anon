@@ -30,6 +30,8 @@ func main() {
 	text := flag.String("text", "", "texte à analyser (lit stdin si absent)")
 	doAnonymize := flag.Bool("anonymize", false, "appliquer l'anonymisation au lieu d'afficher les entités")
 	strategy := flag.String("strategy", "tag", `stratégie d'anonymisation : "tag", "redact" ou "hash"`)
+	hashScope := flag.String("hash-scope", "", `scope de la stratégie "hash" : casse la corrélation des pseudonymes entre scopes`)
+	insecureHash := flag.Bool("insecure-hash", false, `autoriser la stratégie "hash" sans clé (SHA-256 non salé, hors production)`)
 	gazetteerFlag := flag.String("gazetteers", "", `gazetteers à utiliser : "nom:fichier.txt,nom:fichier.txt"`)
 	clustersPath := flag.String("clusters", "", "fichier Brown clusters (optionnel)")
 
@@ -157,7 +159,11 @@ func main() {
 	}
 
 	if *doAnonymize {
-		runAnonymize(rec, input, *strategy, skipTypes)
+		anonOpts, err := cmdutil.HashOptions(parseStrategy(*strategy), *hashScope, *insecureHash)
+		if err != nil {
+			log.Fatalf("anonymisation : %v", err)
+		}
+		runAnonymize(rec, input, *strategy, skipTypes, anonOpts)
 	} else {
 		runRecognize(rec, input)
 	}
@@ -188,7 +194,7 @@ func runRecognize(rec goanon.Recognizer, text string) {
 var allEntityTypes = []goanon.EntityType{goanon.TypePER, goanon.TypeLOC, goanon.TypeORG, goanon.TypeMISC}
 
 // runAnonymize affiche le texte après anonymisation.
-func runAnonymize(rec goanon.Recognizer, text, strategyName string, skipTypes entityTypeFlag) {
+func runAnonymize(rec goanon.Recognizer, text, strategyName string, skipTypes entityTypeFlag, anonOpts []goanon.AnonymizeOption) {
 	strat := parseStrategy(strategyName)
 
 	cfg := goanon.Config{
@@ -210,7 +216,7 @@ func runAnonymize(rec goanon.Recognizer, text, strategyName string, skipTypes en
 
 	anon := goanon.NewAnonymizer(rec, cfg)
 
-	result, err := anon.Anonymize(text)
+	result, err := anon.Anonymize(text, anonOpts...)
 	if err != nil {
 		log.Fatalf("anonymisation : %v", err)
 	}

@@ -79,12 +79,54 @@ type ReplacerFunc = anonymizer.ReplacerFunc
 type Result = anonymizer.Result
 type Recognizer = anonymizer.Recognizer
 type AnonymizePass = anonymizer.AnonymizePass
+type AnonymizeOption = anonymizer.AnonymizeOption
+type Session = anonymizer.Session
+type HashKey = anonymizer.HashKey
 
 const (
 	TagReplace = anonymizer.TagReplace
 	Redact     = anonymizer.Redact
 	Hash       = anonymizer.Hash
 	Consistent = anonymizer.Consistent
+)
+
+// IsSecretType identifie les types dont la valeur n'est jamais conservée dans un
+// mapping ni ré-identifiable (clés d'API, JWT, mots de passe).
+var IsSecretType = ner.IsSecretType
+
+// — Options d'anonymisation —
+
+var NewSession = anonymizer.NewSession
+var WithSession = anonymizer.WithSession
+var WithLegacyPlaceholders = anonymizer.WithLegacyPlaceholders
+var WithEscapeCollisions = anonymizer.WithEscapeCollisions
+var WithExposeSecrets = anonymizer.WithExposeSecrets
+var WithHashKey = anonymizer.WithHashKey
+var WithHashScope = anonymizer.WithHashScope
+var WithInsecureHash = anonymizer.WithInsecureHash
+
+// — Ré-identification —
+
+// Deanonymize restaure le texte original depuis un mapping placeholder → original.
+var Deanonymize = anonymizer.Deanonymize
+
+// ParseHashKey décode une clé HMAC hexadécimale ou base64 (≥ 32 octets).
+var ParseHashKey = anonymizer.ParseHashKey
+
+// HashKeyFromEnv charge la clé HMAC depuis GOANON_HASH_KEY.
+var HashKeyFromEnv = anonymizer.HashKeyFromEnv
+
+// HashKeyEnvVar nomme la variable d'environnement portant la clé HMAC.
+const HashKeyEnvVar = anonymizer.HashKeyEnvVar
+
+// Erreurs sentinelles de l'anonymiseur.
+var (
+	ErrHashKeyRequired      = anonymizer.ErrHashKeyRequired
+	ErrHashKeyTooShort      = anonymizer.ErrHashKeyTooShort
+	ErrHashKeyNotSet        = anonymizer.ErrHashKeyNotSet
+	ErrHashKeyFormat        = anonymizer.ErrHashKeyFormat
+	ErrPlaceholderCollision = anonymizer.ErrPlaceholderCollision
+	ErrIncompleteMapping    = anonymizer.ErrIncompleteMapping
 )
 
 // — Constructeurs —

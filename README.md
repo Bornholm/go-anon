@@ -46,7 +46,11 @@ entities, _ := r.Recognize("Jean Dupont habite à Paris.")
 // Anonymiser
 anon := goanon.NewAnonymizer(r, goanon.Config{Strategy: goanon.TagReplace})
 result, _ := anon.Anonymize("Jean Dupont habite à Paris.")
-// result.Text → "[PERSON_1] habite à [LOCATION_1]."
+// result.Text → "⟦PERSON_1_a3f9c2⟧ habite à ⟦LOCATION_1_a3f9c2⟧."
+// Le suffixe est un nonce de session : voir « Placeholders » ci-dessous.
+
+// Restaurer le texte original
+restored, _ := goanon.Deanonymize(result.Text, result.Mapping)
 
 // Activer la détection des identifiants structurés courants (e-mail, IP, IBAN…)
 r, _ = goanon.NewRecognizer(m,
@@ -76,6 +80,61 @@ anon-doc -model auto -lang fr -input rapport.docx -output rapport_anon.docx
 ```
 
 Voir [`docs/tutoriel-modele.md`](./docs/tutoriel-modele.md) pour entraîner un modèle français.
+
+## Garanties de traitement
+
+La bibliothèque réalise une **pseudonymisation** au sens de l'art. 4(5) du RGPD,
+pas une anonymisation : le mapping de ré-identification est lui-même une donnée
+personnelle, et l'actif le plus sensible du système. Le protéger et le détruire
+après usage est ce qui rend la sortie anonyme *de facto*.
+
+### Secrets
+
+Les types `API_KEY`, `JWT` et `SECRET` (jetons GitHub/Stripe/AWS, Bearer,
+variables `*_PASSWORD`…) court-circuitent toute stratégie : ils sont remplacés
+par un marqueur fixe `⟦API_KEY_REDACTED⟧`, n'entrent ni dans `Mapping` ni dans
+`OriginalToPlaceholder`, et ne sont pas restaurables. Leur forme de surface
+n'apparaît pas non plus dans `Result.Entities` (sauf `WithExposeSecrets(true)`,
+réservé au débogage local). Deux occurrences d'un même secret reçoivent un
+marqueur identique et indistinct : aucune corrélation possible.
+
+### Placeholders
+
+Format : `⟦TYPE_N_nonce⟧`. Les délimiteurs U+27E6/U+27E7 sont quasi inexistants
+en texte naturel, et le nonce (3 octets, tiré par session) rend le format
+imprédictible — un placeholder ne peut pas être pré-injecté dans le texte source.
+Si le texte source contient malgré tout un placeholder, `Anonymize` retourne
+`ErrPlaceholderCollision` plutôt que de corrompre silencieusement le round-trip
+(`WithEscapeCollisions()` échappe au lieu d'échouer).
+
+`Deanonymize` remplace en un scan unique et déterministe, et retourne
+`ErrIncompleteMapping` si un placeholder subsiste en sortie.
+
+L'ancien format `[TYPE_N]` reste accessible via `WithLegacyPlaceholders()`.
+**Changement incompatible** : les consommateurs qui parsent `[PERSON_1]` doivent
+migrer ou activer cette option.
+
+### Stratégie `hash`
+
+Le pseudonyme est dérivé par **HMAC-SHA-256** avec une clé secrète (pepper) :
+un SHA-256 non salé sur des noms propres est cassable par dictionnaire en
+quelques secondes. La clé se fournit par variable d'environnement, jamais par
+flag CLI (les arguments de processus sont visibles dans `ps` et les logs
+d'orchestrateur) :
+
+```bash
+export GOANON_HASH_KEY="$(openssl rand -hex 32)"   # 32 octets minimum
+anon-doc -model auto -strategy hash -input doc.docx -output out.docx
+```
+
+Sans clé, la stratégie **échoue** au lieu de se dégrader silencieusement.
+`-insecure-hash` rétablit l'ancien SHA-256 nu pour les démonstrations, avec
+avertissement.
+
+`-hash-scope` (ou `goanon.WithHashScope`) entre dans le HMAC : par défaut une
+même clé produit le même pseudonyme partout — corrélation possible entre
+documents, parfois voulue pour l'analyse, parfois interdite. Un scope par
+dossier ou par client casse cette linkability.
 
 ## Licence
 
