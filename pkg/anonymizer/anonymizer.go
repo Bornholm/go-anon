@@ -61,6 +61,9 @@ type Result struct {
 	Entities              []ner.Entity      // entités détectées
 	Mapping               map[string]string // "[PERSON_1]" → "Jean Dupont"
 	OriginalToPlaceholder map[string]string // "Jean Dupont" → "[PERSON_1]"
+	// Verification est renseigné par WithVerification ; nil sinon. En mode
+	// strict, le rapport voyage dans l'erreur, pas dans un Result.
+	Verification *VerificationReport
 }
 
 // New crée un nouvel Anonymizer. Si config.Passes est nil, les passes par
@@ -106,6 +109,11 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 			OriginalToPlaceholder: make(map[string]string),
 		}, nil
 	}
+
+	// sourceText conserve l'entrée telle que reçue : la vérification doit
+	// pouvoir constater qu'elle contenait déjà un placeholder, y compris quand
+	// WithEscapeCollisions vient de le neutraliser.
+	sourceText := text
 
 	// Un placeholder déjà présent dans la source corromprait le round-trip :
 	// Deanonymize restaurerait du texte qui n'a jamais été anonymisé.
@@ -215,6 +223,20 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 	// l'appelant la sérialiserait dans une réponse HTTP ou un log.
 	if !params.exposeSecrets {
 		result.Entities = redactSecretEntities(result.Entities)
+	}
+
+	if params.verify {
+		patterns := params.verifyPatterns
+		if patterns == nil {
+			patterns = DefaultVerifyPatterns()
+		}
+		report := VerifyWithPatterns(sourceText, result, patterns)
+		if params.strictVerify && !report.OK() {
+			// Fail-closed : ni Result, ni texte partiellement anonymisé.
+			// L'erreur ne porte que des offsets et des types.
+			return nil, &VerificationError{Report: report}
+		}
+		result.Verification = report
 	}
 
 	if params.session != nil {

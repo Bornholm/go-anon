@@ -14,7 +14,9 @@ import (
 var testHashKey = HashKey(strings.Repeat("k", MinHashKeyLen))
 
 // fakeGitHubToken imite un Personal Access Token GitHub (ghp_ + 36 caractères).
-const fakeGitHubToken = "ghp_ZzZz0011223344556677889900aabbccdd"
+// fakeGitHubToken respecte la forme reconnue par reGitHubToken (ghp_ + 36
+// caractères) : les tests de vérification s'appuient sur cette re-détection.
+const fakeGitHubToken = "ghp_ZzZz0011223344556677889900aabbccddef"
 
 // allStrategies énumère les stratégies pour les tests table-driven.
 var allStrategies = []struct {

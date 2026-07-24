@@ -32,6 +32,7 @@ func main() {
 	strategy := flag.String("strategy", "tag", `stratégie d'anonymisation : "tag", "redact" ou "hash"`)
 	hashScope := flag.String("hash-scope", "", `scope de la stratégie "hash" : casse la corrélation des pseudonymes entre scopes`)
 	insecureHash := flag.Bool("insecure-hash", false, `autoriser la stratégie "hash" sans clé (SHA-256 non salé, hors production)`)
+	strict := flag.Bool("strict", false, "mode fail-closed : ne rien afficher si la vérification détecte une fuite")
 	gazetteerFlag := flag.String("gazetteers", "", `gazetteers à utiliser : "nom:fichier.txt,nom:fichier.txt"`)
 	clustersPath := flag.String("clusters", "", "fichier Brown clusters (optionnel)")
 
@@ -163,6 +164,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("anonymisation : %v", err)
 		}
+		if *strict {
+			anonOpts = append(anonOpts, goanon.WithStrictVerification())
+		} else {
+			anonOpts = append(anonOpts, goanon.WithVerification())
+		}
 		runAnonymize(rec, input, *strategy, skipTypes, anonOpts)
 	} else {
 		runRecognize(rec, input)
@@ -219,6 +225,14 @@ func runAnonymize(rec goanon.Recognizer, text, strategyName string, skipTypes en
 	result, err := anon.Anonymize(text, anonOpts...)
 	if err != nil {
 		log.Fatalf("anonymisation : %v", err)
+	}
+
+	// Le rapport part sur stderr en métadonnées : la sortie standard reste le
+	// texte anonymisé, pipeable tel quel.
+	if !result.Verification.OK() {
+		fmt.Fprintf(os.Stderr, "avertissement : vérification — %d fuite(s) %v ; "+
+			"utiliser -strict pour refuser d'émettre une sortie dans ce cas\n",
+			len(result.Verification.Leaks), result.Verification.CountByKind())
 	}
 
 	fmt.Println(result.Text)

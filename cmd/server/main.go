@@ -60,20 +60,31 @@ type Server struct {
 	// hashKey est chargée une fois au démarrage depuis GOANON_HASH_KEY. Vide, la
 	// stratégie "hash" est refusée plutôt que dégradée en SHA-256 nu.
 	hashKey goanon.HashKey
-	mu      sync.RWMutex
+	// strict fait échouer une requête plutôt que de renvoyer une sortie dont la
+	// vérification signale une fuite. Réglé au démarrage, jamais par requête :
+	// un client ne doit pas pouvoir abaisser la garantie du service.
+	strict bool
+	mu     sync.RWMutex
 }
 
 // anonymizeOptions construit les options d'anonymisation d'une requête.
 // L'erreur retournée est destinée au client : elle ne contient aucun contenu.
 func (s *Server) anonymizeOptions(strategy goanon.Strategy) ([]goanon.AnonymizeOption, error) {
+	var opts []goanon.AnonymizeOption
+	if s.strict {
+		opts = append(opts, goanon.WithStrictVerification())
+	} else {
+		opts = append(opts, goanon.WithVerification())
+	}
+
 	if strategy != goanon.Hash {
-		return nil, nil
+		return opts, nil
 	}
 	if len(s.hashKey) == 0 {
 		return nil, fmt.Errorf("stratégie \"hash\" indisponible : le serveur a été démarré sans %s",
 			goanon.HashKeyEnvVar)
 	}
-	return []goanon.AnonymizeOption{goanon.WithHashKey(s.hashKey)}, nil
+	return append(opts, goanon.WithHashKey(s.hashKey)), nil
 }
 
 type AnonymizeRequest struct {
@@ -148,6 +159,7 @@ func main() {
 	cacheDir := flag.String("models-cache", "", "répertoire de cache pour les modèles téléchargés (optionnel)")
 	refresh := flag.Bool("refresh-models", false, "forcer le rafraîchissement du manifeste des modèles")
 	offline := flag.Bool("offline", false, "interdire toute requête réseau")
+	strict := flag.Bool("strict", false, "mode fail-closed : refuser (422) toute réponse dont la vérification signale une fuite")
 	flag.Parse()
 
 	if *modelsFlag == "" {
@@ -163,6 +175,10 @@ func main() {
 		models:        make(map[string]*ner.Model),
 		modelVersions: make(map[string]string),
 		gazetteers:    gazetteers,
+		strict:        *strict,
+	}
+	if *strict {
+		log.Print("mode strict actif : une sortie dont la vérification signale une fuite ne sera pas renvoyée")
 	}
 
 	// La clé HMAC de la stratégie "hash" est optionnelle au démarrage mais
@@ -328,6 +344,14 @@ func (s *Server) handlePseudonymize(w http.ResponseWriter, r *http.Request) {
 	anonStart := time.Now()
 	result, err := anon.Anonymize(req.Text, anonOpts...)
 	if err != nil {
+		var verr *goanon.VerificationError
+		if errors.As(err, &verr) {
+			// Mode strict : aucun texte n'est renvoyé. Le rapport ne porte que
+			// des offsets et des types, il peut donc être logué tel quel.
+			http.Error(w, "anonymization refused: output verification failed", http.StatusUnprocessableEntity)
+			log.Printf("anonymize: refus strict, %d fuite(s) %v", len(verr.Report.Leaks), verr.Report.CountByKind())
+			return
+		}
 		http.Error(w, "anonymization failed", http.StatusInternalServerError)
 		log.Printf("anonymize: échec : %v", err)
 		return
@@ -338,8 +362,9 @@ func (s *Server) handlePseudonymize(w http.ResponseWriter, r *http.Request) {
 	for _, e := range result.Entities {
 		countsByType[e.Type]++
 	}
-	log.Printf("anonymize: %d chars, %d entities %v, took %s",
-		len(req.Text), len(result.Entities), countsByType, time.Since(anonStart))
+	log.Printf("anonymize: %d chars, %d entities %v, verification %v, took %s",
+		len(req.Text), len(result.Entities), countsByType,
+		result.Verification.CountByKind(), time.Since(anonStart))
 
 	entities := make([]Entity, len(result.Entities))
 	for i, e := range result.Entities {
@@ -585,6 +610,13 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 
 	session, err := proc.Process(walker, anonOpts...)
 	if err != nil {
+		var verr *goanon.VerificationError
+		if errors.As(err, &verr) {
+			// Mode strict : le document de sortie n'est jamais écrit.
+			http.Error(w, "anonymisation refusée : vérification de la sortie en échec", http.StatusUnprocessableEntity)
+			log.Printf("anonymize-doc: refus strict, %d fuite(s) %v", len(verr.Report.Leaks), verr.Report.CountByKind())
+			return
+		}
 		http.Error(w, "erreur anonymisation", http.StatusInternalServerError)
 		log.Printf("anonymize-doc: échec : %v", err)
 		return

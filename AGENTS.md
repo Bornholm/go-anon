@@ -118,7 +118,8 @@ Points de configuration importants (cf. `pkg/ner` et `goanon.go`) :
 | `pkg/model`        | CRF linéaire : poids, Viterbi, forward-backward, entraînement SGD/Adam, sérialisation gob+gzip (formats v1/v2/v3, cf. ci-dessous) |
 | `pkg/features`     | Extraction de features : morphologie, n-grammes, shape, Brown clusters, word embeddings (GloVe), gazetteers ; schéma versionné (`FeatureSchema`) |
 | `pkg/ner`          | Orchestration : `Recognizer`, décodage BIO→entités, évaluation F1, post-filtres, corrections BIO             |
-| `pkg/anonymizer`   | Remplacement des entités : stratégies (tag/redact/hash), `Session` cross-segments, passes de post-traitement |
+| `pkg/anonymizer`   | Remplacement des entités : stratégies (tag/redact/hash), `Session` cross-segments, passes de post-traitement, vérification fail-closed (`verify.go`) |
+| `pkg/anonymizer/mappingstore` | Store chiffré (AES-256-GCM) des tables de ré-identification : rétention, purge, effacement cryptographique |
 | `pkg/docprocessor` | Interface `Walker` + `Processor` — orchestration de l'anonymisation de documents format-agnostique           |
 | `pkg/docx`         | `Walker` DOCX : itération sur les paragraphes, réécriture des runs                                           |
 | `pkg/odt`          | `Walker` ODT : parsing XML en mémoire, réécriture in-place, resérialisation ZIP                              |

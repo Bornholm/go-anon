@@ -18,6 +18,10 @@ Le cœur du pipeline NER (modèle CRF, features, tokenisation, anonymisation) es
 - Support du français, de l'anglais et de l'espagnol avec profils linguistiques dédiés ;
 - Détection automatique de la langue (fr/en/es) pour éviter de la spécifier en amont ;
 - Téléchargement automatique des modèles pré-entraînés depuis GitHub Releases ;
+- Vérification de la sortie et mode fail-closed : aucune sortie produite si une
+  entité connue ou un identifiant structuré y reste détectable ;
+- Mapping de ré-identification chiffré (AES-256-GCM), avec rétention et
+  effacement cryptographique ;
 - Post-filtres chaînables : seuil de confiance, longueur de span, liste noire ;
 - Enrichissement optionnel via gazetteers et Brown clusters ;
 - Configuration d'inférence auto-propagée depuis le modèle (schéma de features,
@@ -51,6 +55,10 @@ result, _ := anon.Anonymize("Jean Dupont habite à Paris.")
 
 // Restaurer le texte original
 restored, _ := goanon.Deanonymize(result.Text, result.Mapping)
+
+// Mode fail-closed : aucune sortie si une entité subsiste dans le texte anonymisé
+result, err := anon.Anonymize(texte, goanon.WithStrictVerification())
+// err != nil → rien n'est produit ; voir « Vérification » ci-dessous
 
 // Activer la détection des identifiants structurés courants (e-mail, IP, IBAN…)
 r, _ = goanon.NewRecognizer(m,
@@ -135,6 +143,71 @@ avertissement.
 même clé produit le même pseudonyme partout — corrélation possible entre
 documents, parfois voulue pour l'analyse, parfois interdite. Un scope par
 dossier ou par client casse cette linkability.
+
+### Vérification de la sortie
+
+La sortie anonymisée est recontrôlée avant d'être rendue : formes de surface du
+mapping encore présentes, identifiants structurés (e-mail, IBAN, jetons…)
+re-détectables, corruption d'encodage, placeholder déjà présent dans la source.
+Le contrôle raisonne par **zones sûres** — les spans écrits par l'anonymiseur
+sont exclus du scan, ce qui évite qu'un pseudonyme ou un digest soit compté
+comme une fuite.
+
+```go
+// Observation : rapport attaché au résultat, rien n'est bloqué.
+res, _ := anon.Anonymize(texte, goanon.WithVerification())
+res.Verification.OK()      // false s'il reste quelque chose
+res.Verification.Leaks     // offsets et types — jamais le texte fuité
+
+// Fail-closed : une seule fuite suffit à refuser de produire une sortie.
+res, err := anon.Anonymize(texte, goanon.WithStrictVerification())
+```
+
+En ligne de commande, `-strict` sur `anon-doc`, `demo` et `server` :
+
+```bash
+anon-doc -model auto -strict -input rapport.docx -output rapport_anon.docx
+```
+
+En mode strict, `anon-doc` n'écrit **aucun** fichier de sortie si un segment
+fuit, et le serveur répond `422` sans corps anonymisé. Sans `-strict`, le
+rapport part sur stderr (comptes par nature de fuite, jamais de contenu).
+
+Le jeu de motifs re-passé sur la sortie est indépendant de la configuration du
+`Recognizer` : si le pipeline n'a pas activé `WithBuiltinRegexPatterns()`, les
+e-mails restés en clair *seront* signalés — ils sont bien là. Pour restreindre
+la vérification en connaissance de cause : `goanon.WithVerifyPatterns(...)`.
+
+### Stockage du mapping
+
+Le mapping est la table de ré-identification : le sauvegarder en clair revient à
+exporter la base des personnes concernées. `pkg/anonymizer/mappingstore` le
+chiffre en **AES-256-GCM**, avec l'identifiant du mapping en données
+authentifiées — un fichier ne peut pas être rejoué sous un autre identifiant.
+
+```bash
+export GOANON_MAPPING_KEY="$(openssl rand -hex 32)"   # ou GOANON_MAPPING_KEY_FILE
+anon-doc -model auto -input rapport.docx -output rapport_anon.docx \
+  -save-mapping dossier-42 -mapping-store ./mappings -mapping-ttl 720h
+
+mappings -store ./mappings list     # inventaire, sans déchiffrement
+mappings -store ./mappings purge    # suppression des mappings expirés
+mappings -store ./mappings delete dossier-42
+```
+
+Le répertoire est en `0700`, les fichiers en `0600`, l'écriture est atomique.
+
+**Changement incompatible** : `-save-mapping` désigne désormais un identifiant
+dans un store chiffré, et non plus un chemin de fichier JSON. Sans clé, la
+commande échoue. L'ancien comportement reste accessible via
+`-save-mapping-insecure fichier.json`, avec avertissement.
+
+**Sur l'effacement (art. 17)** : la suppression d'un fichier ne garantit pas la
+disparition physique des blocs — sur SSD (wear leveling) comme sur les systèmes
+copy-on-write (btrfs, ZFS, APFS), les données d'origine peuvent survivre. La
+garantie réelle est cryptographique : **détruire la clé d'un compartiment rend
+illisibles tous ses mappings**, où qu'en soient les octets. C'est le seul
+effacement démontrable, et l'argument à opposer à un DPO.
 
 ## Licence
 

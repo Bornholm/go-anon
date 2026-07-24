@@ -81,7 +81,22 @@ type Recognizer = anonymizer.Recognizer
 type AnonymizePass = anonymizer.AnonymizePass
 type AnonymizeOption = anonymizer.AnonymizeOption
 type Session = anonymizer.Session
+type SessionState = anonymizer.SessionState
 type HashKey = anonymizer.HashKey
+
+// — Vérification de la sortie —
+
+type Leak = anonymizer.Leak
+type LeakKind = anonymizer.LeakKind
+type VerificationReport = anonymizer.VerificationReport
+type VerificationError = anonymizer.VerificationError
+
+const (
+	LeakKnownEntity               = anonymizer.LeakKnownEntity
+	LeakRegexHit                  = anonymizer.LeakRegexHit
+	LeakInvalidUTF8               = anonymizer.LeakInvalidUTF8
+	LeakResidualPlaceholderSource = anonymizer.LeakResidualPlaceholderSource
+)
 
 const (
 	TagReplace = anonymizer.TagReplace
@@ -104,6 +119,20 @@ var WithExposeSecrets = anonymizer.WithExposeSecrets
 var WithHashKey = anonymizer.WithHashKey
 var WithHashScope = anonymizer.WithHashScope
 var WithInsecureHash = anonymizer.WithInsecureHash
+var WithVerification = anonymizer.WithVerification
+var WithStrictVerification = anonymizer.WithStrictVerification
+var WithVerifyPatterns = anonymizer.WithVerifyPatterns
+
+// Verify recontrôle une sortie anonymisée : formes de surface résiduelles,
+// identifiants structurés re-détectables, corruption d'encodage.
+var Verify = anonymizer.Verify
+
+// DefaultVerifyPatterns liste les expressions régulières re-passées sur la
+// sortie par défaut lors de la vérification.
+var DefaultVerifyPatterns = anonymizer.DefaultVerifyPatterns
+
+// NewSessionFromState reconstruit une Session depuis son état sérialisé.
+var NewSessionFromState = anonymizer.NewSessionFromState
 
 // — Ré-identification —
 
@@ -127,6 +156,7 @@ var (
 	ErrHashKeyFormat        = anonymizer.ErrHashKeyFormat
 	ErrPlaceholderCollision = anonymizer.ErrPlaceholderCollision
 	ErrIncompleteMapping    = anonymizer.ErrIncompleteMapping
+	ErrVerificationFailed   = anonymizer.ErrVerificationFailed
 )
 
 // — Constructeurs —

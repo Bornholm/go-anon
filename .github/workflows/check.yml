@@ -60,6 +60,44 @@ jobs:
       - name: Test (race detector)
         run: go test -race ./...
 
+  # Les cibles de fuzz vérifient les invariants de sécurité (UTF-8, absence de
+  # forme de surface résiduelle, secrets hors mapping, déterminisme de
+  # Deanonymize). Le corpus de testdata/ est rejoué par le job `test` ; ce job
+  # cherche activement de nouvelles entrées.
+  fuzz:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: 0
+    strategy:
+      matrix:
+        target:
+          [
+            FuzzAnonymizeInvariants,
+            FuzzRoundTrip,
+            FuzzDeanonymize,
+            FuzzVerify,
+          ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Fuzz ${{ matrix.target }}
+        run: go test ./pkg/anonymizer/ -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 120s
+
+      # Une entrée fautive est écrite dans testdata/ : la publier permet de
+      # l'ajouter au corpus de non-régression sans la reproduire à la main.
+      - name: Publier le contre-exemple
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: pkg/anonymizer/testdata/fuzz/
+          if-no-files-found: ignore
+
   vuln:
     runs-on: ubuntu-latest
     steps:

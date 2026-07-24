@@ -54,7 +54,11 @@ func main() {
 	strategy := flag.String("strategy", "tag", `stratégie : "tag", "redact" ou "hash"`)
 	hashScope := flag.String("hash-scope", "", `scope de la stratégie "hash" : casse la corrélation des pseudonymes entre scopes`)
 	insecureHash := flag.Bool("insecure-hash", false, `autoriser la stratégie "hash" sans clé (SHA-256 non salé, hors production)`)
-	saveMappingPath := flag.String("save-mapping", "", "chemin JSON pour sauvegarder le mapping (optionnel)")
+	strict := flag.Bool("strict", false, "mode fail-closed : échouer sans produire de document si la vérification détecte une fuite")
+	saveMappingID := flag.String("save-mapping", "", "identifiant sous lequel enregistrer le mapping chiffré dans le store")
+	mappingDir := flag.String("mapping-store", "mappings", "répertoire du store de mappings chiffrés")
+	mappingTTL := flag.Duration("mapping-ttl", 0, "durée de rétention du mapping (ex. 720h) ; 0 = illimité")
+	saveMappingInsecure := flag.String("save-mapping-insecure", "", "chemin JSON pour écrire le mapping EN CLAIR (déconseillé)")
 	gazetteerFlag := flag.String("gazetteers", "", `gazetteers à utiliser : "nom:fichier.txt,..."`)
 	clustersPath := flag.String("clusters", "", "fichier Brown clusters (optionnel)")
 	cacheDir := flag.String("models-cache", "", "répertoire de cache pour les modèles téléchargés (optionnel)")
@@ -182,6 +186,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("anonymisation : %v", err)
 	}
+	if *strict {
+		anonOpts = append(anonOpts, goanon.WithStrictVerification())
+	} else {
+		anonOpts = append(anonOpts, goanon.WithVerification())
+	}
 	anon := anonymizer.New(rec, cfg)
 	proc := docprocessor.New(anon)
 
@@ -191,10 +200,13 @@ func main() {
 		log.Fatalf("ouverture %q : %v", *inputPath, err)
 	}
 
-	session, err := proc.Process(walker, anonOpts...)
+	session, report, err := proc.ProcessWithReport(walker, anonOpts...)
 	if err != nil {
+		// En mode strict, l'échec doit précéder toute écriture : le document de
+		// sortie n'est jamais créé, pas même partiellement anonymisé.
 		log.Fatalf("anonymisation : %v", err)
 	}
+	reportLeaks(report)
 
 	// --- Sauvegarde du document ---
 	if saver, ok := walker.(interface{ SaveTo(string) error }); ok {
@@ -208,22 +220,55 @@ func main() {
 	fmt.Printf("Document anonymisé : %s\n", *outputPath)
 	fmt.Printf("Entités remplacées : %d\n", len(session.Mapping))
 
-	// --- Mapping JSON ---
-	if *saveMappingPath != "" {
+	// --- Mapping chiffré ---
+	if *saveMappingID != "" {
+		store, err := cmdutil.OpenMappingStore(*mappingDir, *mappingTTL)
+		if err != nil {
+			log.Fatalf("%v (ou -save-mapping-insecure pour écrire en clair, en connaissance de cause)", err)
+		}
+		if err := store.Save(context.Background(), *saveMappingID, session); err != nil {
+			log.Fatalf("sauvegarde du mapping : %v", err)
+		}
+		fmt.Printf("Mapping chiffré enregistré : %s (store %s)\n", *saveMappingID, *mappingDir)
+		if *mappingTTL == 0 {
+			fmt.Fprintln(os.Stderr, "avertissement : mapping sans date de rétention "+
+				"— préciser -mapping-ttl, la conservation illimitée d'une table de "+
+				"ré-identification étant difficilement justifiable")
+		}
+	}
+
+	// --- Mapping en clair (dérogation explicite) ---
+	if *saveMappingInsecure != "" {
 		data, err := json.MarshalIndent(session.Mapping, "", "  ")
 		if err != nil {
 			log.Fatalf("sérialisation mapping : %v", err)
 		}
 		// 0600 : le mapping est la table de ré-identification, donc une donnée
-		// personnelle à part entière. Il reste écrit en clair — le chiffrement
-		// et la rétention relèvent du MappingStore (chantier S5).
-		if err := os.WriteFile(*saveMappingPath, data, 0o600); err != nil {
-			log.Fatalf("écriture mapping %q : %v", *saveMappingPath, err)
+		// personnelle à part entière.
+		if err := os.WriteFile(*saveMappingInsecure, data, 0o600); err != nil {
+			log.Fatalf("écriture mapping %q : %v", *saveMappingInsecure, err)
 		}
-		fmt.Printf("Mapping sauvegardé : %s\n", *saveMappingPath)
-		fmt.Fprintf(os.Stderr, "avertissement : %s contient la table de ré-identification en clair "+
-			"(donnée personnelle) — le protéger et le purger après usage\n", *saveMappingPath)
+		fmt.Printf("Mapping sauvegardé : %s\n", *saveMappingInsecure)
+		fmt.Fprintf(os.Stderr, "AVERTISSEMENT : %s contient la table de ré-identification EN CLAIR "+
+			"(donnée personnelle) — préférer -save-mapping, qui chiffre ; à défaut, "+
+			"protéger ce fichier et le détruire après usage\n", *saveMappingInsecure)
 	}
+}
+
+// reportLeaks résume la vérification sur stderr en métadonnées seulement :
+// nombre de fuites par nature, jamais les contenus concernés.
+func reportLeaks(report *docprocessor.Report) {
+	if report.OK() {
+		return
+	}
+
+	byKind := make(map[goanon.LeakKind]int, len(report.Leaks))
+	for _, leak := range report.Leaks {
+		byKind[leak.Kind]++
+	}
+	fmt.Fprintf(os.Stderr, "avertissement : vérification — %d fuite(s) sur %d segment(s) %v ; "+
+		"utiliser -strict pour refuser de produire un document dans ce cas\n",
+		len(report.Leaks), report.Segments, byKind)
 }
 
 func parseStrategy(s string) anonymizer.Strategy {
