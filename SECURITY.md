@@ -12,7 +12,7 @@ Merci d'inclure, dans la mesure du possible :
 
 - une description du problème et de son impact ;
 - les versions concernées (`go-anon` et, le cas échéant, les modèles) ;
-- un scénario de reproduction minimal — **sans données personnelles réelles** ;
+- un scénario de reproduction minimal, **sans données personnelles réelles** ;
 - toute atténuation connue.
 
 ## Périmètre

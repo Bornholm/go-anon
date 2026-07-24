@@ -7,13 +7,13 @@ limites : une garantie surévaluée est un risque de conformité.
 
 ## 1. Position juridique : pseudonymisation, pas anonymisation
 
-`go-anon` réalise une **pseudonymisation** au sens de l'**art. 4(5) du RGPD**, et
-non une anonymisation au sens du **considérant 26**.
+`go-anon` réalise une **pseudonymisation** au sens de l'**[art. 4(5)](https://www.cnil.fr/fr/reglement-europeen-protection-donnees/chapitre1#Article4) du RGPD**, et
+non une anonymisation au sens du **[considérant 26](https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32016R0679)**.
 
 - Le remplacement des entités par des pseudonymes (`⟦PERSON_1_…⟧`, un faux nom,
   une empreinte HMAC) reste **réversible** tant qu'existe une table de
   correspondance (le _mapping_) ou une clé.
-- Le **mapping est donc lui-même une donnée personnelle** — l'actif le plus
+- Le **mapping est donc lui-même une donnée personnelle**, l'actif le plus
   sensible du système. Il doit être protégé comme la base des personnes
   concernées.
 - **L'anonymisation de facto** (irréversibilité) n'est atteinte que par la
@@ -87,7 +87,7 @@ précision, du rappel et du F1, **par type et par langue** :
 
 Le rappel **PER** importe davantage que le rappel **MISC** ; `eval` détaille les
 deux. Publier ces chiffres dans le README (F1/F2 agrégés) et les mesurer à chaque
-release fait partie de la responsabilité de l'art. 5(2) (_accountability_).
+release fait partie de la responsabilité de l'[art. 5(2)](https://www.cnil.fr/fr/reglement-europeen-protection-donnees/chapitre2#Article5) (_accountability_).
 
 ### 3.3 Propriétés du hachage (S2)
 
@@ -122,7 +122,7 @@ provoque une erreur : **pas de document faussement propre**.
 Critère de recette DOCX : `unzip -p sortie.docx | grep -c "NomTest"` == 0 sur
 l'ensemble des parts OOXML, ou erreur en mode strict.
 
-## 5. Effacement (art. 17) et _crypto-shredding_
+## 5. Effacement ([art. 17](https://www.cnil.fr/fr/reglement-europeen-protection-donnees/chapitre3#Article17)) et _crypto-shredding_
 
 Le mapping est stocké chiffré (**AES-256-GCM**, `pkg/anonymizer/mappingstore`),
 clé 32 octets via `GOANON_MAPPING_KEY` / `GOANON_MAPPING_KEY_FILE`, fichiers en
@@ -178,11 +178,11 @@ chargé (`-gazetteers "firstnames:…"`). Sans lui, il dégénère vers l'équil
 - [ ] **Swap chiffré ou désactivé**.
 - [ ] **Core dumps désactivés** : `GOTRACEBACK=none`, `ulimit -c 0` /
       `LimitCORE=0` (systemd), `securityContext` restrictif (Kubernetes).
-- [ ] Logs **métadonnées seulement** — vérifié : aucun corps de requête, aucun
+- [ ] Logs **métadonnées seulement**, vérifié : aucun corps de requête, aucun
       `ent.Text` (cf. test `TestGuarantee_LogsAndErrorsCarryNoProbe`).
 - [ ] Journal d'audit conformité (art. 5(2)) si requis : horodatage, langue,
-      stratégie, comptes d'entités par type, SHA-256 du document source — **jamais
-      de forme de surface**.
+      stratégie, comptes d'entités par type, SHA-256 du document source.
+      **Jamais de forme de surface.**
 
 ---
 

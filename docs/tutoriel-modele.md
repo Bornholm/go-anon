@@ -1,7 +1,7 @@
 # Entraîner un modèle NER depuis les données WikiNER
 
-Ce tutoriel couvre la reproduction complète d'un modèle NER pour n'importe quelle
-langue supportée (`fr`, `en`, `es`) depuis les données brutes WikiNER.
+Reproduire de bout en bout un modèle NER pour une langue supportée (`fr`, `en`,
+`es`), depuis les données brutes WikiNER jusqu'au modèle élagué prêt pour l'API.
 
 Les exemples utilisent `<LANG>` comme variable de langue. Remplacez-la par `fr`,
 `en` ou `es` selon votre cible.
@@ -13,8 +13,7 @@ Les exemples utilisent `<LANG>` comme variable de langue. Remplacez-la par `fr`,
 - **Plusieurs heures de CPU par langue** (`-workers 1`, obligatoire) : sur le
   corpus WikiNER complet (~250–280 k phrases), une époque prend ~8–11 min ; un
   entraînement de 20 époques (souvent écourté par l'early-stopping) représente
-  ~2 à 3,5 h par langue. Le tutoriel citait auparavant « 15–20 min » — c'était
-  sous-évalué d'un ordre de grandeur pour le corpus complet.
+  ~2 à 3,5 h par langue.
 
 ## Étape 1 — Compiler les binaires
 
@@ -37,11 +36,11 @@ make build-tools
 
 Les fichiers suivants doivent être présents dans `data/<LANG>/` :
 
-| Fichier                                    | Rôle                                   | Format  |
-| ------------------------------------------ | -------------------------------------- | ------- |
-| `wikiner_<LANG>_full.train.wikiner`        | Corpus d'entraînement (~250 k phrases) | WikiNER |
-| `wikiner_<LANG>_full.dev.wikiner`          | Corpus de validation (~2.5 k phrases)  | WikiNER |
-| `wikiner_<LANG>.test.conll`                | Corpus de test (~2.5 k phrases)        | CoNLL   |
+| Fichier                             | Rôle                                   | Format  |
+| ----------------------------------- | -------------------------------------- | ------- |
+| `wikiner_<LANG>_full.train.wikiner` | Corpus d'entraînement (~250 k phrases) | WikiNER |
+| `wikiner_<LANG>_full.dev.wikiner`   | Corpus de validation (~2.5 k phrases)  | WikiNER |
+| `wikiner_<LANG>.test.conll`         | Corpus de test (~2.5 k phrases)        | CoNLL   |
 
 ### Téléchargement
 
@@ -115,10 +114,10 @@ recommandé : 5 pour un gazetteer propre).
 
 Sortie :
 
-| Fichier                   | Contenu                    |
-| ------------------------- | -------------------------- |
-| `data/eu_prenoms.txt`     | ~28 k prénoms EU           |
-| `data/eu_patronymes.txt`  | ~237 k patronymes EU       |
+| Fichier                  | Contenu              |
+| ------------------------ | -------------------- |
+| `data/eu_prenoms.txt`    | ~28 k prénoms EU     |
+| `data/eu_patronymes.txt` | ~237 k patronymes EU |
 
 Voir [`scripts/build_gazetteers_eu.py`](../scripts/build_gazetteers_eu.py)
 
@@ -211,7 +210,7 @@ C'est la configuration qui produit les modèles de production :
   -output     models/model_<LANG>_pruned.crf.gz
 ```
 
-**Variante FR** — ajouter le gazetteer des communes :
+**Variante FR.** Ajoutez le gazetteer des communes :
 
 ```bash
   -gazetteers "firstnames:data/eu_prenoms.txt,lastnames:data/eu_patronymes.txt,locations:data/fr/fr_communes.txt"
@@ -283,15 +282,15 @@ C'est la configuration qui produit les modèles de production :
 
 Flags d'évaluation liés à la configuration d'inférence :
 
-| Flag           | Défaut  | Effet                                                          |
-| -------------- | ------- | -------------------------------------------------------------- |
-| `-keep-punct`  | `true`  | Conserve la ponctuation dans la séquence CRF (aligné train)    |
-| `-boundaries`  | `. ! ? …` | Délimiteurs de phrase ; `-keep-punct=false` + anciens délimiteurs reproduit l'inférence pré-2026 |
-| `-clusters`    | —       | Fichier Brown clusters (doit correspondre à l'entraînement)    |
-| `-gazetteers`  | —       | Gazetteers `nom:fichier.txt,...` (idem)                        |
+| Flag          | Défaut    | Effet                                                                                            |
+| ------------- | --------- | ------------------------------------------------------------------------------------------------ |
+| `-keep-punct` | `true`    | Conserve la ponctuation dans la séquence CRF (aligné train)                                      |
+| `-boundaries` | `. ! ? …` | Délimiteurs de phrase ; `-keep-punct=false` + anciens délimiteurs reproduit l'inférence pré-2026 |
+| `-clusters`   | —         | Fichier Brown clusters (doit correspondre à l'entraînement)                                      |
+| `-gazetteers` | —         | Gazetteers `nom:fichier.txt,...` (idem)                                                          |
 
 Performances de référence sur WikiNER (configuration 5b, splits seed 42,
-matching strict, inférence par défaut — mesures 2026-07) :
+matching strict, inférence par défaut, mesures 2026-07) :
 
 | Langue | F1 global | PER   | LOC   | ORG   | MISC  | Schéma / format |
 | ------ | --------- | ----- | ----- | ----- | ----- | --------------- |
@@ -303,7 +302,7 @@ matching strict, inférence par défaut — mesures 2026-07) :
 > (deux bugs corrigés : `word.len`, gazetteers multi-mots) et au **format v3**
 > (poids groupés par feature, inférence ~×4,6, modèles ~30–50 % plus petits).
 > Ces deux évolutions sont enregistrées dans le modèle et propagées
-> automatiquement à l'inférence — aucune option à passer.
+> automatiquement à l'inférence. Aucune option à passer.
 >
 > **Note espagnol** : le F1 dev de l'espagnol est bruité ; utiliser une patience
 > d'early-stopping élargie (`-early-stop 8 -epochs 30`). Avec la valeur par

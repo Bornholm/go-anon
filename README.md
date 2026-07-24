@@ -11,31 +11,15 @@ Le cœur du pipeline NER (modèle CRF, features, tokenisation, anonymisation) es
 ## Fonctionnalités
 
 - Détection d'entités nommées (personnes, lieux, organisations) via un modèle CRF linéaire ;
-- Détection par expression régulière d'identifiants structurés : e-mail, IPv4/IPv6, IBAN, SIRET, SIREN, numéro de téléphone ;
-- Détection de jetons d'authentification et clés d'API : JWT, OpenAI, AWS, GitHub, Slack, Stripe, Bearer ;
-- Anonymisation configurable : remplacement par tag, caviardage, empreinte SHA-256 ou pseudonymes cohérents ;
-- Traitement de documents bureautiques : DOCX, ODT, CSV/TSV, PDF ;
-- Support du français, de l'anglais et de l'espagnol avec profils linguistiques dédiés ;
-- Détection automatique de la langue (fr/en/es) pour éviter de la spécifier en amont ;
-- Téléchargement automatique des modèles pré-entraînés depuis GitHub Releases ;
-- Vérification de la sortie et mode fail-closed : aucune sortie produite si une
-  entité connue ou un identifiant structuré y reste détectable ;
-- Mapping de ré-identification chiffré (AES-256-GCM), avec rétention et
-  effacement cryptographique ;
-- Sanitisation des surfaces cachées des documents (métadonnées d'auteur,
-  commentaires, révisions) — fail-closed en mode strict ;
-- Serveur HTTP durci : isolation inter-requêtes sans état, plafonds de corps et
-  de concurrence, délais, logs limités aux métadonnées ;
-- Presets précision/rappel (`balanced`, `high-recall`) et métriques orientées
-  conformité : rappel par type/langue et **F2** publiés par `eval` ;
-- Vérification de signature Ed25519 (minisign) du manifeste des modèles :
-  authenticité de la source, pas seulement intégrité du transfert ;
-- Post-filtres chaînables : seuil de confiance, longueur de span, liste noire ;
-- Enrichissement optionnel via gazetteers et Brown clusters ;
-- Configuration d'inférence auto-propagée depuis le modèle (schéma de features,
-  fenêtre de contexte) et `Recognizer.Warnings()` qui signale toute ressource
-  manquante (gazetteer/clusters) par rapport à l'entraînement ;
-- Serveur HTTP intégré via `cmd/server`.
+- Détection par expression régulière d'identifiants structurés (e-mail, IPv4/IPv6, IBAN, SIRET, SIREN, téléphone) et de secrets (JWT, clés OpenAI/AWS/GitHub/Slack/Stripe, Bearer) ;
+- Anonymisation configurable : remplacement par tag, caviardage, empreinte HMAC ou pseudonymes cohérents ;
+- Traitement de documents bureautiques : DOCX, ODT, CSV/TSV, PDF, avec sanitisation des surfaces cachées (métadonnées, commentaires, révisions) ;
+- Détection automatique de la langue (fr/en/es) et téléchargement automatique des modèles pré-entraînés depuis GitHub Releases ;
+- Vérification de la sortie et mode fail-closed : aucune sortie produite si une entité ou un identifiant structuré y reste détectable ;
+- Mapping de ré-identification chiffré (AES-256-GCM), avec rétention et effacement cryptographique ;
+- Serveur HTTP durci : isolation inter-requêtes sans état, plafonds de corps et de concurrence, logs limités aux métadonnées ;
+- Presets précision/rappel (`balanced`, `high-recall`) et métriques orientées conformité (rappel par type/langue, **F2**) ;
+- Vérification de signature Ed25519 (minisign) du manifeste des modèles.
 
 ## Utilisation
 
@@ -59,25 +43,18 @@ entities, _ := r.Recognize("Jean Dupont habite à Paris.")
 anon := goanon.NewAnonymizer(r, goanon.Config{Strategy: goanon.TagReplace})
 result, _ := anon.Anonymize("Jean Dupont habite à Paris.")
 // result.Text → "⟦PERSON_1_a3f9c2⟧ habite à ⟦LOCATION_1_a3f9c2⟧."
-// Le suffixe est un nonce de session : voir « Placeholders » ci-dessous.
 
 // Restaurer le texte original
 restored, _ := goanon.Deanonymize(result.Text, result.Mapping)
 
 // Mode fail-closed : aucune sortie si une entité subsiste dans le texte anonymisé
 result, err := anon.Anonymize(texte, goanon.WithStrictVerification())
-// err != nil → rien n'est produit ; voir « Vérification » ci-dessous
 
-// Activer la détection des identifiants structurés courants (e-mail, IP, IBAN…)
+// Détection des identifiants structurés (e-mail, IP, IBAN…) et des secrets
 r, _ = goanon.NewRecognizer(m,
     goanon.WithLanguage("fr"),
     goanon.WithBuiltinRegexPatterns(),
-)
-
-// Activer la détection des jetons d'authentification et clés d'API
-r, _ = goanon.NewRecognizer(m,
-    goanon.WithLanguage("fr"),
-    goanon.WithBuiltinSecretPatterns(), // JWT, OpenAI sk-, AWS AKIA, GitHub ghp_, Slack xox*, Stripe sk_live_, Bearer…
+    goanon.WithBuiltinSecretPatterns(), // JWT, sk-, AKIA, ghp_, xox*, sk_live_, Bearer…
 )
 
 // Détecter automatiquement la langue avant de choisir le modèle
@@ -95,214 +72,45 @@ anon-doc -model auto -input rapport.docx -output rapport_anon.docx
 anon-doc -model auto -lang fr -input rapport.docx -output rapport_anon.docx
 ```
 
-Voir [`docs/tutoriel-modele.md`](./docs/tutoriel-modele.md) pour entraîner un modèle français.
-
 ## Garanties de traitement
 
-La bibliothèque réalise une **pseudonymisation** au sens de l'art. 4(5) du RGPD,
+La bibliothèque réalise une **pseudonymisation** au sens de l'[art. 4(5)](https://www.cnil.fr/fr/reglement-europeen-protection-donnees/chapitre1#Article4) du RGPD,
 pas une anonymisation : le mapping de ré-identification est lui-même une donnée
 personnelle, et l'actif le plus sensible du système. Le protéger et le détruire
-après usage est ce qui rend la sortie anonyme *de facto*. **Par défaut, la sortie
-est réversible** (pseudonymisée) — pas anonyme.
+après usage est ce qui rend la sortie anonyme _de facto_. **Par défaut, la sortie
+est réversible** (pseudonymisée), pas anonyme.
 
 > **Ce que l'outil garantit**
+>
 > - en mode strict : aucune forme de surface d'entité **détectée** ni identifiant
->   structuré ne reste en clair, sinon échec sans sortie (S4) ;
-> - les secrets (clés, JWT) n'entrent jamais dans le mapping (S1) ;
-> - la stratégie `hash` n'est pas cassable par dictionnaire sans la clé (HMAC, S2) ;
-> - round-trip déterministe et total (S3) ;
-> - purge des métadonnées/commentaires/révisions des documents (S6) ;
-> - isolation inter-requêtes du serveur, logs sans contenu (S7).
+>   structuré ne reste en clair, sinon échec sans sortie ;
+> - les secrets (clés, JWT) n'entrent jamais dans le mapping ;
+> - la stratégie `hash` n'est pas cassable par dictionnaire sans la clé (HMAC) ;
+> - round-trip déterministe et total ;
+> - purge des métadonnées/commentaires/révisions des documents ;
+> - isolation inter-requêtes du serveur, logs sans contenu.
 >
 > **Ce que l'outil ne garantit pas**
+>
 > - l'exhaustivité de la **détection** (un nom manqué par le modèle part en
->   clair — préférer le preset haut rappel) ;
+>   clair, préférer alors le preset haut rappel) ;
 > - la couverture des quasi-identifiants combinables, paraphrases, inférences
 >   contextuelles, stylométrie ;
 > - la zéroïsation mémoire (limite du langage) ni l'écrasement disque physique
 >   (l'effacement réel est cryptographique).
->
-> Détails, modèle de menace complet et checklist de déploiement :
-> **[`docs/rgpd.md`](docs/rgpd.md)**.
 
-### Secrets
+Modèle de menace complet, garanties mesurées et checklist de déploiement :
+**[`docs/rgpd.md`](docs/rgpd.md)**.
 
-Les types `API_KEY`, `JWT` et `SECRET` (jetons GitHub/Stripe/AWS, Bearer,
-variables `*_PASSWORD`…) court-circuitent toute stratégie : ils sont remplacés
-par un marqueur fixe `⟦API_KEY_REDACTED⟧`, n'entrent ni dans `Mapping` ni dans
-`OriginalToPlaceholder`, et ne sont pas restaurables. Leur forme de surface
-n'apparaît pas non plus dans `Result.Entities` (sauf `WithExposeSecrets(true)`,
-réservé au débogage local). Deux occurrences d'un même secret reçoivent un
-marqueur identique et indistinct : aucune corrélation possible.
+## Documentation
 
-### Placeholders
-
-Format : `⟦TYPE_N_nonce⟧`. Les délimiteurs U+27E6/U+27E7 sont quasi inexistants
-en texte naturel, et le nonce (3 octets, tiré par session) rend le format
-imprédictible — un placeholder ne peut pas être pré-injecté dans le texte source.
-Si le texte source contient malgré tout un placeholder, `Anonymize` retourne
-`ErrPlaceholderCollision` plutôt que de corrompre silencieusement le round-trip
-(`WithEscapeCollisions()` échappe au lieu d'échouer).
-
-`Deanonymize` remplace en un scan unique et déterministe, et retourne
-`ErrIncompleteMapping` si un placeholder subsiste en sortie.
-
-L'ancien format `[TYPE_N]` reste accessible via `WithLegacyPlaceholders()`.
-**Changement incompatible** : les consommateurs qui parsent `[PERSON_1]` doivent
-migrer ou activer cette option.
-
-### Stratégie `hash`
-
-Le pseudonyme est dérivé par **HMAC-SHA-256** avec une clé secrète (pepper) :
-un SHA-256 non salé sur des noms propres est cassable par dictionnaire en
-quelques secondes. La clé se fournit par variable d'environnement, jamais par
-flag CLI (les arguments de processus sont visibles dans `ps` et les logs
-d'orchestrateur) :
-
-```bash
-export GOANON_HASH_KEY="$(openssl rand -hex 32)"   # 32 octets minimum
-anon-doc -model auto -strategy hash -input doc.docx -output out.docx
-```
-
-Sans clé, la stratégie **échoue** au lieu de se dégrader silencieusement.
-`-insecure-hash` rétablit l'ancien SHA-256 nu pour les démonstrations, avec
-avertissement.
-
-`-hash-scope` (ou `goanon.WithHashScope`) entre dans le HMAC : par défaut une
-même clé produit le même pseudonyme partout — corrélation possible entre
-documents, parfois voulue pour l'analyse, parfois interdite. Un scope par
-dossier ou par client casse cette linkability.
-
-### Vérification de la sortie
-
-La sortie anonymisée est recontrôlée avant d'être rendue : formes de surface du
-mapping encore présentes, identifiants structurés (e-mail, IBAN, jetons…)
-re-détectables, corruption d'encodage, placeholder déjà présent dans la source.
-Le contrôle raisonne par **zones sûres** — les spans écrits par l'anonymiseur
-sont exclus du scan, ce qui évite qu'un pseudonyme ou un digest soit compté
-comme une fuite.
-
-```go
-// Observation : rapport attaché au résultat, rien n'est bloqué.
-res, _ := anon.Anonymize(texte, goanon.WithVerification())
-res.Verification.OK()      // false s'il reste quelque chose
-res.Verification.Leaks     // offsets et types — jamais le texte fuité
-
-// Fail-closed : une seule fuite suffit à refuser de produire une sortie.
-res, err := anon.Anonymize(texte, goanon.WithStrictVerification())
-```
-
-En ligne de commande, `-strict` sur `anon-doc`, `demo` et `server` :
-
-```bash
-anon-doc -model auto -strict -input rapport.docx -output rapport_anon.docx
-```
-
-En mode strict, `anon-doc` n'écrit **aucun** fichier de sortie si un segment
-fuit, et le serveur répond `422` sans corps anonymisé. Sans `-strict`, le
-rapport part sur stderr (comptes par nature de fuite, jamais de contenu).
-
-Le jeu de motifs re-passé sur la sortie est indépendant de la configuration du
-`Recognizer` : si le pipeline n'a pas activé `WithBuiltinRegexPatterns()`, les
-e-mails restés en clair *seront* signalés — ils sont bien là. Pour restreindre
-la vérification en connaissance de cause : `goanon.WithVerifyPatterns(...)`.
-
-### Stockage du mapping
-
-Le mapping est la table de ré-identification : le sauvegarder en clair revient à
-exporter la base des personnes concernées. `pkg/anonymizer/mappingstore` le
-chiffre en **AES-256-GCM**, avec l'identifiant du mapping en données
-authentifiées — un fichier ne peut pas être rejoué sous un autre identifiant.
-
-```bash
-export GOANON_MAPPING_KEY="$(openssl rand -hex 32)"   # ou GOANON_MAPPING_KEY_FILE
-anon-doc -model auto -input rapport.docx -output rapport_anon.docx \
-  -save-mapping dossier-42 -mapping-store ./mappings -mapping-ttl 720h
-
-mappings -store ./mappings list     # inventaire, sans déchiffrement
-mappings -store ./mappings purge    # suppression des mappings expirés
-mappings -store ./mappings delete dossier-42
-```
-
-Le répertoire est en `0700`, les fichiers en `0600`, l'écriture est atomique.
-
-**Changement incompatible** : `-save-mapping` désigne désormais un identifiant
-dans un store chiffré, et non plus un chemin de fichier JSON. Sans clé, la
-commande échoue. L'ancien comportement reste accessible via
-`-save-mapping-insecure fichier.json`, avec avertissement.
-
-**Sur l'effacement (art. 17)** : la suppression d'un fichier ne garantit pas la
-disparition physique des blocs — sur SSD (wear leveling) comme sur les systèmes
-copy-on-write (btrfs, ZFS, APFS), les données d'origine peuvent survivre. La
-garantie réelle est cryptographique : **détruire la clé d'un compartiment rend
-illisibles tous ses mappings**, où qu'en soient les octets. C'est le seul
-effacement démontrable, et l'argument à opposer à un DPO.
-
-### Sanitisation des documents
-
-Un document « anonymisé » ne se limite pas à son texte visible. Un DOCX porte
-l'auteur et le dernier modificateur dans ses propriétés, du texte supprimé dans
-ses révisions, des commentaires ; un PDF un dictionnaire Info et des métadonnées
-XMP ; un ODT un `meta.xml`. `anon-doc` purge ces surfaces avant d'écrire (option
-`-sanitize`, activée par défaut) :
-
-```bash
-anon-doc -model auto -strict -input rapport.docx -output rapport_anon.docx
-```
-
-| Format | Surface traitée                                                        |
-| ------ | --------------------------------------------------------------------- |
-| DOCX   | `docProps` purgés, commentaires supprimés, révisions **détectées**    |
-| ODT    | `meta.xml` purgé, annotations et modifications suivies retirées       |
-| PDF    | dictionnaire Info et métadonnées XMP purgés, annotations signalées    |
-| CSV    | aucune surface cachée (le fichier est son texte visible)              |
-
-Certaines surfaces ne peuvent pas être neutralisées avec garantie (les révisions
-DOCX, les annotations et pièces jointes PDF). En mode `-strict`, leur présence
-**refuse le document** plutôt que de produire une sortie faussement propre — à
-charge de l'opérateur d'accepter les révisions ou de retirer les pièces jointes
-en amont. Hors strict, elles sont signalées sur stderr (comptes seulement).
-
-### Durcissement du serveur
-
-`cmd/server` isole les requêtes et borne ses ressources : le `Recognizer` est
-sans état (aucune contamination inter-tenants, vérifié sous `-race`), le corps
-des requêtes est plafonné (`-max-body`), les anonymisations concurrentes sont
-limitées par un sémaphore (`-max-concurrent`), et des délais (`ReadTimeout`,
-`WriteTimeout`…) coupent les connexions lentes. Les logs ne portent que des
-métadonnées (méthode, statut, comptes d'entités par type) — jamais de corps ni
-de forme de surface ; les réponses d'erreur sont génériques, corrélées aux logs
-par un identifiant `X-Request-Id`.
-
-### Rappel et presets (orientation conformité)
-
-Pour la conformité, **le rappel prime sur la précision** : un faux positif est un
-sur-caviardage bénin, un faux négatif est une donnée personnelle laissée en clair.
-`eval` publie donc précision et rappel **séparément**, par type et par langue, et
-le **F2** (rappel pondéré ×2) comme métrique de référence :
-
-```bash
-eval -model model_fr.crf.gz -lang fr -test corpus.conll \
-  -gazetteers "firstnames:data/eu_prenoms.txt" -preset high-recall
-```
-
-Deux presets sont fournis (`goanon.Balanced` / `goanon.HighRecall`, ou
-`-preset`) : `balanced` (compromis F1, défaut) et `high-recall`, qui **injecte**
-en PER les prénoms du gazetteer manqués par le modèle. La recommandation RGPD est
-**`high-recall` + mode strict**. Le corpus `pkg/ner/testdata/known_leaks_fr.txt`
-verrouille en CI la non-régression du rappel sur des fuites historiques.
-
-### Authenticité des modèles
-
-Le SHA-256 du manifeste protège l'intégrité du transfert, pas l'authenticité de
-la source : qui contrôle le dépôt de releases fournit un modèle malveillant *et*
-son hash. `modelstore` vérifie donc une **signature Ed25519 (format minisign)** du
-manifeste avec une clé publique embarquée, avant de faire confiance aux hashs
-(chaîne : signature → manifeste → hash → modèle). Le code de langue est borné à
-`^[a-z]{2}$` pour interdire toute traversée de chemin via le manifeste.
-`-insecure-skip-verify` désactive la vérification pour un manifeste custom non
-signé, avec avertissement. Pour données sensibles : modèles embarqués + mode
-hors-ligne (cf. [`docs/rgpd.md`](docs/rgpd.md)).
+| Document                                             | Contenu                                                                                                             |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| [`docs/anonymisation.md`](docs/anonymisation.md)     | Secrets, placeholders, stratégies de remplacement (dont `hash`), vérification fail-closed, presets précision/rappel |
+| [`docs/documents.md`](docs/documents.md)             | Formats bureautiques pris en charge et sanitisation des surfaces cachées                                            |
+| [`docs/deploiement.md`](docs/deploiement.md)         | Stockage chiffré du mapping, durcissement du serveur HTTP, authenticité des modèles                                 |
+| [`docs/rgpd.md`](docs/rgpd.md)                       | Cadrage juridique, modèle de menace, garanties mesurées, checklist de déploiement                                   |
+| [`docs/tutoriel-modele.md`](docs/tutoriel-modele.md) | Entraîner un modèle NER depuis les données WikiNER                                                                  |
 
 ## Licence
 
