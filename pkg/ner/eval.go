@@ -14,15 +14,34 @@ type RecognizerEvalInterface interface {
 }
 
 // Metrics contient les métriques d'évaluation standard du NER.
+//
+// F2 pondère le rappel deux fois plus que la précision (β=2) : c'est la
+// métrique de référence pour la conformité RGPD, où un faux négatif (donnée
+// personnelle laissée en clair) est bien plus grave qu'un faux positif
+// (sur-caviardage bénin). Précision et rappel sont exposés séparément, et
+// détaillés par type dans PerType — le rappel PER importe plus que le rappel
+// MISC.
 type Metrics struct {
 	Precision float64
 	Recall    float64
 	F1        float64
+	F2        float64
 	PerType   map[EntityType]*Metrics
 
 	TotalGold  int
 	TotalPred  int
 	TotalMatch int
+}
+
+// fBeta calcule le F-score pondéré : β>1 favorise le rappel, β<1 la précision.
+// Retourne 0 si précision et rappel sont nuls.
+func fBeta(precision, recall, beta float64) float64 {
+	b2 := beta * beta
+	denom := b2*precision + recall
+	if denom == 0 {
+		return 0
+	}
+	return (1 + b2) * precision * recall / denom
 }
 
 // Evaluate calcule les métriques NER sur un corpus annoté.
@@ -77,9 +96,8 @@ func Evaluate(rec RecognizerEvalInterface, testSet []corpus.Sentence) *Metrics {
 	if totalGold > 0 {
 		metrics.Recall = float64(totalMatch) / float64(totalGold)
 	}
-	if metrics.Precision+metrics.Recall > 0 {
-		metrics.F1 = 2 * metrics.Precision * metrics.Recall / (metrics.Precision + metrics.Recall)
-	}
+	metrics.F1 = fBeta(metrics.Precision, metrics.Recall, 1)
+	metrics.F2 = fBeta(metrics.Precision, metrics.Recall, 2)
 
 	metrics.TotalGold = totalGold
 	metrics.TotalPred = totalPred
@@ -92,9 +110,8 @@ func Evaluate(rec RecognizerEvalInterface, testSet []corpus.Sentence) *Metrics {
 		if m.TotalGold > 0 {
 			m.Recall = float64(m.TotalMatch) / float64(m.TotalGold)
 		}
-		if m.Precision+m.Recall > 0 {
-			m.F1 = 2 * m.Precision * m.Recall / (m.Precision + m.Recall)
-		}
+		m.F1 = fBeta(m.Precision, m.Recall, 1)
+		m.F2 = fBeta(m.Precision, m.Recall, 2)
 		perTypeMetrics[et] = m
 	}
 
@@ -233,6 +250,6 @@ func countStrictMatches(gold, pred []Entity, et EntityType) int {
 
 // String implémente fmt.Stringer pour les Metrics.
 func (m *Metrics) String() string {
-	return fmt.Sprintf("P=%.3f R=%.3f F1=%.3f (gold=%d pred=%d match=%d)",
-		m.Precision, m.Recall, m.F1, m.TotalGold, m.TotalPred, m.TotalMatch)
+	return fmt.Sprintf("P=%.3f R=%.3f F1=%.3f F2=%.3f (gold=%d pred=%d match=%d)",
+		m.Precision, m.Recall, m.F1, m.F2, m.TotalGold, m.TotalPred, m.TotalMatch)
 }

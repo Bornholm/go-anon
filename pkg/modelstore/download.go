@@ -25,6 +25,17 @@ func validateURL(url string) error {
 	return nil
 }
 
+// validateLang refuse tout code de langue hors ^[a-z]{2}$. Le code sert de
+// composant de chemin de fichier dans le cache (modelCachePath) : sans cette
+// borne, un manifest hostile pourrait viser un chemin arbitraire par traversée
+// (« ../.. »), et la sortie finale s'échapperait de destDir.
+func validateLang(lang string) error {
+	if len(lang) != 2 || lang[0] < 'a' || lang[0] > 'z' || lang[1] < 'a' || lang[1] > 'z' {
+		return fmt.Errorf("%w: got %q", ErrInvalidLang, lang)
+	}
+	return nil
+}
+
 func downloadModel(ctx context.Context, client *http.Client, url, expectedSHA, destDir, lang string, progressFn func(string, int64, int64)) (string, error) {
 	if err := validateURL(url); err != nil {
 		return "", err

@@ -1,0 +1,22 @@
+# Corpus de non-régression « fuites connues » (fr).
+#
+# Chaque cas est une fuite réelle historiquement ratée par le pipeline. Le test
+# TestGuarantee_KnownLeaksRecall (knownleaks_test.go) exige que CHAQUE forme de
+# surface attendue soit couverte par au moins une entité détectée. Tout commit
+# qui refait passer un cas de « détecté » à « non détecté » casse la CI —
+# garantie de non-régression du rappel, indépendante du F1 agrégé.
+#
+# Format : <texte>\t<forme1>|<forme2>|...
+# Les lignes vides et celles commençant par # sont ignorées.
+#
+# Chantier S1 — noms accentués (corruption UTF-8 de SurnameCompletionPass).
+Hélène Écheverría travaille à Genève.	Hélène Écheverría
+Le rapport de Loïc Görtz a été validé.	Loïc Görtz
+Contactez María-José Nuñez avant lundi.	María-José Nuñez
+# Chantier S2 — appositions (contexte détruit par un découpage trop agressif).
+Jean Dupont, directeur de Renault, a démissionné.	Jean Dupont|Renault
+Madame Sophie Barreau, née à Bordeaux, préside le conseil.	Sophie Barreau|Bordeaux
+# Prénoms composés et particules.
+L'expertise de Jean-Baptiste de La Fontaine est reconnue.	Jean-Baptiste de La Fontaine
+# Prénom seul complété par un nom adjacent (NameCompletionPass).
+Marie Lecomte habite à Lyon.	Marie Lecomte|Lyon

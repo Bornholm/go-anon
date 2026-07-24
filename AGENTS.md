@@ -118,6 +118,12 @@ Points de configuration importants (cf. `pkg/ner` et `goanon.go`) :
 - **Hygiène des `Session`** — `Session.Close()` libère les tables (PII
   collectable) et interdit tout usage ultérieur (`ErrSessionClosed`) ;
   `SetMaxEntities` borne la croissance du mapping (`ErrSessionFull`).
+- **Presets précision/rappel** (`pkg/ner/preset.go`) — `Balanced` (défaut,
+  compromis F1) et `HighRecall` (conformité : ajoute `FirstNameDetectionPass`
+  qui injecte les prénoms du gazetteer manqués par le CRF). `eval -preset`
+  mesure chaque preset ; `Metrics` expose désormais **F2** (rappel pondéré ×2).
+  Recommandation RGPD : `HighRecall` + `WithStrictVerification` (cf.
+  `docs/rgpd.md`).
 
 ### Packages
 
@@ -137,7 +143,7 @@ Points de configuration importants (cf. `pkg/ner` et `goanon.go`) :
 | `pkg/tokenizer`    | `UnicodeTokenizer` — offsets byte-précis, options FR/ES (apostrophe) et EN (trait d'union)                   |
 | `pkg/lang`         | Profils linguistiques : stop-words, préfixes honorifiques, features spécifiques FR/EN/ES                     |
 | `pkg/langdetect`   | Interface `Detector` de détection automatique de langue ; implémentation `WhatlangDetector` (whatlanggo)      |
-| `pkg/modelstore`   | Téléchargement automatique, cache, vérification SHA-256 et découverte des modèles depuis GitHub Releases      |
+| `pkg/modelstore`   | Téléchargement automatique, cache, vérification SHA-256 **et signature Ed25519/minisign du manifeste** (authenticité de la source, clé embarquée dans `keys.go`), découverte des modèles depuis GitHub Releases ; code de langue borné `^[a-z]{2}$` (anti-traversée) |
 
 ## Modèles pré-entraînés
 

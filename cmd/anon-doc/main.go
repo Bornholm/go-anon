@@ -65,8 +65,11 @@ func main() {
 	cacheDir := flag.String("models-cache", "", "répertoire de cache pour les modèles téléchargés (optionnel)")
 	refresh := flag.Bool("refresh-models", false, "forcer le rafraîchissement du manifeste des modèles")
 	offline := flag.Bool("offline", false, "interdire toute requête réseau")
+	skipVerify := flag.Bool("insecure-skip-verify", false, "désactiver la vérification de signature du manifeste de modèles (manifests custom non signés)")
 
 	flag.Parse()
+
+	insecureSkipModelVerify = *skipVerify
 
 	if *modelFlag == "" || *inputPath == "" || *outputPath == "" {
 		fmt.Fprintln(os.Stderr, "erreur : -model, -input et -output sont obligatoires")
@@ -336,10 +339,15 @@ func resolveAutoMode(modelFlag string) (lang string, auto bool) {
 	return "", false
 }
 
+// insecureSkipModelVerify reflète le flag -insecure-skip-verify : il désactive
+// la vérification de signature du manifeste de modèles.
+var insecureSkipModelVerify bool
+
 func resolveAutoModel(lang, cacheDir string, refresh, offline bool) string {
 	opts := []modelstore.Option{
 		modelstore.WithProgress(func(l string, done, total int64) {}),
 		modelstore.WithOfflineMode(offline),
+		modelstore.WithInsecureSkipVerify(insecureSkipModelVerify),
 	}
 	if cacheDir != "" {
 		opts = append(opts, modelstore.WithCacheDir(cacheDir))
@@ -369,6 +377,7 @@ func resolveAutoModel(lang, cacheDir string, refresh, offline bool) string {
 func resolveAutoGazetteers(lang, cacheDir string, refresh, offline bool) map[string]*features.Gazetteer {
 	opts := []modelstore.Option{
 		modelstore.WithOfflineMode(offline),
+		modelstore.WithInsecureSkipVerify(insecureSkipModelVerify),
 	}
 	if cacheDir != "" {
 		opts = append(opts, modelstore.WithCacheDir(cacheDir))

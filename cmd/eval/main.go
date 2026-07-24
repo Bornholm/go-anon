@@ -32,6 +32,7 @@ func main() {
 	clustersPath := flag.String("clusters", "", "fichier Brown clusters (doit correspondre à celui utilisé à l'entraînement)")
 	keepPunct := flag.Bool("keep-punct", true, "inclure la ponctuation dans les séquences CRF (comme à l'entraînement) ; -keep-punct=false restaure l'ancien comportement")
 	boundaries := flag.String("boundaries", "", `tokens délimiteurs de phrases, séparés par des espaces (ex: ". ! ? …") ; vide = défaut`)
+	preset := flag.String("preset", "", `preset de post-traitement : "balanced" ou "high-recall" (vide = aucun) ; mesure le couple précision/rappel du preset`)
 
 	flag.Parse()
 
@@ -105,6 +106,18 @@ func main() {
 		opts = append(opts, ner.WithSentenceBoundaries(strings.Fields(*boundaries)...))
 	}
 
+	// Preset de post-traitement (haut rappel / équilibré) : mesuré tel qu'il
+	// serait déployé, avec le gazetteer de prénoms passé via -gazetteers.
+	switch *preset {
+	case "":
+		// aucun post-traitement supplémentaire
+	case string(ner.PresetBalanced), string(ner.PresetHighRecall):
+		opts = append(opts, ner.PresetOptions(ner.Preset(*preset), gazetteers["firstnames"])...)
+		log.Printf("preset : %s", *preset)
+	default:
+		log.Fatalf("preset inconnu %q (attendu \"balanced\" ou \"high-recall\")", *preset)
+	}
+
 	rec, err := ner.New(m, opts...)
 	if err != nil {
 		log.Fatalf("initialisation recognizer : %v", err)
@@ -122,21 +135,23 @@ func main() {
 	fmt.Printf("\nÉvaluation sur %s (%d phrases)\n\n", *testPath, len(testSents))
 	fmt.Printf("Global :\n")
 	fmt.Printf("  Precision : %.1f%%\n", metrics.Precision*100)
-	fmt.Printf("  Recall    : %.1f%%\n", metrics.Recall*100)
-	fmt.Printf("  F1        : %.1f%%\n\n", metrics.F1*100)
+	fmt.Printf("  Recall    : %.1f%%   ← métrique clé RGPD (un faux négatif = fuite)\n", metrics.Recall*100)
+	fmt.Printf("  F1        : %.1f%%\n", metrics.F1*100)
+	fmt.Printf("  F2        : %.1f%%   (rappel pondéré ×2, référence conformité)\n\n", metrics.F2*100)
 
 	if len(metrics.PerType) > 0 {
-		fmt.Printf("Par type :\n")
+		fmt.Printf("Par type (le rappel PER prime sur le rappel MISC) :\n")
 		for _, et := range []ner.EntityType{ner.TypePER, ner.TypeLOC, ner.TypeORG, ner.TypeMISC} {
 			m, ok := metrics.PerType[et]
 			if !ok || (m.TotalGold == 0 && m.TotalPred == 0) {
 				continue
 			}
-			fmt.Printf("  %-6s P=%.1f%%  R=%.1f%%  F1=%.1f%%  (gold=%-5d pred=%-5d match=%d)\n",
+			fmt.Printf("  %-6s P=%.1f%%  R=%.1f%%  F1=%.1f%%  F2=%.1f%%  (gold=%-5d pred=%-5d match=%d)\n",
 				et,
 				m.Precision*100,
 				m.Recall*100,
 				m.F1*100,
+				m.F2*100,
 				m.TotalGold,
 				m.TotalPred,
 				m.TotalMatch,

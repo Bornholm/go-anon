@@ -11,4 +11,5 @@ var (
 	ErrDownloadTimeout  = errors.New("model download timed out")
 	ErrManifestExpired  = errors.New("manifest cache expired and offline mode enabled")
 	ErrLockTimeout      = errors.New("timed out waiting for file lock")
+	ErrInvalidLang      = errors.New("language code must match ^[a-z]{2}$")
 )

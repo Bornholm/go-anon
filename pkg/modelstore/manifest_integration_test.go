@@ -87,6 +87,10 @@ func TestIntegrationRealStoreAvailable(t *testing.T) {
 		WithCacheDir(scope),
 		WithManifestURL(DefaultManifestURL),
 		WithManifestTTL(0),
+		// Ce test vérifie la disponibilité et le parsing du manifest réel, pas la
+		// signature : on la court-circuite pour rester indépendant du déploiement
+		// de manifest.json.minisig côté go-anon-resources.
+		WithInsecureSkipVerify(true),
 	)
 	if err != nil {
 		t.Fatalf("New: %v", err)

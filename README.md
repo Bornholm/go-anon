@@ -26,6 +26,10 @@ Le cœur du pipeline NER (modèle CRF, features, tokenisation, anonymisation) es
   commentaires, révisions) — fail-closed en mode strict ;
 - Serveur HTTP durci : isolation inter-requêtes sans état, plafonds de corps et
   de concurrence, délais, logs limités aux métadonnées ;
+- Presets précision/rappel (`balanced`, `high-recall`) et métriques orientées
+  conformité : rappel par type/langue et **F2** publiés par `eval` ;
+- Vérification de signature Ed25519 (minisign) du manifeste des modèles :
+  authenticité de la source, pas seulement intégrité du transfert ;
 - Post-filtres chaînables : seuil de confiance, longueur de span, liste noire ;
 - Enrichissement optionnel via gazetteers et Brown clusters ;
 - Configuration d'inférence auto-propagée depuis le modèle (schéma de features,
@@ -98,7 +102,28 @@ Voir [`docs/tutoriel-modele.md`](./docs/tutoriel-modele.md) pour entraîner un m
 La bibliothèque réalise une **pseudonymisation** au sens de l'art. 4(5) du RGPD,
 pas une anonymisation : le mapping de ré-identification est lui-même une donnée
 personnelle, et l'actif le plus sensible du système. Le protéger et le détruire
-après usage est ce qui rend la sortie anonyme *de facto*.
+après usage est ce qui rend la sortie anonyme *de facto*. **Par défaut, la sortie
+est réversible** (pseudonymisée) — pas anonyme.
+
+> **Ce que l'outil garantit**
+> - en mode strict : aucune forme de surface d'entité **détectée** ni identifiant
+>   structuré ne reste en clair, sinon échec sans sortie (S4) ;
+> - les secrets (clés, JWT) n'entrent jamais dans le mapping (S1) ;
+> - la stratégie `hash` n'est pas cassable par dictionnaire sans la clé (HMAC, S2) ;
+> - round-trip déterministe et total (S3) ;
+> - purge des métadonnées/commentaires/révisions des documents (S6) ;
+> - isolation inter-requêtes du serveur, logs sans contenu (S7).
+>
+> **Ce que l'outil ne garantit pas**
+> - l'exhaustivité de la **détection** (un nom manqué par le modèle part en
+>   clair — préférer le preset haut rappel) ;
+> - la couverture des quasi-identifiants combinables, paraphrases, inférences
+>   contextuelles, stylométrie ;
+> - la zéroïsation mémoire (limite du langage) ni l'écrasement disque physique
+>   (l'effacement réel est cryptographique).
+>
+> Détails, modèle de menace complet et checklist de déploiement :
+> **[`docs/rgpd.md`](docs/rgpd.md)**.
 
 ### Secrets
 
@@ -248,6 +273,36 @@ limitées par un sémaphore (`-max-concurrent`), et des délais (`ReadTimeout`,
 métadonnées (méthode, statut, comptes d'entités par type) — jamais de corps ni
 de forme de surface ; les réponses d'erreur sont génériques, corrélées aux logs
 par un identifiant `X-Request-Id`.
+
+### Rappel et presets (orientation conformité)
+
+Pour la conformité, **le rappel prime sur la précision** : un faux positif est un
+sur-caviardage bénin, un faux négatif est une donnée personnelle laissée en clair.
+`eval` publie donc précision et rappel **séparément**, par type et par langue, et
+le **F2** (rappel pondéré ×2) comme métrique de référence :
+
+```bash
+eval -model model_fr.crf.gz -lang fr -test corpus.conll \
+  -gazetteers "firstnames:data/eu_prenoms.txt" -preset high-recall
+```
+
+Deux presets sont fournis (`goanon.Balanced` / `goanon.HighRecall`, ou
+`-preset`) : `balanced` (compromis F1, défaut) et `high-recall`, qui **injecte**
+en PER les prénoms du gazetteer manqués par le modèle. La recommandation RGPD est
+**`high-recall` + mode strict**. Le corpus `pkg/ner/testdata/known_leaks_fr.txt`
+verrouille en CI la non-régression du rappel sur des fuites historiques.
+
+### Authenticité des modèles
+
+Le SHA-256 du manifeste protège l'intégrité du transfert, pas l'authenticité de
+la source : qui contrôle le dépôt de releases fournit un modèle malveillant *et*
+son hash. `modelstore` vérifie donc une **signature Ed25519 (format minisign)** du
+manifeste avec une clé publique embarquée, avant de faire confiance aux hashs
+(chaîne : signature → manifeste → hash → modèle). Le code de langue est borné à
+`^[a-z]{2}$` pour interdire toute traversée de chemin via le manifeste.
+`-insecure-skip-verify` désactive la vérification pour un manifeste custom non
+signé, avec avertissement. Pour données sensibles : modèles embarqués + mode
+hors-ligne (cf. [`docs/rgpd.md`](docs/rgpd.md)).
 
 ## Licence
 

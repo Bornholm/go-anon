@@ -173,7 +173,10 @@ func main() {
 	strict := flag.Bool("strict", false, "mode fail-closed : refuser (422) toute réponse dont la vérification signale une fuite")
 	maxBody := flag.Int64("max-body", 10<<20, "taille maximale du corps d'une requête, en octets")
 	maxConcurrent := flag.Int("max-concurrent", runtime.NumCPU(), "nombre maximum d'anonymisations simultanées")
+	skipVerify := flag.Bool("insecure-skip-verify", false, "désactiver la vérification de signature du manifeste de modèles (manifests custom non signés)")
 	flag.Parse()
+
+	insecureSkipModelVerify = *skipVerify
 
 	if *maxConcurrent < 1 {
 		*maxConcurrent = 1
@@ -843,9 +846,15 @@ func loadAllAutoModels(srv *Server, cacheDir string, refresh, offline bool) {
 	}
 }
 
+// insecureSkipModelVerify reflète le flag -insecure-skip-verify : il désactive
+// la vérification de signature du manifeste de modèles pour toutes les
+// constructions de Store du serveur.
+var insecureSkipModelVerify bool
+
 func newModelStore(cacheDir string, offline bool) (*modelstore.Store, error) {
 	opts := []modelstore.Option{
 		modelstore.WithOfflineMode(offline),
+		modelstore.WithInsecureSkipVerify(insecureSkipModelVerify),
 	}
 	if cacheDir != "" {
 		opts = append(opts, modelstore.WithCacheDir(cacheDir))

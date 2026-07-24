@@ -23,6 +23,8 @@ type Store struct {
 	httpClient   *http.Client
 	offline      bool
 	progressFn   func(lang string, done, total int64)
+	trustedKey   *PublicKey
+	skipVerify   bool
 }
 
 type Option func(*Store)
@@ -69,12 +71,29 @@ func WithOfflineMode(b bool) Option {
 	}
 }
 
+// WithTrustedKey impose la vérification de la signature minisign du manifest
+// avec la clé publique fournie. Surcharge la clé embarquée (DefaultTrustedKey).
+func WithTrustedKey(pk *PublicKey) Option {
+	return func(s *Store) {
+		s.trustedKey = pk
+	}
+}
+
+// WithInsecureSkipVerify désactive la vérification de signature du manifest.
+// Réservé aux manifests custom non signés ; émet un avertissement au runtime.
+func WithInsecureSkipVerify(b bool) Option {
+	return func(s *Store) {
+		s.skipVerify = b
+	}
+}
+
 func New(opts ...Option) (*Store, error) {
 	s := &Store{
 		manifestTTL: DefaultManifestTTL,
 		httpClient: &http.Client{
 			Timeout: DefaultDownloadTimeout,
 		},
+		trustedKey: DefaultTrustedKey(),
 	}
 
 	for _, opt := range opts {
@@ -96,6 +115,8 @@ func New(opts ...Option) (*Store, error) {
 		}
 		disc := NewStaticDiscoverer(url)
 		disc.HTTPClient = s.httpClient
+		disc.TrustedKey = s.trustedKey
+		disc.SkipVerify = s.skipVerify
 		s.discoverer = disc
 	}
 
@@ -109,6 +130,10 @@ func New(opts ...Option) (*Store, error) {
 }
 
 func (s *Store) Get(ctx context.Context, lang string) (string, error) {
+	if err := validateLang(lang); err != nil {
+		return "", err
+	}
+
 	s.mu.RLock()
 	manifest := s.manifest
 	s.mu.RUnlock()

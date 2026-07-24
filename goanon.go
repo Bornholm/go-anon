@@ -173,6 +173,26 @@ var NewRecognizer = ner.New
 // NewAnonymizer crée un Anonymizer qui s'appuie sur le Recognizer donné.
 var NewAnonymizer = anonymizer.New
 
+// — Presets précision/rappel —
+
+// Preset nomme un compromis précision/rappel (cf. Balanced, HighRecall).
+type Preset = ner.Preset
+
+const (
+	PresetBalanced   = ner.PresetBalanced
+	PresetHighRecall = ner.PresetHighRecall
+)
+
+// Balanced retourne les options du preset par défaut (compromis F1).
+var Balanced = ner.Balanced
+
+// HighRecall retourne les options du preset « haut rappel » recommandé pour la
+// conformité RGPD (à combiner avec WithStrictVerification).
+var HighRecall = ner.HighRecall
+
+// PresetOptions retourne les options associées à un preset nommé.
+var PresetOptions = ner.PresetOptions
+
 // — Passes de post-traitement de l'anonymiseur —
 
 var ConsistencyPass = anonymizer.ConsistencyPass

@@ -85,6 +85,7 @@ func TestStoreGetCacheMiss(t *testing.T) {
 	store, err := New(
 		WithCacheDir(dir),
 		WithManifestURL(server.URL+"/manifest.json"),
+		WithInsecureSkipVerify(true), // ces tests ne portent pas sur la signature
 		WithHTTPClient(client),
 	)
 	if err != nil {
@@ -126,6 +127,7 @@ func TestStoreGetCacheHit(t *testing.T) {
 	store, err := New(
 		WithCacheDir(dir),
 		WithManifestURL(server.URL+"/manifest.json"),
+		WithInsecureSkipVerify(true), // ces tests ne portent pas sur la signature
 		WithHTTPClient(client),
 	)
 	if err != nil {
@@ -170,6 +172,7 @@ func TestStoreGetLanguageNotFound(t *testing.T) {
 	store, err := New(
 		WithCacheDir(dir),
 		WithManifestURL(server.URL+"/manifest.json"),
+		WithInsecureSkipVerify(true), // ces tests ne portent pas sur la signature
 		WithHTTPClient(client),
 	)
 	if err != nil {
@@ -193,6 +196,7 @@ func TestStoreGetOfflineMode(t *testing.T) {
 	store, err := New(
 		WithCacheDir(dir),
 		WithManifestURL(server.URL+"/manifest.json"),
+		WithInsecureSkipVerify(true), // ces tests ne portent pas sur la signature
 		WithHTTPClient(client),
 		WithOfflineMode(true),
 	)
@@ -218,6 +222,7 @@ func TestStoreGetAll(t *testing.T) {
 	store, err := New(
 		WithCacheDir(dir),
 		WithManifestURL(server.URL+"/manifest.json"),
+		WithInsecureSkipVerify(true), // ces tests ne portent pas sur la signature
 		WithHTTPClient(client),
 	)
 	if err != nil {
@@ -251,6 +256,7 @@ func TestStoreRefresh(t *testing.T) {
 	store, err := New(
 		WithCacheDir(dir),
 		WithManifestURL(server.URL+"/manifest.json"),
+		WithInsecureSkipVerify(true), // ces tests ne portent pas sur la signature
 		WithHTTPClient(client),
 	)
 	if err != nil {
@@ -298,6 +304,7 @@ func TestStoreAvailable(t *testing.T) {
 	store, err := New(
 		WithCacheDir(dir),
 		WithManifestURL(server.URL+"/manifest.json"),
+		WithInsecureSkipVerify(true), // ces tests ne portent pas sur la signature
 		WithHTTPClient(client),
 	)
 	if err != nil {
@@ -332,6 +339,7 @@ func TestStoreIsCached(t *testing.T) {
 	store, err := New(
 		WithCacheDir(dir),
 		WithManifestURL(server.URL+"/manifest.json"),
+		WithInsecureSkipVerify(true), // ces tests ne portent pas sur la signature
 		WithHTTPClient(client),
 	)
 	if err != nil {
@@ -370,6 +378,7 @@ func TestStoreConcurrentGet(t *testing.T) {
 	store, err := New(
 		WithCacheDir(dir),
 		WithManifestURL(server.URL+"/manifest.json"),
+		WithInsecureSkipVerify(true), // ces tests ne portent pas sur la signature
 		WithHTTPClient(client),
 	)
 	if err != nil {
@@ -409,6 +418,7 @@ func TestStoreManifestCaching(t *testing.T) {
 	store, err := New(
 		WithCacheDir(dir),
 		WithManifestURL(server.URL+"/manifest.json"),
+		WithInsecureSkipVerify(true), // ces tests ne portent pas sur la signature
 		WithHTTPClient(client),
 		WithManifestTTL(1*time.Hour),
 	)
@@ -498,6 +508,7 @@ func TestStoreGetGazetteers(t *testing.T) {
 	store, err := New(
 		WithCacheDir(dir),
 		WithManifestURL(server.URL+"/manifest.json"),
+		WithInsecureSkipVerify(true), // ces tests ne portent pas sur la signature
 		WithHTTPClient(client),
 	)
 	if err != nil {
@@ -629,6 +640,7 @@ func TestStoreGetGazetteersDedup(t *testing.T) {
 	store, err := New(
 		WithCacheDir(dir),
 		WithManifestURL(server.URL+"/manifest.json"),
+		WithInsecureSkipVerify(true), // ces tests ne portent pas sur la signature
 		WithHTTPClient(client),
 	)
 	if err != nil {

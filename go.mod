@@ -6,6 +6,7 @@ require (
 	github.com/abadojack/whatlanggo v1.0.1
 	github.com/gomutex/godocx v0.1.5
 	github.com/pdfcpu/pdfcpu v0.12.1
+	golang.org/x/crypto v0.50.0
 )
 
 require (
@@ -15,8 +16,8 @@ require (
 	github.com/hhrutter/tiff v1.0.3 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/image v0.43.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
