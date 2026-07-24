@@ -64,7 +64,7 @@ func TestMinConfidenceFilter_RemovesBelow(t *testing.T) {
 		entity("Ingénieur", TypePER, 0.3),
 		entity("Paris", TypeLOC, 0.8),
 	}
-	got := MinConfidenceFilter(0.5)(entities)
+	got := MinConfidenceFilter(0.5)("", entities)
 	if len(got) != 2 {
 		t.Fatalf("attendu 2 entités, got %d", len(got))
 	}
@@ -75,14 +75,14 @@ func TestMinConfidenceFilter_RemovesBelow(t *testing.T) {
 
 func TestMinConfidenceFilter_KeepsExact(t *testing.T) {
 	entities := []Entity{entity("Jean", TypePER, 0.5)}
-	got := MinConfidenceFilter(0.5)(entities)
+	got := MinConfidenceFilter(0.5)("", entities)
 	if len(got) != 1 {
 		t.Errorf("le seuil est inclusif : attendu 1 entité, got %d", len(got))
 	}
 }
 
 func TestMinConfidenceFilter_EmptyInput(t *testing.T) {
-	got := MinConfidenceFilter(0.5)(nil)
+	got := MinConfidenceFilter(0.5)("", nil)
 	if len(got) != 0 {
 		t.Errorf("attendu 0 entité sur entrée nil, got %d", len(got))
 	}
@@ -95,7 +95,7 @@ func TestMaxTokensFilter_RemovesLong(t *testing.T) {
 		entity("Jean Dupont", TypePER, 1.0),                      // 2 tokens — OK
 		entity("EOLE Hâpy Hâpy-Master Hâpy-Node", TypeMISC, 1.0), // 4 tokens — trop long
 	}
-	got := MaxTokensFilter(3)(entities)
+	got := MaxTokensFilter(3)("", entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}
@@ -106,7 +106,7 @@ func TestMaxTokensFilter_RemovesLong(t *testing.T) {
 
 func TestMaxTokensFilter_KeepsExact(t *testing.T) {
 	entities := []Entity{entity("A B C", TypePER, 1.0)} // exactement 3 tokens
-	got := MaxTokensFilter(3)(entities)
+	got := MaxTokensFilter(3)("", entities)
 	if len(got) != 1 {
 		t.Errorf("la limite est inclusive : attendu 1 entité, got %d", len(got))
 	}
@@ -114,7 +114,7 @@ func TestMaxTokensFilter_KeepsExact(t *testing.T) {
 
 func TestMaxTokensFilter_SingleToken(t *testing.T) {
 	entities := []Entity{entity("Paris", TypeLOC, 1.0)}
-	got := MaxTokensFilter(1)(entities)
+	got := MaxTokensFilter(1)("", entities)
 	if len(got) != 1 {
 		t.Errorf("attendu 1 entité pour token unique, got %d", len(got))
 	}
@@ -127,7 +127,7 @@ func TestBlocklistFilter_RemovesAllBlocked(t *testing.T) {
 		entity("Ingénieur Logiciels Libres", TypePER, 0.9),
 		entity("Jean Dupont", TypePER, 0.9),
 	}
-	got := BlocklistFilter(TypePER, "ingénieur", "logiciels", "libres")(entities)
+	got := BlocklistFilter(TypePER, "ingénieur", "logiciels", "libres")("", entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}
@@ -139,7 +139,7 @@ func TestBlocklistFilter_RemovesAllBlocked(t *testing.T) {
 func TestBlocklistFilter_KeepsPartialMatch(t *testing.T) {
 	// "Jean Ingénieur" : "Jean" n'est pas dans la blocklist → entité conservée.
 	entities := []Entity{entity("Jean Ingénieur", TypePER, 0.9)}
-	got := BlocklistFilter(TypePER, "ingénieur")(entities)
+	got := BlocklistFilter(TypePER, "ingénieur")("", entities)
 	if len(got) != 1 {
 		t.Errorf("une entité partiellement bloquée ne doit pas être supprimée")
 	}
@@ -147,7 +147,7 @@ func TestBlocklistFilter_KeepsPartialMatch(t *testing.T) {
 
 func TestBlocklistFilter_CaseInsensitive(t *testing.T) {
 	entities := []Entity{entity("INGÉNIEUR LIBRES", TypePER, 0.9)}
-	got := BlocklistFilter(TypePER, "ingénieur", "libres")(entities)
+	got := BlocklistFilter(TypePER, "ingénieur", "libres")("", entities)
 	if len(got) != 0 {
 		t.Errorf("la comparaison doit être insensible à la casse")
 	}
@@ -156,7 +156,7 @@ func TestBlocklistFilter_CaseInsensitive(t *testing.T) {
 func TestBlocklistFilter_OtherTypeIgnored(t *testing.T) {
 	// L'entité est de type LOC, pas PER → le filtre ne s'applique pas.
 	entities := []Entity{entity("Ingénieur Libres", TypeLOC, 0.9)}
-	got := BlocklistFilter(TypePER, "ingénieur", "libres")(entities)
+	got := BlocklistFilter(TypePER, "ingénieur", "libres")("", entities)
 	if len(got) != 1 {
 		t.Errorf("le filtre ne doit pas affecter les autres types d'entités")
 	}
@@ -166,8 +166,8 @@ func TestBlocklistFilter_OtherTypeIgnored(t *testing.T) {
 
 func TestWithPostFilters_AppliesInOrder(t *testing.T) {
 	var trace []string
-	f1 := EntityFilter(func(e []Entity) []Entity { trace = append(trace, "f1"); return e })
-	f2 := EntityFilter(func(e []Entity) []Entity { trace = append(trace, "f2"); return e })
+	f1 := EntityFilter(func(_ string, e []Entity) []Entity { trace = append(trace, "f1"); return e })
+	f2 := EntityFilter(func(_ string, e []Entity) []Entity { trace = append(trace, "f2"); return e })
 
 	rec := &Recognizer{
 		sentenceBoundaries: map[string]bool{".": true},
@@ -178,7 +178,7 @@ func TestWithPostFilters_AppliesInOrder(t *testing.T) {
 	// Simuler l'application manuelle des filtres (comme dans Recognize).
 	entities := []Entity{}
 	for _, f := range rec.postFilters {
-		entities = f(entities)
+		entities = f("", entities)
 	}
 
 	if len(trace) != 2 || trace[0] != "f1" || trace[1] != "f2" {
@@ -219,7 +219,7 @@ func TestMergePass_PerLoc_AdjacentFusesIntoPer(t *testing.T) {
 		{"Benjamin", TypePER, 0.9},
 		{"Gaude", TypeLOC, 0.7},
 	})
-	got := MergePass(func() string { return text })(entities)
+	got := MergePass()(text, entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité fusionnée, got %d", len(got))
 	}
@@ -244,7 +244,7 @@ func TestMergePass_PerPer_AdjacentFusesIntoPer(t *testing.T) {
 		{"Alice", TypePER, 0.9},
 		{"Martin", TypePER, 0.8},
 	})
-	got := MergePass(func() string { return text })(entities)
+	got := MergePass()(text, entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité fusionnée, got %d", len(got))
 	}
@@ -258,7 +258,7 @@ func TestMergePass_NonAdjacent_NoFuse(t *testing.T) {
 		{Text: "Alice", Type: TypePER, Start: 0, End: 5, Confidence: 0.9},
 		{Text: "Lyon", Type: TypeLOC, Start: 20, End: 24, Confidence: 0.7},
 	}
-	got := MergePass(func() string { return "Alice est là. Lyon aussi." })(entities)
+	got := MergePass()("Alice est là. Lyon aussi.", entities)
 	if len(got) != 2 {
 		t.Errorf("entités non adjacentes ne doivent pas fusionner : got %d", len(got))
 	}
@@ -274,7 +274,7 @@ func TestMergePass_LocLoc_AdjacentFuses(t *testing.T) {
 		{"New", TypeLOC, 0.9},
 		{"York", TypeLOC, 0.8},
 	})
-	got := MergePass(func() string { return text })(entities)
+	got := MergePass()(text, entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité fusionnée, got %d", len(got))
 	}
@@ -294,14 +294,14 @@ func TestMergePass_MultipleConverges(t *testing.T) {
 		{"Dupont", TypeLOC, 0.7},
 		{"Paris", TypeLOC, 0.8},
 	})
-	got := MergePass(func() string { return text })(entities)
+	got := MergePass()(text, entities)
 	if len(got) != 2 {
 		t.Errorf("attendu 2 entités (JeanDupont + Paris), got %d: %v", len(got), got)
 	}
 }
 
 func TestMergePass_EmptyInput(t *testing.T) {
-	got := MergePass(func() string { return "" })(nil)
+	got := MergePass()("", nil)
 	if len(got) != 0 {
 		t.Errorf("nil en entrée doit retourner slice vide")
 	}
@@ -318,7 +318,7 @@ func TestNameCompletionPass_SingleFirstName_CompletesWithSurname(t *testing.T) {
 	}{
 		{"Benjamin", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text }, testFirstNames("Benjamin"))(entities)
+	got := NameCompletionPass(testFirstNames("Benjamin"))(text, entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}
@@ -336,7 +336,7 @@ func TestNameCompletionPass_AlreadyComplete_NoChange(t *testing.T) {
 	}{
 		{"JeanDupont", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text }, testFirstNames("Jean"))(entities)
+	got := NameCompletionPass(testFirstNames("Jean"))(text, entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}
@@ -354,7 +354,7 @@ func TestNameCompletionPass_NoSpaceAfter_Skips(t *testing.T) {
 	}{
 		{"Alice", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text }, testFirstNames("Alice"))(entities)
+	got := NameCompletionPass(testFirstNames("Alice"))(text, entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}
@@ -372,7 +372,7 @@ func TestNameCompletionPass_StopWordAfter_Skips(t *testing.T) {
 	}{
 		{"Jean", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text }, testFirstNames("Jean"))(entities)
+	got := NameCompletionPass(testFirstNames("Jean"))(text, entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}
@@ -391,7 +391,7 @@ func TestNameCompletionPass_AlreadyCovered_Skips(t *testing.T) {
 		{"Benjamin", TypePER, 0.9},
 		{"Jean", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text }, testFirstNames("Benjamin", "Jean"))(entities)
+	got := NameCompletionPass(testFirstNames("Benjamin", "Jean"))(text, entities)
 	if len(got) != 2 {
 		t.Fatalf("attendu 2 entités, got %d", len(got))
 	}
@@ -410,14 +410,14 @@ func TestNameCompletionPass_KnownLocSurname_Skips(t *testing.T) {
 		{"Bordeaux", TypeLOC, 0.9},
 		{"Paris", TypeLOC, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text }, testFirstNames())(entities)
+	got := NameCompletionPass(testFirstNames())(text, entities)
 	if len(got) != 2 {
 		t.Fatalf("attendu 2 entités, got %d", len(got))
 	}
 }
 
 func TestNameCompletionPass_EmptyInput(t *testing.T) {
-	got := NameCompletionPass(func() string { return "" }, nil)(nil)
+	got := NameCompletionPass(nil)("", nil)
 	if len(got) != 0 {
 		t.Errorf("nil en entrée doit retourner slice vide")
 	}
@@ -425,8 +425,8 @@ func TestNameCompletionPass_EmptyInput(t *testing.T) {
 
 func TestFirstNameDetectionFilter_DetectsUncoveredFirstNames(t *testing.T) {
 	text := "Vincent est ici."
-	filter := FirstNameDetectionFilter(func() string { return text }, testFirstNames("Vincent"), nil)
-	entities := filter(nil)
+	filter := FirstNameDetectionFilter(testFirstNames("Vincent"), nil)
+	entities := filter(text, nil)
 
 	if len(entities) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(entities))
@@ -442,8 +442,8 @@ func TestFirstNameDetectionFilter_DetectsUncoveredFirstNames(t *testing.T) {
 func TestFirstNameDetectionFilter_AlreadyCovered_Skips(t *testing.T) {
 	text := "Vincent est ici."
 	existing := []Entity{{Text: "Vincent", Type: TypePER, Start: 0, End: 7, Confidence: 1.0}}
-	filter := FirstNameDetectionFilter(func() string { return text }, testFirstNames("Vincent"), nil)
-	entities := filter(existing)
+	filter := FirstNameDetectionFilter(testFirstNames("Vincent"), nil)
+	entities := filter(text, existing)
 
 	if len(entities) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(entities))
@@ -452,8 +452,8 @@ func TestFirstNameDetectionFilter_AlreadyCovered_Skips(t *testing.T) {
 
 func TestFirstNameDetectionFilter_NonFirstName_Skips(t *testing.T) {
 	text := "Bonjour tout le monde."
-	filter := FirstNameDetectionFilter(func() string { return text }, testFirstNames("Vincent"), nil)
-	entities := filter(nil)
+	filter := FirstNameDetectionFilter(testFirstNames("Vincent"), nil)
+	entities := filter(text, nil)
 
 	if len(entities) != 0 {
 		t.Errorf("attendu 0 entités pour non-prénom, got %d", len(entities))
@@ -462,8 +462,8 @@ func TestFirstNameDetectionFilter_NonFirstName_Skips(t *testing.T) {
 
 func TestFirstNameDetectionFilter_MultipleFirstNames(t *testing.T) {
 	text := "Vincent et Benjamin sont là."
-	filter := FirstNameDetectionFilter(func() string { return text }, testFirstNames("Vincent", "Benjamin"), nil)
-	entities := filter(nil)
+	filter := FirstNameDetectionFilter(testFirstNames("Vincent", "Benjamin"), nil)
+	entities := filter(text, nil)
 
 	if len(entities) != 2 {
 		t.Fatalf("attendu 2 entités, got %d", len(entities))
@@ -479,8 +479,8 @@ func TestFirstNameDetectionFilter_MultipleFirstNames(t *testing.T) {
 func TestFirstNameDetectionFilter_StopWordsExcluded(t *testing.T) {
 	text := "Le développeur"
 	stopWords := map[string]bool{"le": true, "la": true, "de": true}
-	filter := FirstNameDetectionFilter(func() string { return text }, testFirstNames("Le", "De"), stopWords)
-	entities := filter(nil)
+	filter := FirstNameDetectionFilter(testFirstNames("Le", "De"), stopWords)
+	entities := filter(text, nil)
 
 	if len(entities) != 0 {
 		t.Errorf("attendu 0 entités pour stop words, got %d", len(entities))
@@ -491,8 +491,8 @@ func TestFirstNameDetectionFilter_StopWordsExcluded(t *testing.T) {
 
 func TestFirstNameDetectionFilter_AccentedFirstNames(t *testing.T) {
 	text := "Éric travaille avec Frédéric."
-	filter := FirstNameDetectionFilter(func() string { return text }, testFirstNames("Éric", "Frédéric"), nil)
-	entities := filter(nil)
+	filter := FirstNameDetectionFilter(testFirstNames("Éric", "Frédéric"), nil)
+	entities := filter(text, nil)
 
 	if len(entities) != 2 {
 		t.Fatalf("attendu 2 entités PER accentuées, got %d: %v", len(entities), entities)
@@ -514,7 +514,7 @@ func TestNameCompletionPass_AccentedSurname(t *testing.T) {
 	}{
 		{"Jean", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text }, testFirstNames("Jean"))(entities)
+	got := NameCompletionPass(testFirstNames("Jean"))(text, entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}
@@ -535,7 +535,7 @@ func TestNameCompletionPass_AccentedInitialSurname(t *testing.T) {
 	}{
 		{"Marc", TypePER, 0.9},
 	})
-	got := NameCompletionPass(func() string { return text }, testFirstNames("Marc"))(entities)
+	got := NameCompletionPass(testFirstNames("Marc"))(text, entities)
 	if len(got) != 1 {
 		t.Fatalf("attendu 1 entité, got %d", len(got))
 	}

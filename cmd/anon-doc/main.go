@@ -55,6 +55,7 @@ func main() {
 	hashScope := flag.String("hash-scope", "", `scope de la stratégie "hash" : casse la corrélation des pseudonymes entre scopes`)
 	insecureHash := flag.Bool("insecure-hash", false, `autoriser la stratégie "hash" sans clé (SHA-256 non salé, hors production)`)
 	strict := flag.Bool("strict", false, "mode fail-closed : échouer sans produire de document si la vérification détecte une fuite")
+	sanitize := flag.Bool("sanitize", true, "purger les métadonnées et surfaces cachées du document (auteur, commentaires, révisions)")
 	saveMappingID := flag.String("save-mapping", "", "identifiant sous lequel enregistrer le mapping chiffré dans le store")
 	mappingDir := flag.String("mapping-store", "mappings", "répertoire du store de mappings chiffrés")
 	mappingTTL := flag.Duration("mapping-ttl", 0, "durée de rétention du mapping (ex. 720h) ; 0 = illimité")
@@ -208,6 +209,19 @@ func main() {
 	}
 	reportLeaks(report)
 
+	// --- Sanitisation des surfaces cachées (métadonnées, commentaires, révisions) ---
+	// Doit précéder SaveTo : en mode strict, une surface non traitée interrompt
+	// avant toute écriture, comme la vérification.
+	if *sanitize {
+		policy := docprocessor.DefaultSanitizePolicy()
+		policy.Strict = *strict
+		sanReport, err := docprocessor.Sanitize(walker, policy)
+		if err != nil {
+			log.Fatalf("sanitisation : %v", err)
+		}
+		reportSanitize(sanReport)
+	}
+
 	// --- Sauvegarde du document ---
 	if saver, ok := walker.(interface{ SaveTo(string) error }); ok {
 		if err := saver.SaveTo(*outputPath); err != nil {
@@ -253,6 +267,10 @@ func main() {
 			"(donnée personnelle) — préférer -save-mapping, qui chiffre ; à défaut, "+
 			"protéger ce fichier et le détruire après usage\n", *saveMappingInsecure)
 	}
+
+	// Hygiène mémoire (S8) : libérer la table de ré-identification une fois tous
+	// ses usages terminés, plutôt que de la laisser vivre jusqu'à la fin du process.
+	session.Close()
 }
 
 // reportLeaks résume la vérification sur stderr en métadonnées seulement :
@@ -269,6 +287,24 @@ func reportLeaks(report *docprocessor.Report) {
 	fmt.Fprintf(os.Stderr, "avertissement : vérification — %d fuite(s) sur %d segment(s) %v ; "+
 		"utiliser -strict pour refuser de produire un document dans ce cas\n",
 		len(report.Leaks), report.Segments, byKind)
+}
+
+// reportSanitize résume la sanitisation sur stderr, en métadonnées seulement :
+// surfaces purgées et comptes, jamais de contenu.
+func reportSanitize(r docprocessor.SanitizeReport) {
+	if r.MetadataStripped {
+		fmt.Fprintln(os.Stderr, "sanitisation : métadonnées purgées")
+	}
+	if r.CommentsFound > 0 {
+		fmt.Fprintf(os.Stderr, "sanitisation : %d commentaire(s) traité(s)\n", r.CommentsFound)
+	}
+	if r.RevisionsFound > 0 {
+		fmt.Fprintf(os.Stderr, "sanitisation : %d révision(s) détectée(s)\n", r.RevisionsFound)
+	}
+	if !r.OK() {
+		fmt.Fprintf(os.Stderr, "avertissement : surfaces non traitées : %v ; "+
+			"utiliser -strict pour refuser de produire un document dans ce cas\n", r.Unprocessed)
+	}
 }
 
 func parseStrategy(s string) anonymizer.Strategy {

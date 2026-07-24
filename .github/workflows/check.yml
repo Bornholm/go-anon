@@ -123,10 +123,10 @@ jobs:
         with:
           go-version: "1.25"
 
-      # Informatif tant que les chantiers S5 (permissions du MappingStore) et S7
-      # (timeouts HTTP, limite de corps, traversée de chemin dans cmd/server) ne
-      # sont pas livrés : ces chantiers ferment l'essentiel des constats
-      # MEDIUM/HIGH actuels. À passer bloquant à la fin de S7.
+      # S5 (permissions du MappingStore) et S7 (timeouts HTTP, limite de corps,
+      # sémaphore de concurrence, ErrorLog silencieux) sont désormais livrés :
+      # ils ferment l'essentiel des constats MEDIUM/HIGH. Reste informatif le
+      # temps de valider un run propre, puis retirer continue-on-error.
       - name: gosec
         continue-on-error: true
         run: |

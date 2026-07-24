@@ -22,6 +22,10 @@ Le cœur du pipeline NER (modèle CRF, features, tokenisation, anonymisation) es
   entité connue ou un identifiant structuré y reste détectable ;
 - Mapping de ré-identification chiffré (AES-256-GCM), avec rétention et
   effacement cryptographique ;
+- Sanitisation des surfaces cachées des documents (métadonnées d'auteur,
+  commentaires, révisions) — fail-closed en mode strict ;
+- Serveur HTTP durci : isolation inter-requêtes sans état, plafonds de corps et
+  de concurrence, délais, logs limités aux métadonnées ;
 - Post-filtres chaînables : seuil de confiance, longueur de span, liste noire ;
 - Enrichissement optionnel via gazetteers et Brown clusters ;
 - Configuration d'inférence auto-propagée depuis le modèle (schéma de features,
@@ -208,6 +212,42 @@ copy-on-write (btrfs, ZFS, APFS), les données d'origine peuvent survivre. La
 garantie réelle est cryptographique : **détruire la clé d'un compartiment rend
 illisibles tous ses mappings**, où qu'en soient les octets. C'est le seul
 effacement démontrable, et l'argument à opposer à un DPO.
+
+### Sanitisation des documents
+
+Un document « anonymisé » ne se limite pas à son texte visible. Un DOCX porte
+l'auteur et le dernier modificateur dans ses propriétés, du texte supprimé dans
+ses révisions, des commentaires ; un PDF un dictionnaire Info et des métadonnées
+XMP ; un ODT un `meta.xml`. `anon-doc` purge ces surfaces avant d'écrire (option
+`-sanitize`, activée par défaut) :
+
+```bash
+anon-doc -model auto -strict -input rapport.docx -output rapport_anon.docx
+```
+
+| Format | Surface traitée                                                        |
+| ------ | --------------------------------------------------------------------- |
+| DOCX   | `docProps` purgés, commentaires supprimés, révisions **détectées**    |
+| ODT    | `meta.xml` purgé, annotations et modifications suivies retirées       |
+| PDF    | dictionnaire Info et métadonnées XMP purgés, annotations signalées    |
+| CSV    | aucune surface cachée (le fichier est son texte visible)              |
+
+Certaines surfaces ne peuvent pas être neutralisées avec garantie (les révisions
+DOCX, les annotations et pièces jointes PDF). En mode `-strict`, leur présence
+**refuse le document** plutôt que de produire une sortie faussement propre — à
+charge de l'opérateur d'accepter les révisions ou de retirer les pièces jointes
+en amont. Hors strict, elles sont signalées sur stderr (comptes seulement).
+
+### Durcissement du serveur
+
+`cmd/server` isole les requêtes et borne ses ressources : le `Recognizer` est
+sans état (aucune contamination inter-tenants, vérifié sous `-race`), le corps
+des requêtes est plafonné (`-max-body`), les anonymisations concurrentes sont
+limitées par un sémaphore (`-max-concurrent`), et des délais (`ReadTimeout`,
+`WriteTimeout`…) coupent les connexions lentes. Les logs ne portent que des
+métadonnées (méthode, statut, comptes d'entités par type) — jamais de corps ni
+de forme de surface ; les réponses d'erreur sont génériques, corrélées aux logs
+par un identifiant `X-Request-Id`.
 
 ## Licence
 

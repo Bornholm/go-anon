@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -64,7 +65,17 @@ type Server struct {
 	// vérification signale une fuite. Réglé au démarrage, jamais par requête :
 	// un client ne doit pas pouvoir abaisser la garantie du service.
 	strict bool
-	mu     sync.RWMutex
+	// maxBody borne la taille du corps lu par requête (protection DoS).
+	maxBody int64
+	mu      sync.RWMutex
+}
+
+// limitBody enveloppe le corps de la requête pour rejeter (413) au-delà de
+// s.maxBody octets, avant de charger un document client entier en mémoire.
+func (s *Server) limitBody(w http.ResponseWriter, r *http.Request) {
+	if s.maxBody > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, s.maxBody)
+	}
 }
 
 // anonymizeOptions construit les options d'anonymisation d'une requête.
@@ -160,7 +171,13 @@ func main() {
 	refresh := flag.Bool("refresh-models", false, "forcer le rafraîchissement du manifeste des modèles")
 	offline := flag.Bool("offline", false, "interdire toute requête réseau")
 	strict := flag.Bool("strict", false, "mode fail-closed : refuser (422) toute réponse dont la vérification signale une fuite")
+	maxBody := flag.Int64("max-body", 10<<20, "taille maximale du corps d'une requête, en octets")
+	maxConcurrent := flag.Int("max-concurrent", runtime.NumCPU(), "nombre maximum d'anonymisations simultanées")
 	flag.Parse()
+
+	if *maxConcurrent < 1 {
+		*maxConcurrent = 1
+	}
 
 	if *modelsFlag == "" {
 		log.Fatal("error: -models flag is required (format: lang:path,lang:path)")
@@ -176,6 +193,7 @@ func main() {
 		modelVersions: make(map[string]string),
 		gazetteers:    gazetteers,
 		strict:        *strict,
+		maxBody:       *maxBody,
 	}
 	if *strict {
 		log.Print("mode strict actif : une sortie dont la vérification signale une fuite ne sera pas renvoyée")
@@ -236,9 +254,37 @@ func main() {
 	mux.HandleFunc("/api/doc-formats", srv.handleDocFormats)
 	mux.HandleFunc("/api/anonymize-doc", srv.handleAnonymizeDoc)
 
+	// Sémaphore d'anonymisations concurrentes : borne la mémoire et le CPU.
+	sem := make(chan struct{}, *maxConcurrent)
+	handler := chain(mux,
+		withRequestID,
+		recoverPanic,
+		accessLog,
+		noStore,
+		func(next http.Handler) http.Handler {
+			return limitConcurrency(sem, 5*time.Second, next)
+		},
+	)
+
 	addr := ":" + *port
-	log.Printf("starting server on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	server := &http.Server{
+		Addr:    addr,
+		Handler: handler,
+		// Limites de ressources : sans elles, un client lent (Slowloris) ou un
+		// gros en-tête suffit à immobiliser une connexion indéfiniment.
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    64 << 10,
+		// ErrorLog silencieux : les erreurs de transport (handshakes, resets)
+		// sont verbeuses et sans valeur ici ; surtout, ne pas leur donner un
+		// canal de log distinct de la politique « métadonnées seulement ».
+		ErrorLog: log.New(io.Discard, "", 0),
+	}
+	log.Printf("starting server on %s (max-body=%d o, max-concurrent=%d, strict=%v)",
+		addr, *maxBody, *maxConcurrent, *strict)
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -263,12 +309,20 @@ func (s *Server) handlePseudonymize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.limitBody(w, r)
+	defer r.Body.Close()
+
 	var req AnonymizeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		// Message générique : une erreur de décodage JSON peut refléter un
+		// fragment du corps (caractère fautif). On ne renvoie que le statut.
+		if maxBytesExceeded(err) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
 
 	lang := strings.ToLower(req.Language)
 	if lang == "" || lang == "auto" {
@@ -404,12 +458,18 @@ func (s *Server) handleDepseudonymize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.limitBody(w, r)
+	defer r.Body.Close()
+
 	var req DeanonymizeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		if maxBytesExceeded(err) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
 
 	deanonStart := time.Now()
 	text, err := goanon.Deanonymize(req.Text, req.Mapping)
@@ -459,8 +519,13 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.limitBody(w, r)
 	if err := r.ParseMultipartForm(2 << 20); err != nil {
-		http.Error(w, "file too large (max 2 MB)", http.StatusRequestEntityTooLarge)
+		if maxBytesExceeded(err) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "invalid multipart form", http.StatusBadRequest)
 		return
 	}
 
@@ -523,7 +588,9 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 		}
 		sample, err := docprocessor.SampleText(sampleWalker, 4000)
 		if err != nil {
-			http.Error(w, "error sampling document: "+err.Error(), http.StatusInternalServerError)
+			id := requestIDFrom(r)
+			http.Error(w, "error sampling document (ref "+id+")", http.StatusInternalServerError)
+			log.Printf("anonymize-doc req=%s: sampling: %v", id, err)
 			return
 		}
 		detected, err := s.detectLanguage(sample)
@@ -585,7 +652,9 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 
 	rec, err := goanon.NewRecognizer(model, recognizerOpts...)
 	if err != nil {
-		http.Error(w, "creating recognizer: "+err.Error(), http.StatusInternalServerError)
+		id := requestIDFrom(r)
+		http.Error(w, "internal error (ref "+id+")", http.StatusInternalServerError)
+		log.Printf("anonymize-doc req=%s: recognizer: %v", id, err)
 		return
 	}
 
@@ -604,7 +673,9 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 
 	walker, err := factory(tmpIn.Name())
 	if err != nil {
-		http.Error(w, "erreur ouverture document: "+err.Error(), http.StatusInternalServerError)
+		id := requestIDFrom(r)
+		http.Error(w, "internal error (ref "+id+")", http.StatusInternalServerError)
+		log.Printf("anonymize-doc req=%s: ouverture document: %v", id, err)
 		return
 	}
 
@@ -623,13 +694,37 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("anonymize-doc: lang=%s format=%s entities=%d", lang, ext, len(session.Mapping))
 
+	// Sanitisation des surfaces cachées (métadonnées, commentaires, révisions)
+	// avant écriture. En mode strict, une surface non traitée refuse le document.
+	sanPolicy := docprocessor.DefaultSanitizePolicy()
+	sanPolicy.Strict = s.strict
+	sanReport, err := docprocessor.Sanitize(walker, sanPolicy)
+	if err != nil {
+		id := requestIDFrom(r)
+		var unproc *docprocessor.ErrUnsanitizedSurface
+		if errors.As(err, &unproc) || errors.Is(err, docprocessor.ErrNoSanitizeGuarantee) {
+			http.Error(w, "anonymisation refusée : surfaces non sanitisées", http.StatusUnprocessableEntity)
+			log.Printf("anonymize-doc req=%s: refus strict sanitisation : %v", id, err)
+			return
+		}
+		http.Error(w, "internal error (ref "+id+")", http.StatusInternalServerError)
+		log.Printf("anonymize-doc req=%s: sanitisation : %v", id, err)
+		return
+	}
+	log.Printf("anonymize-doc: sanitize meta=%v comments=%d revisions=%d unprocessed=%d",
+		sanReport.MetadataStripped, sanReport.CommentsFound, sanReport.RevisionsFound, len(sanReport.Unprocessed))
+	// Hygiène mémoire (S8) : la session n'est plus utile après sanitisation.
+	defer session.Close()
+
 	saver, ok := walker.(interface{ SaveTo(string) error })
 	if !ok {
 		http.Error(w, "format non sauvegardable", http.StatusInternalServerError)
 		return
 	}
 	if err := saver.SaveTo(tmpOutName); err != nil {
-		http.Error(w, "erreur sauvegarde: "+err.Error(), http.StatusInternalServerError)
+		id := requestIDFrom(r)
+		http.Error(w, "internal error (ref "+id+")", http.StatusInternalServerError)
+		log.Printf("anonymize-doc req=%s: sauvegarde: %v", id, err)
 		return
 	}
 

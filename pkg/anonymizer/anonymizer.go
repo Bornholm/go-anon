@@ -92,6 +92,9 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 		consistentCache map[string]string
 	)
 	if params.session != nil {
+		if params.session.closed {
+			return nil, ErrSessionClosed
+		}
 		counters = params.session.counters
 		consistentCache = params.session.consistentCache
 		params.nonce = params.session.Nonce()
@@ -169,7 +172,9 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 				return nil, err
 			}
 			if a.config.ConsistentMap {
-				consistentCache[normalizeForFuzzy(ent.Text)] = replacement
+				// Clé clonée : normalizeForFuzzy peut renvoyer une sous-chaîne du
+				// texte source (via TrimSpace), à ne pas retenir dans la session.
+				consistentCache[strings.Clone(normalizeForFuzzy(ent.Text))] = replacement
 			}
 		}
 		result.Mapping[replacement] = ent.Text
@@ -240,11 +245,27 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 	}
 
 	if params.session != nil {
+		// Plafond de rétention : projeter la taille finale du mapping avant
+		// d'écrire, pour refuser plutôt que de dépasser (croissance bornée).
+		if params.session.maxEntities > 0 {
+			projected := len(params.session.Mapping)
+			for k := range result.Mapping {
+				if _, ok := params.session.Mapping[k]; !ok {
+					projected++
+				}
+			}
+			if projected > params.session.maxEntities {
+				return nil, fmt.Errorf("%w : %d > %d", ErrSessionFull, projected, params.session.maxEntities)
+			}
+		}
+		// strings.Clone coupe le lien avec le tableau d'octets du texte source :
+		// une forme de surface est une sous-chaîne du document, la conserver telle
+		// quelle retiendrait tout le document en mémoire tant que la session vit.
 		for k, v := range result.Mapping {
-			params.session.Mapping[k] = v
+			params.session.Mapping[k] = strings.Clone(v)
 		}
 		for k, v := range result.OriginalToPlaceholder {
-			params.session.OriginalToPlaceholder[k] = v
+			params.session.OriginalToPlaceholder[strings.Clone(k)] = v
 		}
 	}
 

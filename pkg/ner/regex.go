@@ -20,14 +20,10 @@ type RegexPattern struct {
 // RegexEntityFilter retourne un EntityFilter qui injecte des entités détectées
 // par expressions régulières. Les spans déjà couverts par des entités existantes
 // ne sont jamais écrasés (NER prime sur regex, premier pattern regex gagne).
-// getText est une closure vers le texte courant — même pattern que FirstNameDetectionFilter.
-func RegexEntityFilter(getText func() string, patterns []RegexPattern) EntityFilter {
-	return func(entities []Entity) []Entity {
-		if len(patterns) == 0 || getText == nil {
-			return entities
-		}
-		text := getText()
-		if text == "" {
+// Le texte original est fourni par le filtre.
+func RegexEntityFilter(patterns []RegexPattern) EntityFilter {
+	return func(text string, entities []Entity) []Entity {
+		if len(patterns) == 0 || text == "" {
 			return entities
 		}
 
@@ -89,9 +85,7 @@ func RegexEntityFilter(getText func() string, patterns []RegexPattern) EntityFil
 // après les filtres NER existants. Les patterns sont appliqués dans l'ordre fourni.
 func WithRegexPatterns(patterns ...RegexPattern) RecognizerOption {
 	return func(rec *Recognizer) error {
-		rec.postFilters = append(rec.postFilters,
-			RegexEntityFilter(func() string { return rec.lastText }, patterns),
-		)
+		rec.postFilters = append(rec.postFilters, RegexEntityFilter(patterns))
 		return nil
 	}
 }

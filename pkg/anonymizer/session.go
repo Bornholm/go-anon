@@ -32,12 +32,57 @@ type anonymizeParams struct {
 
 // Session conserve l'état partagé entre plusieurs appels à Anonymize(),
 // permettant une numérotation et une cohérence cross-segments (ex. paragraphes d'un document).
+//
+// Une Session accumule des PII (le mapping de ré-identification) en mémoire. Sur
+// un serveur long-running, deux garde-fous limitent la rétention : maxEntities
+// borne la taille du mapping (cf. SetMaxEntities), et Close() rend les maps
+// collectables une fois le traitement terminé.
 type Session struct {
 	counters              map[ner.EntityType]int
 	consistentCache       map[string]string
 	nonce                 string
 	Mapping               map[string]string // placeholder → original (cumulé)
 	OriginalToPlaceholder map[string]string // original → placeholder (cumulé)
+
+	// maxEntities borne le nombre d'entrées du mapping (0 = illimité). Au-delà,
+	// Anonymize échoue avec ErrSessionFull plutôt que de croître sans fin.
+	maxEntities int
+	// closed marque une session libérée par Close() : tout usage ultérieur
+	// échoue avec ErrSessionClosed.
+	closed bool
+}
+
+// ErrSessionClosed signale l'usage d'une session déjà libérée par Close().
+var ErrSessionClosed = errors.New("anonymizer: session fermée")
+
+// ErrSessionFull signale que le mapping a atteint le plafond maxEntities.
+var ErrSessionFull = errors.New("anonymizer: plafond d'entités de la session atteint")
+
+// SetMaxEntities borne le nombre d'entrées du mapping accumulé. Passé ce seuil,
+// Anonymize retourne ErrSessionFull sans rien produire. 0 (défaut) = illimité.
+//
+// Sur un serveur qui conserve des sessions nommées entre requêtes, ce plafond
+// transforme une croissance mémoire non bornée (donc un OOM à terme) en erreur
+// explicite et maîtrisable.
+func (s *Session) SetMaxEntities(n int) {
+	s.maxEntities = n
+}
+
+// Close libère les tables de la session : les maps sont remises à nil, rendant
+// les chaînes qu'elles retenaient (formes de surface, pseudonymes) collectables
+// par le GC. Toute utilisation ultérieure de la session échoue avec
+// ErrSessionClosed.
+//
+// En Go, la zéroïsation mémoire n'est pas garantissable (GC potentiellement
+// copiant, chaînes immuables) : Close accélère la collectabilité, il ne garantit
+// pas l'effacement physique. Les mitigations d'infrastructure (swap chiffré ou
+// désactivé, pas de core dumps) sont documentées dans docs/rgpd.md.
+func (s *Session) Close() {
+	s.counters = nil
+	s.consistentCache = nil
+	s.Mapping = nil
+	s.OriginalToPlaceholder = nil
+	s.closed = true
 }
 
 func NewSession() *Session {

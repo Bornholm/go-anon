@@ -20,7 +20,7 @@ func newRegexRecognizer() *regexRecognizer {
 }
 
 func (r *regexRecognizer) Recognize(text string) ([]ner.Entity, error) {
-	return ner.RegexEntityFilter(func() string { return text }, r.patterns)(nil), nil
+	return ner.RegexEntityFilter(r.patterns)(text, nil), nil
 }
 
 // fuzzSeeds couvre les familles d'entrées qui ont historiquement cassé le

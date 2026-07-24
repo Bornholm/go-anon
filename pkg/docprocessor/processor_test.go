@@ -33,7 +33,7 @@ func (w *sliceWalker) Walk(fn func(Segment) error) error {
 type emailRecognizer struct{}
 
 func (emailRecognizer) Recognize(text string) ([]ner.Entity, error) {
-	return ner.RegexEntityFilter(func() string { return text }, ner.BuiltinRegexPatterns)(nil), nil
+	return ner.RegexEntityFilter(ner.BuiltinRegexPatterns)(text, nil), nil
 }
 
 func TestProcessWithReport_AggregatesLeaksPerSegment(t *testing.T) {

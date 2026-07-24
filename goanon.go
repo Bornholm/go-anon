@@ -157,6 +157,8 @@ var (
 	ErrPlaceholderCollision = anonymizer.ErrPlaceholderCollision
 	ErrIncompleteMapping    = anonymizer.ErrIncompleteMapping
 	ErrVerificationFailed   = anonymizer.ErrVerificationFailed
+	ErrSessionClosed        = anonymizer.ErrSessionClosed
+	ErrSessionFull          = anonymizer.ErrSessionFull
 )
 
 // — Constructeurs —

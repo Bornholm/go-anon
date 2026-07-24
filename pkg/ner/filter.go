@@ -10,9 +10,14 @@ import (
 )
 
 // EntityFilter est une fonction de post-traitement appliquée sur la liste
-// d'entités détectées. Elle peut supprimer, modifier ou réordonner les entités.
+// d'entités détectées. Elle reçoit le texte original de la reconnaissance et
+// peut supprimer, modifier ou réordonner les entités.
 // Les filtres sont chaînés dans l'ordre fourni à WithPostFilters.
-type EntityFilter func([]Entity) []Entity
+//
+// Le texte est passé en argument (et non capturé depuis le Recognizer) : c'est
+// ce qui rend le Recognizer sans état après construction, donc partageable entre
+// goroutines sans course ni contamination inter-requêtes (cf. Recognize).
+type EntityFilter func(text string, entities []Entity) []Entity
 
 // WithPostFilters enregistre des filtres appliqués après la reconnaissance NER,
 // dans l'ordre fourni. Les filtres sont ajoutés après ceux déjà configurés
@@ -28,7 +33,7 @@ func WithPostFilters(filters ...EntityFilter) RecognizerOption {
 // strictement inférieur à threshold. Utile pour éliminer les prédictions
 // hésitantes (ex. titres de poste mal étiquetés PER).
 func MinConfidenceFilter(threshold float64) EntityFilter {
-	return func(entities []Entity) []Entity {
+	return func(_ string, entities []Entity) []Entity {
 		out := entities[:0]
 		for _, e := range entities {
 			if e.Confidence >= threshold {
@@ -43,7 +48,7 @@ func MinConfidenceFilter(threshold float64) EntityFilter {
 // par des espaces) dépasse max. Réduit les spans anormalement longs résultant
 // d'erreurs de segmentation ou d'un contexte ambiguë.
 func MaxTokensFilter(max int) EntityFilter {
-	return func(entities []Entity) []Entity {
+	return func(_ string, entities []Entity) []Entity {
 		out := entities[:0]
 		for _, e := range entities {
 			if countTokens(e.Text) <= max {
@@ -63,7 +68,7 @@ func BlocklistFilter(entityType EntityType, words ...string) EntityFilter {
 	for _, w := range words {
 		blocklist[strings.ToLower(w)] = true
 	}
-	return func(entities []Entity) []Entity {
+	return func(_ string, entities []Entity) []Entity {
 		out := entities[:0]
 		for _, e := range entities {
 			if e.Type == entityType && allTokensBlocked(e.Text, blocklist) {
@@ -99,7 +104,7 @@ func allTokensBlocked(text string, blocklist map[string]bool) bool {
 // confond un prénom (ex. "Alice", "Marie") avec un lieu.
 // Si firstNames est nil, le filtre est inopérant.
 func FirstNameReclassifyFilter(firstNames *features.Gazetteer) EntityFilter {
-	return func(entities []Entity) []Entity {
+	return func(_ string, entities []Entity) []Entity {
 		if firstNames == nil {
 			return entities
 		}
@@ -116,18 +121,13 @@ func FirstNameReclassifyFilter(firstNames *features.Gazetteer) EntityFilter {
 
 // FirstNameDetectionFilter détecte les tokens majuscules correspondant à des
 // prénoms du gazetteer qui ne sont pas déjà couverts par des entités existantes,
-// et les ajoute comme entités PER. getText retourne le texte original.
+// et les ajoute comme entités PER. Le texte original est fourni par le filtre.
 // stopWords est une map optionnelle de mots à exclure (en minuscules) ; si nil,
 // seuls les tokens de moins de 3 caractères et ceux suivis d'une lettre minuscule
 // sont filtrés.
-func FirstNameDetectionFilter(getText func() string, firstNames *features.Gazetteer, stopWords map[string]bool) EntityFilter {
-	return func(entities []Entity) []Entity {
-		if firstNames == nil || getText == nil {
-			return entities
-		}
-
-		text := getText()
-		if text == "" {
+func FirstNameDetectionFilter(firstNames *features.Gazetteer, stopWords map[string]bool) EntityFilter {
+	return func(text string, entities []Entity) []Entity {
+		if firstNames == nil || text == "" {
 			return entities
 		}
 
@@ -246,19 +246,17 @@ func isStopWordOrKnownSurname(s string, known map[string]bool) bool {
 }
 
 // MergePass fusionne les entités fragmentées par le NER.
-// getText est une fonction retournant le texte original (fournie par le Recognizer).
+// Le texte original est fourni par le filtre.
 // Il traite deux cas :
 //   - PER + LOC adjacents (séparés par un espace ou contigus) : le LOC est
 //     considéré comme un faux positif (nom de famille pris pour un lieu) et
 //     absorbé dans la PER.
 //   - PER + PER adjacents : fusion en une seule entité PER.
-func MergePass(getText func() string) EntityFilter {
-	return func(entities []Entity) []Entity {
+func MergePass() EntityFilter {
+	return func(text string, entities []Entity) []Entity {
 		if len(entities) == 0 {
 			return entities
 		}
-
-		text := getText()
 
 		for {
 			sort.Slice(entities, func(i, j int) bool {
@@ -314,15 +312,10 @@ func MergePass(getText func() string) EntityFilter {
 // NameCompletionPass complète les entités PER d'un seul token (prénom seul) en
 // cherchant un nom de famille adjacent dans le texte original.
 // firstNames est un gazetteer de prénoms connus ; si nil, la passe est inopérante.
-// getText retourne le texte original (fourni par le Recognizer).
-func NameCompletionPass(getText func() string, firstNames *features.Gazetteer) EntityFilter {
-	return func(entities []Entity) []Entity {
-		if len(entities) == 0 || firstNames == nil {
-			return entities
-		}
-
-		text := getText()
-		if text == "" {
+// Le texte original est fourni par le filtre.
+func NameCompletionPass(firstNames *features.Gazetteer) EntityFilter {
+	return func(text string, entities []Entity) []Entity {
+		if len(entities) == 0 || firstNames == nil || text == "" {
 			return entities
 		}
 

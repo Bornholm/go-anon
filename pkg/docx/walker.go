@@ -12,6 +12,10 @@ import (
 // est redistribué en écrasant le premier run et en vidant les suivants.
 type Walker struct {
 	rootDoc *gdocx.RootDoc
+	// srcPath est le fichier d'origine, conservé pour relire les parties brutes
+	// (word/document.xml) lors de la sanitisation des révisions. Vide si le
+	// Walker a été construit depuis un RootDoc déjà chargé.
+	srcPath string
 }
 
 func NewWalker(rootDoc *gdocx.RootDoc) *Walker {
@@ -23,7 +27,7 @@ func NewWalkerFromFile(path string) (docprocessor.Walker, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewWalker(rd), nil
+	return &Walker{rootDoc: rd, srcPath: path}, nil
 }
 
 // Walk itère sur tous les paragraphes du document et appelle fn pour chacun.

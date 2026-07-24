@@ -30,7 +30,6 @@ type Recognizer struct {
 	computeConfidence  bool              // calculer les marginales (scores de confiance des entités)
 	postFilters        []EntityFilter    // filtres appliqués après la reconnaissance
 	warnings           []string          // écarts détectés entre la config du modèle et celle de l'inférence
-	lastText           string            // texte de la dernière reconnaissance (pour NameCompletionPass)
 }
 
 // RecognizerOption configure un Recognizer via le pattern d'option fonctionnel.
@@ -153,9 +152,7 @@ func WithFirstNameDetectionPass(firstNames *features.Gazetteer) RecognizerOption
 				stopWords[w] = true
 			}
 		}
-		rec.postFilters = append(rec.postFilters, FirstNameDetectionFilter(func() string {
-			return rec.lastText
-		}, firstNames, stopWords))
+		rec.postFilters = append(rec.postFilters, FirstNameDetectionFilter(firstNames, stopWords))
 		return nil
 	}
 }
@@ -168,9 +165,7 @@ func WithFirstNameDetectionPass(firstNames *features.Gazetteer) RecognizerOption
 // À placer après WithFirstNameDetectionPass pour voir les entités détectées.
 func WithNameCompletionPass(firstNames *features.Gazetteer) RecognizerOption {
 	return func(rec *Recognizer) error {
-		rec.postFilters = append(rec.postFilters, NameCompletionPass(func() string {
-			return rec.lastText
-		}, firstNames))
+		rec.postFilters = append(rec.postFilters, NameCompletionPass(firstNames))
 		return nil
 	}
 }
@@ -180,9 +175,7 @@ func WithNameCompletionPass(firstNames *features.Gazetteer) RecognizerOption {
 // (PER+PER) et corrige les faux positifs LOC sur les noms de famille (PER+LOC).
 func WithMergePass() RecognizerOption {
 	return func(rec *Recognizer) error {
-		rec.postFilters = append(rec.postFilters, MergePass(func() string {
-			return rec.lastText
-		}))
+		rec.postFilters = append(rec.postFilters, MergePass())
 		return nil
 	}
 }
@@ -279,12 +272,15 @@ func configWarnings(cfg model.FeatureConfig, rec *Recognizer) []string {
 // que le modèle étende des spans d'entités au-delà des frontières naturelles.
 // Les offsets Start/End des entités retournées sont des positions byte dans
 // le texte original (non modifié).
+//
+// Recognize est sans état : il ne mute aucun champ du Recognizer et n'écrit que
+// dans des valeurs locales. Un même Recognizer peut donc être partagé entre
+// goroutines sans course ni contamination inter-requêtes — le texte de chaque
+// appel ne vit que dans cet appel, et les post-filtres le reçoivent en argument.
 func (r *Recognizer) Recognize(text string) ([]Entity, error) {
 	if text == "" {
 		return []Entity{}, nil
 	}
-
-	r.lastText = text
 
 	var allEntities []Entity
 	_, labelIndex := r.crf.LabelsWithIndex()
@@ -298,7 +294,7 @@ func (r *Recognizer) Recognize(text string) ([]Entity, error) {
 	}
 
 	for _, f := range r.postFilters {
-		allEntities = f(allEntities)
+		allEntities = f(text, allEntities)
 	}
 
 	return allEntities, nil

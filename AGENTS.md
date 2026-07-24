@@ -110,6 +110,14 @@ Points de configuration importants (cf. `pkg/ner` et `goanon.go`) :
 - `Recognizer.Warnings()` — écarts détectés entre la `FeatureConfig` du modèle
   et la configuration d'inférence (gazetteers/clusters manquants, langue
   différente). Affiché par `eval`, `demo` et `anon-doc`.
+- **`Recognizer` sans état** — `Recognize` ne mute aucun champ du Recognizer
+  (l'ancien `lastText` a été supprimé ; les post-filtres reçoivent le texte en
+  argument via la signature `EntityFilter func(text string, entities []Entity)`).
+  Un même Recognizer est donc partageable entre goroutines sans course ni
+  contamination inter-requêtes (cf. `TestRecognizer_ConcurrentNoContamination`).
+- **Hygiène des `Session`** — `Session.Close()` libère les tables (PII
+  collectable) et interdit tout usage ultérieur (`ErrSessionClosed`) ;
+  `SetMaxEntities` borne la croissance du mapping (`ErrSessionFull`).
 
 ### Packages
 
@@ -120,11 +128,11 @@ Points de configuration importants (cf. `pkg/ner` et `goanon.go`) :
 | `pkg/ner`          | Orchestration : `Recognizer`, décodage BIO→entités, évaluation F1, post-filtres, corrections BIO             |
 | `pkg/anonymizer`   | Remplacement des entités : stratégies (tag/redact/hash), `Session` cross-segments, passes de post-traitement, vérification fail-closed (`verify.go`) |
 | `pkg/anonymizer/mappingstore` | Store chiffré (AES-256-GCM) des tables de ré-identification : rétention, purge, effacement cryptographique |
-| `pkg/docprocessor` | Interface `Walker` + `Processor` — orchestration de l'anonymisation de documents format-agnostique           |
-| `pkg/docx`         | `Walker` DOCX : itération sur les paragraphes, réécriture des runs                                           |
-| `pkg/odt`          | `Walker` ODT : parsing XML en mémoire, réécriture in-place, resérialisation ZIP                              |
-| `pkg/csv`          | `Walker` CSV/TSV : détection auto du séparateur, anonymisation cellule par cellule                           |
-| `pkg/pdf`          | `Walker` PDF (lecture seule via pdfcpu) : extraction texte avec offsets, redact dans le flux de contenu      |
+| `pkg/docprocessor` | Interface `Walker` + `Processor` — orchestration de l'anonymisation de documents format-agnostique ; interface `Sanitizer` + `Sanitize()` : purge des surfaces cachées (métadonnées, commentaires, révisions), fail-closed en mode strict |
+| `pkg/docx`         | `Walker` DOCX : itération sur les paragraphes, réécriture des runs ; `Sanitizer` (docProps purgés, commentaires supprimés, révisions détectées) |
+| `pkg/odt`          | `Walker` ODT : parsing XML en mémoire, réécriture in-place, resérialisation ZIP ; `Sanitizer` (meta.xml purgé, annotations et tracked-changes retirées) |
+| `pkg/csv`          | `Walker` CSV/TSV : détection auto du séparateur, anonymisation cellule par cellule ; `Sanitizer` no-op (pas de surface cachée) |
+| `pkg/pdf`          | `Walker` PDF (lecture seule via pdfcpu) : extraction texte avec offsets, redact dans le flux de contenu ; `Sanitizer` (Info + XMP purgés, annotations/pièces jointes signalées) |
 | `pkg/corpus`       | Lecture CoNLL et WikiNER, normalisation BIO, conversion BIO↔BIOES                                            |
 | `pkg/tokenizer`    | `UnicodeTokenizer` — offsets byte-précis, options FR/ES (apostrophe) et EN (trait d'union)                   |
 | `pkg/lang`         | Profils linguistiques : stop-words, préfixes honorifiques, features spécifiques FR/EN/ES                     |
