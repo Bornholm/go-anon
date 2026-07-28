@@ -1,8 +1,11 @@
 package anonymizer
 
 import (
+	"crypto/rand"
+	"errors"
 	"fmt"
 	"log"
+	"math/big"
 	"sort"
 	"strings"
 	"sync"
@@ -17,10 +20,31 @@ type Strategy int
 
 const (
 	TagReplace Strategy = iota // "John" → "[PERSON_1]"
-	Redact                     // "John" → "████"
+	Redact                     // "John" → "██████" (longueur indépendante de l'entrée)
 	Hash                       // "John" → "[PER_a1b2c3]"
 	Consistent                 // même entity fuzzy → même placeholder
 )
+
+// Bornes par défaut de la longueur d'un bloc de caviardage (stratégie Redact).
+//
+// Un bloc dont la longueur reproduit celle de l'entité est un canal auxiliaire :
+// « ██████ habite à ████ » divulgue le nombre de caractères de chaque forme de
+// surface, ce qui suffit souvent à ré-identifier (croisement avec une liste de
+// noms, un annuaire, un formulaire de longueur connue). La longueur est donc
+// tirée indépendamment du texte source.
+const (
+	DefaultRedactMinRunes = 4
+	DefaultRedactMaxRunes = 8
+	// MaxRedactRunes plafonne la longueur configurable : au-delà, le caviardage
+	// déforme la mise en page du document sans rien apporter.
+	MaxRedactRunes = 64
+)
+
+// redactChar est le caractère de remplissage des blocs de caviardage.
+const redactChar = "█"
+
+// ErrInvalidRedactRange signale des bornes de caviardage incohérentes.
+var ErrInvalidRedactRange = errors.New("anonymizer: bornes de caviardage invalides")
 
 // AnonymizePass est une fonction de post-traitement appliquée après le
 // remplacement principal des entités. Elle reçoit le texte original et le
@@ -38,6 +62,13 @@ type Config struct {
 	// ConsistencyPass() puis SurnameCompletionPass().
 	// Passer une slice vide désactive tout post-traitement.
 	Passes []AnonymizePass
+
+	// RedactMinRunes et RedactMaxRunes bornent la longueur d'un bloc de
+	// caviardage (stratégie Redact), en caractères. Les deux à zéro = défauts
+	// (DefaultRedactMinRunes..DefaultRedactMaxRunes) ; Min == Max = longueur
+	// constante. La longueur ne dépend jamais de l'entité remplacée.
+	RedactMinRunes int
+	RedactMaxRunes int
 }
 
 // ReplacerFunc permet un remplacement personnalisé.
@@ -151,6 +182,12 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 		OriginalToPlaceholder: make(map[string]string),
 	}
 
+	// Sous Redact, le cache de cohérence n'a rien à stabiliser — deux blocs de
+	// caviardage sont indiscernables — et retiendrait des formes de surface dans
+	// la session alors même que l'appelant a demandé une stratégie sans table de
+	// ré-identification.
+	useConsistentCache := a.config.ConsistentMap && a.config.Strategy != Redact
+
 	// Passe 1 : assigner les remplacements dans l'ordre type-priorité DESC puis
 	// start ASC, afin que [PERSON_1] corresponde à la première mention dans le texte.
 	assignOrder := make([]ner.Entity, len(entities))
@@ -170,7 +207,7 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 		}
 
 		var replacement string
-		if a.config.ConsistentMap {
+		if useConsistentCache {
 			if cached, ok := consistentCache[normalizeForFuzzy(ent.Text)]; ok {
 				replacement = cached
 			}
@@ -181,7 +218,7 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 			if err != nil {
 				return nil, err
 			}
-			if a.config.ConsistentMap {
+			if useConsistentCache {
 				// Clé clonée : normalizeForFuzzy peut renvoyer une sous-chaîne du
 				// texte source (via TrimSpace), à ne pas retenir dans la session.
 				consistentCache[strings.Clone(normalizeForFuzzy(ent.Text))] = replacement
@@ -197,7 +234,15 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 		switch {
 		case ner.IsSecretType(ent.Type):
 			entityReplacements[i] = params.secretPlaceholder(ent.Type)
-		case a.config.ConsistentMap:
+		case a.config.Strategy == Redact && a.config.CustomReplacers[ent.Type] == nil:
+			// Un bloc tiré par occurrence : deux spans caviardés ne doivent pas se
+			// laisser relier par une longueur commune.
+			block, err := redactBlock(a.config.RedactMinRunes, a.config.RedactMaxRunes)
+			if err != nil {
+				return nil, err
+			}
+			entityReplacements[i] = block
+		case useConsistentCache:
 			entityReplacements[i] = consistentCache[normalizeForFuzzy(ent.Text)]
 		default:
 			entityReplacements[i] = result.OriginalToPlaceholder[ent.Text]
@@ -254,6 +299,19 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 		result.Verification = report
 	}
 
+	// Redact est irréversible par construction : la longueur du bloc est tirée
+	// indépendamment de l'entité, donc plusieurs entités distinctes produisent le
+	// même bloc. Publier un mapping dont les clés collisionnent inviterait un
+	// Deanonymize qui restaurerait du texte faux — et ferait vivre une table de
+	// ré-identification là où l'appelant a précisément demandé à ne pas en avoir.
+	// Le mapping est donc vidé, après les passes de post-traitement et la
+	// vérification, qui s'en servent pour traquer les occurrences résiduelles.
+	// Les types confiés à un CustomReplacer sont conservés : leur placeholder est
+	// sous le contrôle de l'appelant, pas de la stratégie.
+	if a.config.Strategy == Redact {
+		a.dropRedactedMappings(result)
+	}
+
 	if params.session != nil {
 		// Plafond de rétention : projeter la taille finale du mapping avant
 		// d'écrire, pour refuser plutôt que de dépasser (croissance bornée).
@@ -289,15 +347,62 @@ func (a *Anonymizer) replace(ent ner.Entity, index int, params *anonymizeParams)
 
 	switch a.config.Strategy {
 	case Redact:
-		// Compter les runes, pas les octets : « Éric » fait 5 octets pour
-		// 4 caractères, et len() produirait un masque plus long que le nom
-		// qu'il remplace, ce qui renseigne sur la présence d'accents.
-		return strings.Repeat("█", utf8.RuneCountInString(ent.Text)), nil
+		return redactBlock(a.config.RedactMinRunes, a.config.RedactMaxRunes)
 	case Hash:
 		return a.hashReplacement(ent, params)
 	default: // TagReplace, Consistent
 		return params.tagPlaceholder(typeToLabel(ent.Type), index), nil
 	}
+}
+
+// dropRedactedMappings retire du Result les entrées de mapping produites par le
+// caviardage, en ne conservant que les types dotés d'un CustomReplacer.
+func (a *Anonymizer) dropRedactedMappings(result *Result) {
+	keep := make(map[string]bool)
+	for _, ent := range result.Entities {
+		if _, ok := a.config.CustomReplacers[ent.Type]; ok {
+			keep[ent.Text] = true
+		}
+	}
+
+	// Reconstruire les deux tables plutôt que d'y supprimer des entrées : les
+	// blocs de caviardage collisionnent entre eux, une suppression par clé de
+	// Mapping pourrait emporter l'entrée d'un type conservé.
+	surfaces := make(map[string]string, len(keep))
+	mapping := make(map[string]string, len(keep))
+	for surface, placeholder := range result.OriginalToPlaceholder {
+		if !keep[surface] {
+			continue
+		}
+		surfaces[surface] = placeholder
+		mapping[placeholder] = surface
+	}
+	result.OriginalToPlaceholder = surfaces
+	result.Mapping = mapping
+}
+
+// redactBlock construit un bloc de caviardage de longueur tirée dans
+// [min, max], indépendamment de l'entité remplacée. min == max donne une
+// longueur constante ; (0, 0) applique les bornes par défaut.
+func redactBlock(min, max int) (string, error) {
+	if min == 0 && max == 0 {
+		min, max = DefaultRedactMinRunes, DefaultRedactMaxRunes
+	}
+	if min < 1 || max < min || max > MaxRedactRunes {
+		return "", fmt.Errorf("%w : [%d, %d] hors de [1, %d]", ErrInvalidRedactRange, min, max, MaxRedactRunes)
+	}
+
+	n := min
+	if max > min {
+		// crypto/rand plutôt que math/rand : un PRNG prédictible rendrait la
+		// suite des longueurs rejouable, donc corrélable au flux d'entités.
+		d, err := rand.Int(rand.Reader, big.NewInt(int64(max-min+1)))
+		if err != nil {
+			return "", fmt.Errorf("anonymizer: tirage de la longueur de caviardage : %w", err)
+		}
+		n += int(d.Int64())
+	}
+	return strings.Repeat(redactChar, n), nil
 }
 
 // insecureHashWarning ne prévient qu'une fois par processus : l'avertissement

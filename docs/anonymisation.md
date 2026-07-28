@@ -35,6 +35,46 @@ L'ancien format `[TYPE_N]` reste accessible via `WithLegacyPlaceholders()`.
 Attention, c'est un changement incompatible : les consommateurs qui parsent
 `[PERSON_1]` doivent migrer ou activer cette option.
 
+## Stratégie `redact` (caviardage)
+
+L'entité est remplacée par un bloc de `█` dont la longueur est **tirée
+indépendamment du texte remplacé**, entre `DefaultRedactMinRunes` (4) et
+`DefaultRedactMaxRunes` (8) caractères, via `crypto/rand`. Un bloc dont la
+longueur reproduisait celle de l'entité — le comportement historique — était un
+canal auxiliaire : « ██████ habite à ████ » divulgue la taille de chaque forme
+de surface, ce qui suffit souvent à ré-identifier par croisement avec un
+annuaire ou une liste de noms.
+
+```go
+cfg := anonymizer.Config{
+    Strategy:       anonymizer.Redact,
+    RedactMinRunes: 6, // Min == Max ⇒ longueur constante
+    RedactMaxRunes: 6,
+}
+```
+
+Bornes incohérentes (min < 1, max < min, max > `MaxRedactRunes` = 64) →
+`ErrInvalidRedactRange`, plutôt qu'un caviardage silencieusement inefficace.
+
+Le tirage a lieu **par occurrence** : deux mentions de la même personne ne se
+laissent pas relier par une longueur de bloc commune.
+
+Conséquence directe : `redact` est **irréversible**, comme les secrets. Ni
+`Result.Mapping`, ni `Result.OriginalToPlaceholder`, ni la `Session` ne
+conservent d'entrée pour les entités caviardées — plusieurs entités distinctes
+produisent le même bloc, un mapping à clés collisionnelles ferait restaurer du
+texte faux par `Deanonymize`. Le cache de cohérence (`ConsistentMap`) est
+également court-circuité : il n'a rien à stabiliser et retiendrait des formes de
+surface en mémoire. Seuls les types confiés à un `CustomReplacer` gardent leur
+entrée de mapping, leur placeholder étant sous le contrôle de l'appelant.
+
+Le vidage intervient **après** les passes de post-traitement et la vérification,
+qui s'appuient sur le mapping pour traquer les occurrences résiduelles.
+
+En CLI, `-strategy redact` combiné à `-save-mapping` ou `-save-mapping-insecure`
+est refusé au démarrage. Le nombre d'entités traitées reste disponible via
+`docprocessor.Report.TotalEntities()`.
+
 ## Stratégie `hash`
 
 Le pseudonyme est dérivé par HMAC-SHA-256 avec une clé secrète (pepper). Un

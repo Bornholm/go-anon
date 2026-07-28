@@ -69,6 +69,10 @@ echo "Jean Dupont habite à Paris." | ./bin/demo -lang fr -model model_fr.crf.gz
 ./bin/anon-doc -model auto:fr \
   -input doc.docx -output out.docx -save-mapping mapping.json
 # Stratégies disponibles : "tag" (défaut), "redact", "hash"
+# "redact" produit un bloc █ de longueur tirée dans [4, 8] caractères,
+# indépendamment de l'entité (bornes réglables via Config.RedactMinRunes /
+# RedactMaxRunes ; Min == Max = longueur constante). Irréversible : aucun
+# mapping n'est produit, -save-mapping est refusé avec cette stratégie.
 ./bin/anon-doc -model auto -lang fr -strategy redact \
   -input data.csv -output data_anon.csv
 # Cache personnalisé, mode offline

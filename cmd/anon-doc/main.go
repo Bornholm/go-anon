@@ -86,6 +86,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Le caviardage est irréversible : il ne produit aucune table de
+	// ré-identification. Enregistrer un mapping vide donnerait l'illusion d'une
+	// ré-identification possible, mieux vaut refuser la combinaison.
+	if parseStrategy(*strategy) == anonymizer.Redact && (*saveMappingID != "" || *saveMappingInsecure != "") {
+		fmt.Fprintln(os.Stderr, "erreur : -strategy redact ne produit pas de mapping "+
+			"(caviardage irréversible) — utiliser -strategy tag ou hash pour conserver "+
+			"une table de ré-identification")
+		os.Exit(1)
+	}
+
 	autoLang, isAuto := resolveAutoMode(*modelFlag)
 
 	// --- Résolution du format ---

@@ -682,7 +682,7 @@ func (s *Server) handlePseudonymizeDoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, err := proc.Process(walker, anonOpts...)
+	session, docReport, err := proc.ProcessWithReport(walker, anonOpts...)
 	if err != nil {
 		var verr *goanon.VerificationError
 		if errors.As(err, &verr) {
@@ -695,7 +695,7 @@ func (s *Server) handlePseudonymizeDoc(w http.ResponseWriter, r *http.Request) {
 		log.Printf("anonymize-doc: échec : %v", err)
 		return
 	}
-	log.Printf("pseudonymize-doc: lang=%s format=%s entities=%d", lang, ext, len(session.Mapping))
+	log.Printf("pseudonymize-doc: lang=%s format=%s entities=%d", lang, ext, docReport.TotalEntities())
 
 	// Sanitisation des surfaces cachées (métadonnées, commentaires, révisions)
 	// avant écriture. En mode strict, une surface non traitée refuse le document.

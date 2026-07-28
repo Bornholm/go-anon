@@ -141,7 +141,9 @@ type Report struct {
 	// ne sait pas réécrire (contenu bitmap océrisé).
 	RegionLeaks []RegionLeak
 
-	// Entities compte les occurrences anonymisées par type.
+	// Entities compte les occurrences anonymisées par type. Le total ne peut
+	// pas se déduire de la taille du mapping : la stratégie Redact n'en produit
+	// aucun, étant irréversible par construction.
 	//
 	// Sert à surveiller la **précision**, angle mort d'une configuration réglée
 	// pour le rappel : un type qui s'emballe (des LOC partout, des PER sur des

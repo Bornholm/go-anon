@@ -105,6 +105,13 @@ const (
 	Consistent = anonymizer.Consistent
 )
 
+// Bornes de la longueur des blocs de caviardage (cf. Config.RedactMinRunes).
+const (
+	DefaultRedactMinRunes = anonymizer.DefaultRedactMinRunes
+	DefaultRedactMaxRunes = anonymizer.DefaultRedactMaxRunes
+	MaxRedactRunes        = anonymizer.MaxRedactRunes
+)
+
 // IsSecretType identifie les types dont la valeur n'est jamais conservée dans un
 // mapping ni ré-identifiable (clés d'API, JWT, mots de passe).
 var IsSecretType = ner.IsSecretType

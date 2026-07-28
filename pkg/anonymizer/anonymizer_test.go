@@ -1,6 +1,7 @@
 package anonymizer
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -63,6 +64,181 @@ func TestAnonymize_Redact(t *testing.T) {
 
 	if !strings.Contains(result.Text, "████") {
 		t.Errorf("expected ████ in result, got %q", result.Text)
+	}
+}
+
+// TestAnonymize_RedactLengthIndependentOfEntity vérifie que la longueur du bloc
+// de caviardage ne divulgue pas celle de la forme de surface : un nom court et
+// un nom long produisent des blocs tirés dans les mêmes bornes.
+func TestAnonymize_RedactLengthIndependentOfEntity(t *testing.T) {
+	for _, surface := range []string{"Li", "Jean-Baptiste Poquelin de la Fontaine"} {
+		text := surface + " est ici."
+		anon := New(&mockRecognizer{entities: []ner.Entity{
+			{Text: surface, Type: ner.TypePER, Start: 0, End: len(surface), Confidence: 1.0},
+		}}, Config{Strategy: Redact})
+
+		for range 50 {
+			result, err := anon.Anonymize(text)
+			if err != nil {
+				t.Fatalf("Anonymize: %v", err)
+			}
+			block := strings.TrimSuffix(result.Text, " est ici.")
+			n := utf8.RuneCountInString(block)
+			if strings.Repeat("█", n) != block {
+				t.Fatalf("bloc de caviardage inattendu : %q", block)
+			}
+			if n < DefaultRedactMinRunes || n > DefaultRedactMaxRunes {
+				t.Fatalf("longueur %d hors de [%d, %d] pour %q", n, DefaultRedactMinRunes, DefaultRedactMaxRunes, surface)
+			}
+		}
+	}
+}
+
+// TestAnonymize_RedactNoMapping : le caviardage étant irréversible et ses blocs
+// collisionnels, aucune table de ré-identification ne doit sortir d'Anonymize —
+// ni dans le Result, ni dans la Session.
+func TestAnonymize_RedactNoMapping(t *testing.T) {
+	original := "Jean Dupont habite à Paris."
+	anon := New(&mockRecognizer{entities: []ner.Entity{
+		spanEntity(original, "Jean Dupont", ner.TypePER),
+		spanEntity(original, "Paris", ner.TypeLOC),
+	}}, Config{Strategy: Redact, ConsistentMap: true})
+
+	sess := NewSession()
+	result, err := anon.Anonymize(original, WithSession(sess), WithVerification())
+	if err != nil {
+		t.Fatalf("Anonymize: %v", err)
+	}
+
+	if len(result.Mapping) != 0 || len(result.OriginalToPlaceholder) != 0 {
+		t.Errorf("mapping non vide : %v / %v", result.Mapping, result.OriginalToPlaceholder)
+	}
+	if len(sess.Mapping) != 0 || len(sess.OriginalToPlaceholder) != 0 {
+		t.Errorf("mapping de session non vide : %v / %v", sess.Mapping, sess.OriginalToPlaceholder)
+	}
+	if strings.Contains(result.Text, "Jean") || strings.Contains(result.Text, "Paris") {
+		t.Errorf("entité résiduelle dans %q", result.Text)
+	}
+	// La vérification s'appuie sur le mapping : elle doit tourner avant le vidage.
+	if result.Verification == nil || !result.Verification.OK() {
+		t.Errorf("vérification : %+v", result.Verification)
+	}
+}
+
+// TestAnonymize_RedactKeepsCustomReplacers : un type confié à un CustomReplacer
+// garde son placeholder — et donc son entrée de mapping — malgré la stratégie.
+func TestAnonymize_RedactKeepsCustomReplacers(t *testing.T) {
+	original := "Jean Dupont habite à Paris."
+	anon := New(&mockRecognizer{entities: []ner.Entity{
+		spanEntity(original, "Jean Dupont", ner.TypePER),
+		spanEntity(original, "Paris", ner.TypeLOC),
+	}}, Config{
+		Strategy: Redact,
+		CustomReplacers: map[ner.EntityType]ReplacerFunc{
+			ner.TypeLOC: func(ner.Entity, int) string { return "<VILLE>" },
+		},
+	})
+
+	result, err := anon.Anonymize(original)
+	if err != nil {
+		t.Fatalf("Anonymize: %v", err)
+	}
+
+	if got := result.OriginalToPlaceholder["Paris"]; got != "<VILLE>" {
+		t.Errorf("placeholder personnalisé absent du mapping : %q", got)
+	}
+	if result.Mapping["<VILLE>"] != "Paris" {
+		t.Errorf("mapping inverse incorrect : %v", result.Mapping)
+	}
+	if _, ok := result.OriginalToPlaceholder["Jean Dupont"]; ok {
+		t.Error("l'entité caviardée reste dans le mapping")
+	}
+}
+
+// TestAnonymize_RedactBlocksAreDrawnPerOccurrence : deux mentions de la même
+// personne ne doivent pas se laisser relier par une longueur de bloc commune.
+func TestAnonymize_RedactBlocksAreDrawnPerOccurrence(t *testing.T) {
+	original := "Jean Dupont écrit à Jean Dupont."
+	anon := New(&mockRecognizer{entities: []ner.Entity{
+		{Text: "Jean Dupont", Type: ner.TypePER, Start: 0, End: 11, Confidence: 1.0},
+		{Text: "Jean Dupont", Type: ner.TypePER, Start: 20, End: 31, Confidence: 1.0},
+	}}, Config{Strategy: Redact, ConsistentMap: true})
+
+	differs := false
+	for range 100 {
+		result, err := anon.Anonymize(original)
+		if err != nil {
+			t.Fatalf("Anonymize: %v", err)
+		}
+		blocks := strings.FieldsFunc(result.Text, func(r rune) bool { return r != '█' })
+		if len(blocks) != 2 {
+			t.Fatalf("attendu 2 blocs, got %q", result.Text)
+		}
+		if len(blocks[0]) != len(blocks[1]) {
+			differs = true
+			break
+		}
+	}
+	if !differs {
+		t.Error("les deux occurrences ont toujours la même longueur de bloc")
+	}
+}
+
+// TestAnonymize_RedactConstantLength vérifie le mode longueur fixe (Min == Max).
+func TestAnonymize_RedactConstantLength(t *testing.T) {
+	anon := New(&mockRecognizer{entities: []ner.Entity{
+		{Text: "John", Type: ner.TypePER, Start: 0, End: 4, Confidence: 1.0},
+	}}, Config{Strategy: Redact, RedactMinRunes: 6, RedactMaxRunes: 6})
+
+	for range 10 {
+		result, err := anon.Anonymize("John lives here.")
+		if err != nil {
+			t.Fatalf("Anonymize: %v", err)
+		}
+		if want := strings.Repeat("█", 6) + " lives here."; result.Text != want {
+			t.Fatalf("got %q, want %q", result.Text, want)
+		}
+	}
+}
+
+// TestAnonymize_RedactRangeCoversBounds : sur un grand nombre de tirages, les
+// deux bornes doivent être atteintes (sinon le tirage est biaisé ou constant).
+func TestAnonymize_RedactRangeCoversBounds(t *testing.T) {
+	anon := New(&mockRecognizer{entities: []ner.Entity{
+		{Text: "John", Type: ner.TypePER, Start: 0, End: 4, Confidence: 1.0},
+	}}, Config{Strategy: Redact})
+
+	seen := make(map[int]bool)
+	for range 500 {
+		result, err := anon.Anonymize("John.")
+		if err != nil {
+			t.Fatalf("Anonymize: %v", err)
+		}
+		seen[utf8.RuneCountInString(strings.TrimSuffix(result.Text, "."))] = true
+	}
+	for n := DefaultRedactMinRunes; n <= DefaultRedactMaxRunes; n++ {
+		if !seen[n] {
+			t.Errorf("longueur %d jamais tirée sur 500 essais", n)
+		}
+	}
+}
+
+// TestAnonymize_RedactInvalidRange : des bornes incohérentes échouent au lieu de
+// produire un caviardage silencieusement inefficace (ex. bloc vide).
+func TestAnonymize_RedactInvalidRange(t *testing.T) {
+	for _, tc := range []struct{ min, max int }{
+		{0, 5},                  // min manquant
+		{-1, 8},                 // négatif
+		{8, 4},                  // inversé
+		{4, MaxRedactRunes + 1}, // au-delà du plafond
+	} {
+		anon := New(&mockRecognizer{entities: []ner.Entity{
+			{Text: "John", Type: ner.TypePER, Start: 0, End: 4, Confidence: 1.0},
+		}}, Config{Strategy: Redact, RedactMinRunes: tc.min, RedactMaxRunes: tc.max})
+
+		if _, err := anon.Anonymize("John lives here."); !errors.Is(err, ErrInvalidRedactRange) {
+			t.Errorf("bornes [%d, %d] : got %v, want ErrInvalidRedactRange", tc.min, tc.max, err)
+		}
 	}
 }
 
