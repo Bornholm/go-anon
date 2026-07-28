@@ -280,15 +280,112 @@
       }
 
       /* Row 3: Config Options */
+      .config-panel {
+        margin-top: 24px;
+      }
+
+      .config-modes {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 12px;
+      }
+
+      .mode-btn {
+        padding: 6px 14px;
+        font-size: 13px;
+        font-weight: 500;
+        background: var(--surface);
+        color: var(--text-secondary);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        min-height: unset;
+        transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+      }
+
+      .mode-btn:hover:not(.active) {
+        background: var(--muted);
+        color: var(--text-primary);
+      }
+
+      .mode-btn.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: white;
+      }
+
+      .config-simple {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+      }
+
+      .preset-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 12px;
+      }
+
+      .preset-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        cursor: pointer;
+        transition: border-color 0.2s, background-color 0.2s;
+      }
+
+      .preset-card:hover {
+        background: var(--muted);
+      }
+
+      .preset-card.selected {
+        border-color: var(--accent);
+        background: #eff6ff;
+      }
+
+      .preset-card input {
+        width: 18px;
+        height: 18px;
+        margin-top: 2px;
+        cursor: pointer;
+        accent-color: var(--accent);
+        flex-shrink: 0;
+      }
+
+      .preset-body {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .preset-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .preset-desc {
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--text-secondary);
+      }
+
       .config-row {
         background: var(--surface);
         border: 1px solid var(--border);
         border-radius: var(--radius);
         padding: 20px;
-        margin-top: 24px;
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 20px;
+      }
+
+      .config-simple[hidden],
+      .config-row[hidden] {
+        display: none;
       }
 
       .config-section {
@@ -984,248 +1081,319 @@
             ></div>
           </section>
 
-          <section class="config-row" aria-label="Configuration">
-            <div class="config-section">
-              <h3 data-i18n="config_lang_strategy">Language &amp; strategy</h3>
-              <div class="form-group">
-                <label for="language" data-i18n="label_language"
-                  >Language</label
-                >
-                <select id="language">
-                  <option value="" data-i18n="loading_option">
-                    Loading...
-                  </option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="strategy" data-i18n="label_strategy"
-                  >Strategy</label
-                >
-                <select id="strategy">
-                  <option value="tag" data-i18n="option_strategy_tag">
-                    Token (⟦PERSON_1_…⟧)
-                  </option>
-                  <option value="redact" data-i18n="option_strategy_redact">
-                    Redact (████)
-                  </option>
-                  <option value="hash" data-i18n="option_strategy_hash">
-                    Hash (⟦PER_a1b2…⟧)
-                  </option>
-                  <option
-                    value="consistent"
-                    data-i18n="option_strategy_consistent"
-                  >
-                    Consistent
-                  </option>
-                </select>
-              </div>
-            </div>
-
-            <div class="config-section">
-              <h3 data-i18n="config_filters">Filters</h3>
-              <div class="form-group">
-                <label for="min-confidence" data-i18n="label_min_confidence"
-                  >Min. confidence</label
-                >
-                <input
-                  type="range"
-                  id="min-confidence"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value="0.4"
-                />
-                <div class="range-value" id="min-confidence-value">0.40</div>
-              </div>
-              <div class="form-group">
-                <label for="max-tokens" data-i18n="label_max_tokens"
-                  >Max tokens (0 = unlimited)</label
-                >
-                <input
-                  type="number"
-                  id="max-tokens"
-                  min="0"
-                  max="100"
-                  value="3"
-                />
-              </div>
-            </div>
-
-            <div class="config-section">
-              <h3 data-i18n="config_skip_types">Skip types</h3>
-              <p
-                style="font-size: 0.8em; color: #666; margin: 0 0 6px"
-                data-i18n="skip_ner_entities"
+          <section class="config-panel" aria-label="Configuration">
+            <div
+              class="config-modes"
+              role="group"
+              aria-label="Configuration mode"
+            >
+              <button
+                type="button"
+                class="mode-btn active"
+                data-mode="simple"
+                aria-pressed="true"
+                data-i18n="mode_simple"
               >
-                NER entities
-              </p>
-              <div class="checkbox-group">
-                <label class="checkbox-item">
+                Simple
+              </button>
+              <button
+                type="button"
+                class="mode-btn"
+                data-mode="advanced"
+                aria-pressed="false"
+                data-i18n="mode_advanced"
+              >
+                Advanced
+              </button>
+            </div>
+
+            <div class="config-simple" id="config-simple">
+              <div class="preset-cards">
+                <label class="preset-card selected" data-preset="balanced">
                   <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="PER"
-                  />
-                  <span>PER</span>
-                </label>
-                <label class="checkbox-item">
-                  <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="LOC"
-                  />
-                  <span>LOC</span>
-                </label>
-                <label class="checkbox-item">
-                  <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="ORG"
-                  />
-                  <span>ORG</span>
-                </label>
-                <label class="checkbox-item">
-                  <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="MISC"
+                    type="radio"
+                    name="config-preset"
+                    value="balanced"
                     checked
                   />
-                  <span>MISC</span>
+                  <span class="preset-body">
+                    <span class="preset-title" data-i18n="preset_balanced"
+                      >Balanced</span
+                    >
+                    <span class="preset-desc" data-i18n="preset_balanced_desc"
+                      >Good precision/recall trade-off. Limits false positives —
+                      suitable for everyday use.</span
+                    >
+                  </span>
                 </label>
-              </div>
-              <p
-                style="font-size: 0.8em; color: #666; margin: 8px 0 6px"
-                data-i18n="skip_regex_entities"
-              >
-                Regex entities
-              </p>
-              <div class="checkbox-group">
-                <label class="checkbox-item">
+                <label class="preset-card" data-preset="high-recall">
                   <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="EMAIL"
+                    type="radio"
+                    name="config-preset"
+                    value="high-recall"
                   />
-                  <span>EMAIL</span>
-                </label>
-                <label class="checkbox-item">
-                  <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="PHONE"
-                  />
-                  <span>PHONE</span>
-                </label>
-                <label class="checkbox-item">
-                  <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="IPV4"
-                  />
-                  <span>IPV4</span>
-                </label>
-                <label class="checkbox-item">
-                  <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="IPV6"
-                  />
-                  <span>IPV6</span>
-                </label>
-                <label class="checkbox-item">
-                  <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="IBAN"
-                  />
-                  <span>IBAN</span>
-                </label>
-                <label class="checkbox-item">
-                  <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="SIRET"
-                  />
-                  <span>SIRET</span>
-                </label>
-                <label class="checkbox-item">
-                  <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="SIREN"
-                  />
-                  <span>SIREN</span>
-                </label>
-              </div>
-              <p
-                style="font-size: 0.8em; color: #666; margin: 8px 0 6px"
-                data-i18n="skip_secrets"
-              >
-                Secrets / Authentication
-              </p>
-              <div class="checkbox-group">
-                <label class="checkbox-item">
-                  <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="JWT"
-                  />
-                  <span>JWT</span>
-                </label>
-                <label class="checkbox-item">
-                  <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="API_KEY"
-                  />
-                  <span>API_KEY</span>
-                </label>
-                <label class="checkbox-item">
-                  <input
-                    type="checkbox"
-                    class="skip-type-checkbox"
-                    value="SECRET"
-                  />
-                  <span>SECRET</span>
+                  <span class="preset-body">
+                    <span class="preset-title" data-i18n="preset_high_recall"
+                      >High recall (GDPR)</span
+                    >
+                    <span
+                      class="preset-desc"
+                      data-i18n="preset_high_recall_desc"
+                      >Detects as much as possible, at the cost of more false
+                      positives. Recommended when no personal data must be
+                      missed.</span
+                    >
+                  </span>
                 </label>
               </div>
             </div>
 
-            <div class="config-section">
-              <h3 data-i18n="config_blocklist">Excluded words</h3>
-              <div class="form-group">
-                <label for="blocklist" data-i18n="label_blocklist"
-                  >Exclude (comma-separated)</label
-                >
-                <input
-                  type="text"
-                  id="blocklist"
-                  data-i18n-placeholder="placeholder_blocklist"
-                  placeholder="e.g.: Mr., Mrs."
-                />
-              </div>
-            </div>
-
-            <div class="config-section">
-              <h3 data-i18n="config_ner_postprocess">NER post-processing</h3>
-              <div class="checkbox-group">
-                <label class="checkbox-item">
-                  <input type="checkbox" id="first-name-reclassify" checked />
-                  <span data-i18n="ner_reclassify"
-                    >Reclassify first names LOC→PER</span
+            <div class="config-row" id="config-advanced" hidden>
+              <div class="config-section">
+                <h3 data-i18n="config_lang_strategy">
+                  Language &amp; strategy
+                </h3>
+                <div class="form-group">
+                  <label for="language" data-i18n="label_language"
+                    >Language</label
                   >
-                </label>
-                <label class="checkbox-item">
-                  <input type="checkbox" id="merge" checked />
-                  <span data-i18n="ner_merge">Merge (PER+LOC → PER)</span>
-                </label>
-                <label class="checkbox-item">
-                  <input type="checkbox" id="name-completion" checked />
-                  <span data-i18n="ner_completion">Name completion</span>
-                </label>
+                  <select id="language">
+                    <option value="" data-i18n="loading_option">
+                      Loading...
+                    </option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="strategy" data-i18n="label_strategy"
+                    >Strategy</label
+                  >
+                  <select id="strategy">
+                    <option value="tag" data-i18n="option_strategy_tag">
+                      Token (⟦PERSON_1_…⟧)
+                    </option>
+                    <option value="redact" data-i18n="option_strategy_redact">
+                      Redact (████)
+                    </option>
+                    <option value="hash" data-i18n="option_strategy_hash">
+                      Hash (⟦PER_a1b2…⟧)
+                    </option>
+                    <option
+                      value="consistent"
+                      data-i18n="option_strategy_consistent"
+                    >
+                      Consistent
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="config-section">
+                <h3 data-i18n="config_filters">Filters</h3>
+                <div class="form-group">
+                  <label for="min-confidence" data-i18n="label_min_confidence"
+                    >Min. confidence</label
+                  >
+                  <input
+                    type="range"
+                    id="min-confidence"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value="0.4"
+                  />
+                  <div class="range-value" id="min-confidence-value">0.40</div>
+                </div>
+                <div class="form-group">
+                  <label for="max-tokens" data-i18n="label_max_tokens"
+                    >Max tokens (0 = unlimited)</label
+                  >
+                  <input
+                    type="number"
+                    id="max-tokens"
+                    min="0"
+                    max="100"
+                    value="3"
+                  />
+                </div>
+              </div>
+
+              <div class="config-section">
+                <h3 data-i18n="config_skip_types">Skip types</h3>
+                <p
+                  style="font-size: 0.8em; color: #666; margin: 0 0 6px"
+                  data-i18n="skip_ner_entities"
+                >
+                  NER entities
+                </p>
+                <div class="checkbox-group">
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="PER"
+                    />
+                    <span>PER</span>
+                  </label>
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="LOC"
+                    />
+                    <span>LOC</span>
+                  </label>
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="ORG"
+                    />
+                    <span>ORG</span>
+                  </label>
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="MISC"
+                      checked
+                    />
+                    <span>MISC</span>
+                  </label>
+                </div>
+                <p
+                  style="font-size: 0.8em; color: #666; margin: 8px 0 6px"
+                  data-i18n="skip_regex_entities"
+                >
+                  Regex entities
+                </p>
+                <div class="checkbox-group">
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="EMAIL"
+                    />
+                    <span>EMAIL</span>
+                  </label>
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="PHONE"
+                    />
+                    <span>PHONE</span>
+                  </label>
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="IPV4"
+                    />
+                    <span>IPV4</span>
+                  </label>
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="IPV6"
+                    />
+                    <span>IPV6</span>
+                  </label>
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="IBAN"
+                    />
+                    <span>IBAN</span>
+                  </label>
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="SIRET"
+                    />
+                    <span>SIRET</span>
+                  </label>
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="SIREN"
+                    />
+                    <span>SIREN</span>
+                  </label>
+                </div>
+                <p
+                  style="font-size: 0.8em; color: #666; margin: 8px 0 6px"
+                  data-i18n="skip_secrets"
+                >
+                  Secrets / Authentication
+                </p>
+                <div class="checkbox-group">
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="JWT"
+                    />
+                    <span>JWT</span>
+                  </label>
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="API_KEY"
+                    />
+                    <span>API_KEY</span>
+                  </label>
+                  <label class="checkbox-item">
+                    <input
+                      type="checkbox"
+                      class="skip-type-checkbox"
+                      value="SECRET"
+                    />
+                    <span>SECRET</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="config-section">
+                <h3 data-i18n="config_blocklist">Excluded words</h3>
+                <div class="form-group">
+                  <label for="blocklist" data-i18n="label_blocklist"
+                    >Exclude (comma-separated)</label
+                  >
+                  <input
+                    type="text"
+                    id="blocklist"
+                    data-i18n-placeholder="placeholder_blocklist"
+                    placeholder="e.g.: Mr., Mrs."
+                  />
+                </div>
+              </div>
+
+              <div class="config-section">
+                <h3 data-i18n="config_ner_postprocess">NER post-processing</h3>
+                <div class="checkbox-group">
+                  <label class="checkbox-item">
+                    <input type="checkbox" id="first-name-reclassify" checked />
+                    <span data-i18n="ner_reclassify"
+                      >Reclassify first names LOC→PER</span
+                    >
+                  </label>
+                  <label class="checkbox-item">
+                    <input type="checkbox" id="merge" checked />
+                    <span data-i18n="ner_merge">Merge (PER+LOC → PER)</span>
+                  </label>
+                  <label class="checkbox-item">
+                    <input type="checkbox" id="name-completion" checked />
+                    <span data-i18n="ner_completion">Name completion</span>
+                  </label>
+                </div>
               </div>
             </div>
+            <!-- #config-advanced -->
           </section>
 
           <section class="mapping-section" id="mapping-section">
@@ -1321,6 +1489,14 @@
             btn_pseudonymize: "Pseudonymize",
             btn_depseudonymize: "De-pseudonymize",
             loading_text: "Processing...",
+            mode_simple: "Simple",
+            mode_advanced: "Advanced",
+            preset_balanced: "Balanced",
+            preset_balanced_desc:
+              "Good precision/recall trade-off. Limits false positives — suitable for everyday use.",
+            preset_high_recall: "High recall (GDPR)",
+            preset_high_recall_desc:
+              "Detects as much as possible, at the cost of more false positives. Recommended when no personal data must be missed.",
             config_lang_strategy: "Language & strategy",
             label_language: "Language",
             loading_option: "Loading...",
@@ -1393,6 +1569,14 @@
             btn_pseudonymize: "Pseudonymiser",
             btn_depseudonymize: "De-pseudonymiser",
             loading_text: "Traitement en cours...",
+            mode_simple: "Simplifié",
+            mode_advanced: "Avancé",
+            preset_balanced: "Équilibré",
+            preset_balanced_desc:
+              "Bon compromis précision/rappel. Limite les faux positifs — adapté à un usage courant.",
+            preset_high_recall: "Haut rappel (RGPD)",
+            preset_high_recall_desc:
+              "Détecte le maximum d'entités, au prix de davantage de faux positifs. Recommandé lorsqu'aucune donnée personnelle ne doit être manquée.",
             config_lang_strategy: "Langue et stratégie",
             label_language: "Langue",
             loading_option: "Chargement...",
@@ -1465,6 +1649,14 @@
             btn_pseudonymize: "Pseudonimizar",
             btn_depseudonymize: "De-pseudonimizar",
             loading_text: "Procesando...",
+            mode_simple: "Simplificado",
+            mode_advanced: "Avanzado",
+            preset_balanced: "Equilibrado",
+            preset_balanced_desc:
+              "Buen equilibrio entre precisión y exhaustividad. Limita los falsos positivos — adecuado para el uso habitual.",
+            preset_high_recall: "Máxima cobertura (RGPD)",
+            preset_high_recall_desc:
+              "Detecta el máximo de entidades, a costa de más falsos positivos. Recomendado cuando no debe escaparse ningún dato personal.",
             config_lang_strategy: "Idioma y estrategia",
             label_language: "Idioma",
             loading_option: "Cargando...",
@@ -2078,6 +2270,87 @@ SUPPORT_PHONE=+34 91 234 56 78`,
         pseudonymizeBtn.addEventListener("click", pseudonymize);
         depseudonymizeBtn.addEventListener("click", depseudonymize);
 
+        // ── Config: modes simplifié / avancé ──────────────────────────────────
+        // Les presets du mode simplifié pilotent les mêmes contrôles que le mode
+        // avancé : la requête envoyée reste construite à partir de ces contrôles.
+        const PRESETS = {
+          balanced: {
+            minConfidence: 0.4,
+            maxTokens: 3,
+            skipTypes: ["MISC"],
+            firstNameReclassify: true,
+            merge: true,
+            nameCompletion: true,
+          },
+          "high-recall": {
+            minConfidence: 0.1,
+            maxTokens: 0,
+            skipTypes: [],
+            firstNameReclassify: true,
+            merge: true,
+            nameCompletion: true,
+          },
+        };
+
+        const configSimple = document.getElementById("config-simple");
+        const configAdvanced = document.getElementById("config-advanced");
+
+        function applyPreset(name) {
+          const preset = PRESETS[name] || PRESETS.balanced;
+          minConfidenceInput.value = preset.minConfidence;
+          minConfidenceValue.textContent = preset.minConfidence.toFixed(2);
+          maxTokensInput.value = preset.maxTokens;
+          document.querySelectorAll(".skip-type-checkbox").forEach((cb) => {
+            cb.checked = preset.skipTypes.includes(cb.value);
+          });
+          firstNameReclassifyCheckbox.checked = preset.firstNameReclassify;
+          mergeCheckbox.checked = preset.merge;
+          nameCompletionCheckbox.checked = preset.nameCompletion;
+        }
+
+        function selectPreset(name) {
+          const known = PRESETS[name] ? name : "balanced";
+          document.querySelectorAll(".preset-card").forEach((card) => {
+            const selected = card.dataset.preset === known;
+            card.classList.toggle("selected", selected);
+            card.querySelector("input").checked = selected;
+          });
+          applyPreset(known);
+          localStorage.setItem("config_preset", known);
+        }
+
+        function activateConfigMode(mode) {
+          const name = mode === "advanced" ? "advanced" : "simple";
+          document.querySelectorAll(".mode-btn").forEach((btn) => {
+            const active = btn.dataset.mode === name;
+            btn.classList.toggle("active", active);
+            btn.setAttribute("aria-pressed", String(active));
+          });
+          configSimple.hidden = name !== "simple";
+          configAdvanced.hidden = name !== "advanced";
+          // Retour au mode simplifié : on réapplique le preset pour que la
+          // configuration effective corresponde à ce qui est affiché.
+          if (name === "simple") {
+            selectPreset(localStorage.getItem("config_preset") || "balanced");
+          }
+          localStorage.setItem("config_mode", name);
+        }
+
+        document.querySelectorAll(".mode-btn").forEach((btn) => {
+          btn.addEventListener("click", function () {
+            activateConfigMode(this.dataset.mode);
+          });
+        });
+
+        document.querySelectorAll(".preset-card input").forEach((input) => {
+          input.addEventListener("change", function () {
+            selectPreset(this.value);
+          });
+        });
+
+        selectPreset(localStorage.getItem("config_preset") || "balanced");
+        activateConfigMode(localStorage.getItem("config_mode") || "simple");
+
         document.querySelectorAll(".example-link").forEach(function (link) {
           link.addEventListener("click", function (e) {
             e.preventDefault();
@@ -2131,8 +2404,9 @@ SUPPORT_PHONE=+34 91 234 56 78`,
         activateTab(location.hash.replace("#", ""));
 
         // ── Shared config section: move it out of tab-text so it's always visible ──
-        const configRow = document.querySelector("section.config-row");
-        if (configRow) document.querySelector("main").appendChild(configRow);
+        const configPanel = document.querySelector("section.config-panel");
+        if (configPanel)
+          document.querySelector("main").appendChild(configPanel);
 
         // ── Document upload ───────────────────────────────────────────────────
         const docFileInput = document.getElementById("doc-file-input");
