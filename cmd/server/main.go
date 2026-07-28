@@ -255,7 +255,7 @@ func main() {
 	mux.HandleFunc("/api/depseudonymize", srv.handleDepseudonymize)
 	mux.HandleFunc("/api/languages", srv.handleLanguages)
 	mux.HandleFunc("/api/doc-formats", srv.handleDocFormats)
-	mux.HandleFunc("/api/anonymize-doc", srv.handleAnonymizeDoc)
+	mux.HandleFunc("/api/pseudonymize-doc", srv.handlePseudonymizeDoc)
 
 	// Sémaphore d'anonymisations concurrentes : borne la mémoire et le CPU.
 	sem := make(chan struct{}, *maxConcurrent)
@@ -516,7 +516,7 @@ func (s *Server) handleDocFormats(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"formats": formats})
 }
 
-func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handlePseudonymizeDoc(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -695,7 +695,7 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 		log.Printf("anonymize-doc: échec : %v", err)
 		return
 	}
-	log.Printf("anonymize-doc: lang=%s format=%s entities=%d", lang, ext, len(session.Mapping))
+	log.Printf("pseudonymize-doc: lang=%s format=%s entities=%d", lang, ext, len(session.Mapping))
 
 	// Sanitisation des surfaces cachées (métadonnées, commentaires, révisions)
 	// avant écriture. En mode strict, une surface non traitée refuse le document.
@@ -742,7 +742,7 @@ func (s *Server) handleAnonymizeDoc(w http.ResponseWriter, r *http.Request) {
 	if mime == "" {
 		mime = "application/octet-stream"
 	}
-	outFilename := "anonymized_" + filepath.Base(header.Filename)
+	outFilename := "pseudonymized_" + filepath.Base(header.Filename)
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+outFilename+`"`)
 	io.Copy(w, outFile)
