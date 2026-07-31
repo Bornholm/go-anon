@@ -1,6 +1,7 @@
 package model
 
 import (
+	"bufio"
 	"compress/gzip"
 	"encoding/gob"
 	"fmt"
@@ -158,34 +159,46 @@ func (crf *CRF) toSerializable() *SerializableModel {
 
 // LoadModel décode un CRF depuis r en mode lecture seule (inférence).
 // Retourne une erreur si le format est invalide.
+//
+// Le format est détecté à la lecture : v4 (flux) ou gob (v1/v2/v3). Le v4
+// charge à empreinte mémoire nettement moindre — voir serialize_stream.go.
 func LoadModel(r io.Reader) (*CRF, error) {
-	gz, err := gzip.NewReader(r)
-	if err != nil {
-		return nil, fmt.Errorf("open gzip stream: %w", err)
-	}
-	defer gz.Close()
-
-	var sm SerializableModel
-	if err := gob.NewDecoder(gz).Decode(&sm); err != nil {
-		return nil, fmt.Errorf("decode model: %w", err)
-	}
-	return sm.toCRF(), nil
+	return loadModel(r, false)
 }
 
 // LoadModelMutable décode un CRF depuis r sans compacter les poids.
 // À utiliser quand on veut modifier le modèle (ex : Prune) avant de le resauvegarder.
 func LoadModelMutable(r io.Reader) (*CRF, error) {
+	return loadModel(r, true)
+}
+
+func loadModel(r io.Reader, mutable bool) (*CRF, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return nil, fmt.Errorf("open gzip stream: %w", err)
 	}
 	defer gz.Close()
 
+	// Le magic v4 doit être examiné sans être consommé : les formats antérieurs
+	// commencent leur message gob dès le premier octet du flux décompressé.
+	br := bufio.NewReaderSize(gz, streamChunkBytes)
+
+	if hasStreamMagic(br) {
+		if _, err := br.Discard(len(streamMagic)); err != nil {
+			return nil, fmt.Errorf("skip magic: %w", err)
+		}
+		return loadModelStream(br, mutable)
+	}
+
 	var sm SerializableModel
-	if err := gob.NewDecoder(gz).Decode(&sm); err != nil {
+	if err := gob.NewDecoder(br).Decode(&sm); err != nil {
 		return nil, fmt.Errorf("decode model: %w", err)
 	}
-	return sm.toCRFMutable(), nil
+
+	if mutable {
+		return sm.toCRFMutable(), nil
+	}
+	return sm.toCRF(), nil
 }
 
 // toCRFMutable reconstruit un CRF sans compacter les poids (mode mutable).

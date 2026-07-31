@@ -177,9 +177,40 @@ Voir `pkg/modelstore` pour l'API et le fonctionnement.
   Une seule recherche binaire par feature à l'inférence au lieu de L. Émis par
   l'entraînement (le `Trainer` collecte les bases de features). Chargement
   rétrocompatible v1/v2/v3 ; le cycle `prune` préserve le format d'origine.
+- **v4** : **format de flux** (`pkg/model/serialize_stream.go`) — magic
+  `GOANONv4`, en-tête gob (métadonnées + longueurs des tableaux), puis les poids
+  en binaire brut little-endian. Orthogonal à la représentation des poids : un
+  modèle plat (v2) comme groupé (v3) peut être écrit en v4, `SourceFormat`
+  conservant l'original. Écrit par `SaveStream`, détecté automatiquement par
+  `LoadModel`.
 
 Gains v3 : ~×4,6 de latence d'inférence cumulée (chemin chaud) et modèles
 ~30–50 % plus petits, à qualité égale.
+
+Gains v4 — le **pic mémoire de chargement**. Les formats gob imposent deux
+surcoûts inévitables côté décodeur : le message entier est bufferisé avant
+décodage (`internal/saferio`), et chaque slice est reconstruite par doublements
+(`encoding/gob.growSlice`) alors que sa taille finale est connue dès l'en-tête.
+En v4 les longueurs précèdent les données : chaque tableau est alloué une fois
+à sa taille exacte, puis rempli par blocs via un tampon de 256 kio.
+
+Mesuré sur le modèle `fr` (165 Mio de poids utiles) :
+
+| | v3 (gob) | v4 (flux) |
+|---|---|---|
+| pic RSS au chargement | 819 Mio | **163 Mio** |
+| total alloué | 1418 Mio | **159 Mio** |
+| durée de chargement | 1,56 s | **0,79 s** |
+| taille du fichier | 104,4 Mio | **93,3 Mio** |
+
+Inférence strictement identique (entités, offsets et scores de confiance
+inchangés) : les poids sont des `float32` transportés bit-à-bit.
+
+**Compatibilité** : la lecture est rétrocompatible (v1/v2/v3/v4 détectés
+automatiquement), mais un modèle v4 n'est **pas** lisible par une version de
+go-anon antérieure à l'introduction du format. Republier des modèles en v4
+impose donc de faire monter les consommateurs d'abord. `cmd/convert` réécrit un
+modèle existant en v4, sans réentraînement ni perte.
 
 **Schéma de features** (`FeatureConfig.FeatureSchema`, propagé à l'inférence par
 `ner.New`) :
