@@ -44,8 +44,10 @@ const (
 
 	// maxStreamArrayLen borne le nombre d'éléments d'un tableau annoncé par
 	// l'en-tête. Un fichier tronqué ou corrompu ne doit pas provoquer une
-	// allocation démesurée avant que la lecture n'échoue.
-	maxStreamArrayLen = 1 << 32
+	// allocation démesurée avant que la lecture n'échoue. Typé int64 : la
+	// valeur déborde d'un int sur les plateformes 32 bits, où la comparaison
+	// se fait donc en 64 bits (le bornage effectif y est math.MaxInt32).
+	maxStreamArrayLen int64 = 1 << 32
 )
 
 // streamHeader porte les métadonnées du modèle ainsi que la longueur de chaque
@@ -225,7 +227,7 @@ func readUint64s(r io.Reader, n int) ([]uint64, error) {
 	if n == 0 {
 		return nil, nil
 	}
-	if n < 0 || n > maxStreamArrayLen {
+	if n < 0 || int64(n) > maxStreamArrayLen {
 		return nil, fmt.Errorf("longueur de tableau invalide: %d", n)
 	}
 
@@ -251,7 +253,7 @@ func readFloat32s(r io.Reader, n int) ([]float32, error) {
 	if n == 0 {
 		return nil, nil
 	}
-	if n < 0 || n > maxStreamArrayLen {
+	if n < 0 || int64(n) > maxStreamArrayLen {
 		return nil, fmt.Errorf("longueur de tableau invalide: %d", n)
 	}
 
