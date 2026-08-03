@@ -17,6 +17,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	goanon "github.com/bornholm/go-anon"
@@ -27,6 +28,7 @@ import (
 	pkgdocx "github.com/bornholm/go-anon/pkg/docx"
 	"github.com/bornholm/go-anon/pkg/features"
 	"github.com/bornholm/go-anon/pkg/modelstore"
+	"github.com/bornholm/go-anon/pkg/ocr"
 	pkgodt "github.com/bornholm/go-anon/pkg/odt"
 	pkgpdf "github.com/bornholm/go-anon/pkg/pdf"
 )
@@ -52,9 +54,16 @@ func main() {
 	outputPath := flag.String("output", "", "fichier de sortie (obligatoire)")
 	format := flag.String("format", "", `format du document : "docx" (auto-détecté si absent)`)
 	strategy := flag.String("strategy", "tag", `stratégie : "tag", "redact" ou "hash"`)
+	preset := flag.String("preset", string(goanon.PresetHighRecall), `compromis précision/rappel : "high-recall" (défaut, recommandation RGPD) ou "balanced" (compromis F1)`)
 	hashScope := flag.String("hash-scope", "", `scope de la stratégie "hash" : casse la corrélation des pseudonymes entre scopes`)
 	insecureHash := flag.Bool("insecure-hash", false, `autoriser la stratégie "hash" sans clé (SHA-256 non salé, hors production)`)
 	strict := flag.Bool("strict", false, "mode fail-closed : échouer sans produire de document si la vérification détecte une fuite")
+	verifyDocument := flag.Bool("verify-document", true, "recomposer la sortie et y relancer une détection, pour repérer les entités coupées par la segmentation (une passe de détection supplémentaire)")
+	multiView := flag.Bool("multi-view", true, "détecter sur plusieurs recompositions du document et unioner les résultats : rattrape les entités coupées par la segmentation (environ trois passes de détection supplémentaires)")
+	ocrMode := flag.String("ocr", "auto", `reconnaissance optique du contenu bitmap : "auto" (si les outils sont présents), "on" (échouer sinon) ou "off"`)
+	ocrLang := flag.String("ocr-lang", "", "langue de l'OCR (défaut : celle du document)")
+	ocrDPI := flag.Int("ocr-dpi", pkgpdf.DefaultDPI, "résolution de rastérisation pour l'OCR")
+	ocrMinConf := flag.Float64("ocr-min-confidence", 0, "seuil de confiance des mots reconnus (0 = tout conserver)")
 	sanitize := flag.Bool("sanitize", true, "purger les métadonnées et surfaces cachées du document (auteur, commentaires, révisions)")
 	saveMappingID := flag.String("save-mapping", "", "identifiant sous lequel enregistrer le mapping chiffré dans le store")
 	mappingDir := flag.String("mapping-store", "mappings", "répertoire du store de mappings chiffrés")
@@ -173,6 +182,27 @@ func main() {
 		recOpts = append(recOpts, goanon.WithBrownClusters(clusters))
 	}
 
+	// Preset de post-traitement. Le défaut est « high-recall », pas le compromis
+	// F1 : pour la conformité, un faux négatif (donnée personnelle en clair) est
+	// sans commune mesure avec un faux positif (sur-caviardage bénin). C'est la
+	// recommandation de docs/rgpd.md, appliquée d'office plutôt que laissée en
+	// option — un défaut qu'il faut penser à activer ne protège personne.
+	switch *preset {
+	case string(goanon.PresetBalanced), string(goanon.PresetHighRecall):
+		recOpts = append(recOpts, goanon.PresetOptions(goanon.Preset(*preset), gazetteers["firstnames"])...)
+	default:
+		log.Fatalf("preset inconnu %q (attendu %q ou %q)",
+			*preset, goanon.PresetBalanced, goanon.PresetHighRecall)
+	}
+	if *preset == string(goanon.PresetHighRecall) && gazetteers["firstnames"] == nil {
+		// Sans gazetteer de prénoms, HighRecall dégénère silencieusement vers
+		// Balanced : son levier de rappel est FirstNameDetectionPass, qui n'a
+		// alors rien à injecter. Mieux vaut le dire que laisser croire à une
+		// couverture qu'on n'a pas.
+		log.Printf("avertissement : preset high-recall sans gazetteer \"firstnames\" — " +
+			"le levier de rappel est inopérant ; passer -gazetteers \"firstnames:...\" ou \"auto\"")
+	}
+
 	rec, err := goanon.NewRecognizer(m, recOpts...)
 	if err != nil {
 		log.Fatalf("initialisation recognizer : %v", err)
@@ -196,12 +226,38 @@ func main() {
 		anonOpts = append(anonOpts, goanon.WithVerification())
 	}
 	anon := anonymizer.New(rec, cfg)
-	proc := docprocessor.New(anon)
+	// La vérification document recompose la sortie et y relance une détection :
+	// c'est le seul contrôle capable de voir une entité coupée par la
+	// segmentation du format. Elle coûte une passe de détection de plus sur
+	// l'intégralité du document, d'où le flag.
+	var procOpts []docprocessor.Option
+	if *multiView {
+		procOpts = append(procOpts, docprocessor.WithMultiViewDetection())
+	}
+	if *verifyDocument {
+		if *strict {
+			procOpts = append(procOpts, docprocessor.WithStrictDocumentVerification())
+		} else {
+			procOpts = append(procOpts, docprocessor.WithDocumentVerification())
+		}
+	}
+	proc := docprocessor.New(anon, procOpts...)
 
 	// --- Walker ---
 	walker, err := factory(*inputPath)
 	if err != nil {
 		log.Fatalf("ouverture %q : %v", *inputPath, err)
+	}
+
+	// --- Reconnaissance optique ---
+	// Doit précéder le traitement : le texte reconnu alimente le rapport des
+	// portions que le pipeline sait lire sans pouvoir les réécrire.
+	ocrLanguage := *ocrLang
+	if ocrLanguage == "" {
+		ocrLanguage = lang
+	}
+	if err := runOCR(walker, *ocrMode, ocrLanguage, *ocrDPI, *ocrMinConf); err != nil {
+		log.Fatalf("OCR : %v", err)
 	}
 
 	session, report, err := proc.ProcessWithReport(walker, anonOpts...)
@@ -215,9 +271,15 @@ func main() {
 	// --- Sanitisation des surfaces cachées (métadonnées, commentaires, révisions) ---
 	// Doit précéder SaveTo : en mode strict, une surface non traitée interrompt
 	// avant toute écriture, comme la vérification.
-	if *sanitize {
+	//
+	// En mode strict, le contrôle des surfaces est effectué même si -sanitize=false :
+	// sans cela, un PDF scanné passerait sans le moindre signalement alors que
+	// l'utilisateur a explicitement demandé le fail-closed. -sanitize ne pilote
+	// plus alors que la purge des métadonnées.
+	if *sanitize || *strict {
 		policy := docprocessor.DefaultSanitizePolicy()
 		policy.Strict = *strict
+		policy.StripMetadata = *sanitize
 		sanReport, err := docprocessor.Sanitize(walker, policy)
 		if err != nil {
 			log.Fatalf("sanitisation : %v", err)
@@ -234,8 +296,36 @@ func main() {
 		log.Fatalf("le walker ne supporte pas SaveTo — implémentation manquante pour ce format")
 	}
 
+	// --- Vérification visuelle du document produit ---
+	// Nécessairement après l'écriture : c'est le fichier produit qui est relu,
+	// rendu puis océrisé. Le fail-closed prend donc ici la forme d'une
+	// destruction — un document dont on sait qu'il expose une donnée
+	// personnelle ne doit pas subsister sur le disque.
+	visualLeaks, err := proc.VerifyOutput(walker, *outputPath, session)
+	if err != nil {
+		log.Fatalf("vérification visuelle : %v", err)
+	}
+	if len(visualLeaks) > 0 {
+		byRegion := make(map[string]int, len(visualLeaks))
+		for _, leak := range visualLeaks {
+			byRegion[leak.Region]++
+		}
+		if *strict {
+			os.Remove(*outputPath)
+			log.Fatalf("vérification visuelle : %d donnée(s) restée(s) lisible(s) %v — "+
+				"document détruit", len(visualLeaks), byRegion)
+		}
+		fmt.Fprintf(os.Stderr, "AVERTISSEMENT : vérification visuelle — %d donnée(s) "+
+			"restée(s) LISIBLE(s) dans le document produit %v ; "+
+			"utiliser -strict pour le refuser\n", len(visualLeaks), byRegion)
+	}
+
 	fmt.Printf("Document anonymisé : %s\n", *outputPath)
-	fmt.Printf("Entités remplacées : %d\n", len(session.Mapping))
+	fmt.Printf("Entités remplacées : %d (%d occurrence(s) %s)\n",
+		len(session.Mapping), report.TotalEntities(), formatEntityCounts(report.Entities))
+	if report.RedactedZones > 0 {
+		fmt.Printf("Zones caviardées dans du contenu bitmap : %d\n", report.RedactedZones)
+	}
 
 	// --- Mapping chiffré ---
 	if *saveMappingID != "" {
@@ -276,6 +366,77 @@ func main() {
 	session.Close()
 }
 
+// ocrCapable est implémentée par les Walkers sachant océriser leur contenu
+// bitmap. Seul le PDF le fait aujourd'hui.
+type ocrCapable interface {
+	RunOCR(pkgpdf.OCROptions) error
+}
+
+// runOCR déclenche la reconnaissance optique selon le mode demandé.
+//
+// En mode « auto », l'absence d'outil est un avertissement : le pipeline
+// continue, et les pages bitmap restent signalées comme surfaces non traitées
+// par la sanitisation. En mode « on », c'est une erreur — l'utilisateur a
+// demandé la couverture, la lui donner à moitié sans le dire serait pire que
+// de refuser.
+func runOCR(walker docprocessor.Walker, mode, lang string, dpi int, minConf float64) error {
+	if mode == "off" {
+		return nil
+	}
+	capable, ok := walker.(ocrCapable)
+	if !ok {
+		if mode == "on" {
+			return fmt.Errorf("le format ne sait pas océriser son contenu")
+		}
+		return nil
+	}
+
+	opts := pkgpdf.OCROptions{
+		Engine:     ocr.NewTesseractExec(),
+		Rasterizer: pkgpdf.NewPdftoppmRasterizer(),
+		Lang:       lang,
+		DPI:        dpi,
+		// Mode épars obligatoire pour relire un document caviardé : l'analyse
+		// de mise en page classerait la page comme non textuelle et ne rendrait
+		// rien, donnant une vérification qui passe toujours.
+		VerifyEngine:  ocr.NewTesseractExecSparse(),
+		MinConfidence: minConf,
+	}
+
+	if err := capable.RunOCR(opts); err != nil {
+		if mode == "on" {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "avertissement : OCR indisponible (%v) ; "+
+			"le contenu bitmap ne sera pas analysé — utiliser -ocr on pour l'exiger\n", err)
+		return nil
+	}
+	return nil
+}
+
+// formatEntityCounts rend la répartition par type, triée pour être stable.
+//
+// C'est le seul retour immédiat sur la **précision** : une configuration réglée
+// pour le rappel s'emballe silencieusement, et un type qui explose (des LOC
+// partout, des PER sur des noms communs) se repère ici avant de rendre les
+// documents inexploitables.
+func formatEntityCounts(counts map[goanon.EntityType]int) string {
+	if len(counts) == 0 {
+		return "aucune"
+	}
+	types := make([]string, 0, len(counts))
+	for t := range counts {
+		types = append(types, string(t))
+	}
+	sort.Strings(types)
+
+	parts := make([]string, 0, len(types))
+	for _, t := range types {
+		parts = append(parts, fmt.Sprintf("%s:%d", t, counts[goanon.EntityType(t)]))
+	}
+	return strings.Join(parts, " ")
+}
+
 // reportLeaks résume la vérification sur stderr en métadonnées seulement :
 // nombre de fuites par nature, jamais les contenus concernés.
 func reportLeaks(report *docprocessor.Report) {
@@ -283,13 +444,44 @@ func reportLeaks(report *docprocessor.Report) {
 		return
 	}
 
-	byKind := make(map[goanon.LeakKind]int, len(report.Leaks))
-	for _, leak := range report.Leaks {
-		byKind[leak.Kind]++
+	if len(report.Leaks) > 0 {
+		byKind := make(map[goanon.LeakKind]int, len(report.Leaks))
+		for _, leak := range report.Leaks {
+			byKind[leak.Kind]++
+		}
+		fmt.Fprintf(os.Stderr, "avertissement : vérification — %d fuite(s) sur %d segment(s) %v ; "+
+			"utiliser -strict pour refuser de produire un document dans ce cas\n",
+			len(report.Leaks), report.Segments, byKind)
 	}
-	fmt.Fprintf(os.Stderr, "avertissement : vérification — %d fuite(s) sur %d segment(s) %v ; "+
-		"utiliser -strict pour refuser de produire un document dans ce cas\n",
-		len(report.Leaks), report.Segments, byKind)
+
+	if n := len(report.DocumentLeaks); n > 0 {
+		// Distinguer les entités à cheval sur plusieurs segments : ce sont celles
+		// qu'aucune vérification par segment ne pouvait voir, et le signal le plus
+		// actionnable du rapport.
+		crossing := 0
+		for _, leak := range report.DocumentLeaks {
+			if len(leak.Segments) > 1 {
+				crossing++
+			}
+		}
+		fmt.Fprintf(os.Stderr, "avertissement : vérification document — %d entité(s) "+
+			"redétectée(s) après recomposition, dont %d à cheval sur plusieurs segments ; "+
+			"utiliser -strict pour refuser de produire un document dans ce cas\n", n, crossing)
+	}
+
+	if n := len(report.RegionLeaks); n > 0 {
+		// Nature différente des précédentes : ce n'est pas un remplacement qui a
+		// échoué, c'est du contenu que le pipeline ne sait pas retirer. Le
+		// message doit dire quoi faire, pas seulement constater.
+		byRegion := make(map[string]int, n)
+		for _, leak := range report.RegionLeaks {
+			byRegion[leak.Region]++
+		}
+		fmt.Fprintf(os.Stderr, "AVERTISSEMENT : %d entité(s) détectée(s) dans du contenu "+
+			"non réécrivable %v — elles resteront LISIBLES dans le document produit ; "+
+			"caviarder ces zones en amont, ou utiliser -strict pour refuser le document\n",
+			n, byRegion)
+	}
 }
 
 // reportSanitize résume la sanitisation sur stderr, en métadonnées seulement :

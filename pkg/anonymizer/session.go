@@ -28,6 +28,10 @@ type anonymizeParams struct {
 	verify         bool
 	strictVerify   bool
 	verifyPatterns []ner.RegexPattern
+
+	// extraEntities : entités détectées hors de cet appel, à unioner avec celles
+	// du recognizer (cf. WithAdditionalEntities).
+	extraEntities []ner.Entity
 }
 
 // Session conserve l'état partagé entre plusieurs appels à Anonymize(),
@@ -233,6 +237,18 @@ func WithInsecureHash() AnonymizeOption {
 
 // WithVerification attache un VerificationReport au Result, sans bloquer.
 // Mode observation : utile pour mesurer avant de basculer en strict.
+// WithAdditionalEntities injecte des entités repérées en dehors de cet appel,
+// à unioner avec celles que le recognizer trouvera sur le texte.
+//
+// Sert à la détection multi-vues : une entité coupée par la segmentation du
+// document n'est visible que depuis une recomposition, jamais depuis le segment
+// isolé qu'on anonymise ici. Les offsets sont relatifs à text, et les entités
+// hors bornes ou en conflit sont écartées par la réconciliation — un appelant
+// ne peut donc pas corrompre le remplacement en fournissant n'importe quoi.
+func WithAdditionalEntities(entities []ner.Entity) AnonymizeOption {
+	return func(p *anonymizeParams) { p.extraEntities = entities }
+}
+
 func WithVerification() AnonymizeOption {
 	return func(p *anonymizeParams) {
 		p.verify = true

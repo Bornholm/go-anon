@@ -81,6 +81,14 @@ func New(recognizer Recognizer, config Config) *Anonymizer {
 // Anonymize anonymise les entités dans le texte.
 // Accepte des AnonymizeOption optionnelles, notamment WithSession pour partager
 // l'état (compteurs, cache de cohérence) entre plusieurs appels.
+// Detect expose la détection sous-jacente, sans rien remplacer ni toucher à
+// une session. Sert aux contrôles qui doivent repasser le recognizer sur une
+// sortie déjà anonymisée — notamment la vérification au niveau document, qui
+// recompose le texte pour retrouver les entités coupées par la segmentation.
+func (a *Anonymizer) Detect(text string) ([]ner.Entity, error) {
+	return a.recognizer.Recognize(text)
+}
+
 func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, error) {
 	params := &anonymizeParams{}
 	for _, opt := range opts {
@@ -133,6 +141,8 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 	if a.config.EntityTypes != nil {
 		entities = filterByType(entities, a.config.EntityTypes)
 	}
+
+	entities = reconcileEntities(entities, params.extraEntities, text)
 
 	result := &Result{
 		Text:                  text,

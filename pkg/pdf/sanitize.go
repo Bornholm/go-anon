@@ -1,6 +1,8 @@
 package pdf
 
 import (
+	"fmt"
+
 	"github.com/bornholm/go-anon/pkg/docprocessor"
 )
 
@@ -10,7 +12,10 @@ import (
 //   - annotations de page (commentaires, champs de formulaire) et pièces jointes
 //     (EmbeddedFiles) → détectées et signalées. Le pipeline ne les traite pas :
 //     en mode strict, leur présence est une erreur, à charge de l'appelant de
-//     les retirer en amont.
+//     les retirer en amont ;
+//   - pages scannées (image pleine page sans couche texte) → détectées et
+//     signalées. Leur contenu échappe intégralement à l'anonymisation : sans ce
+//     signalement, le document ressortirait intact et déclaré conforme.
 
 // Sanitize purge les métadonnées du PDF et signale les surfaces non traitées.
 func (w *Walker) Sanitize(policy docprocessor.SanitizePolicy) (docprocessor.SanitizeReport, error) {
@@ -29,6 +34,23 @@ func (w *Walker) Sanitize(policy docprocessor.SanitizePolicy) (docprocessor.Sani
 	}
 	if w.hasEmbeddedFiles() {
 		report.Unprocessed = append(report.Unprocessed, "pièces jointes PDF")
+	}
+	if n := len(w.rasterPages); n > 0 {
+		report.Unprocessed = append(report.Unprocessed, fmt.Sprintf(
+			"%d page(s) image sans couche texte (contenu scanné) : %s",
+			n, formatPageList(w.rasterPages)))
+	}
+	if n := len(w.hybridPages); n > 0 {
+		report.Unprocessed = append(report.Unprocessed, fmt.Sprintf(
+			"%d page(s) scannée(s) à couche texte invisible : le texte extrait est "+
+				"anonymisé mais les pixels rendus au lecteur restent inchangés : %s",
+			n, formatPageList(w.hybridPages)))
+	}
+	if pages := w.modifiedInvisiblePages(); len(pages) > 0 {
+		report.Unprocessed = append(report.Unprocessed, fmt.Sprintf(
+			"%d page(s) où du texte invisible a été anonymisé sans que le rendu "+
+				"visible soit modifié : %s",
+			len(pages), formatPageList(pages)))
 	}
 
 	return report, nil

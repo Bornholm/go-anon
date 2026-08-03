@@ -27,6 +27,21 @@ const (
 	// LeakResidualPlaceholderSource : le texte source contenait déjà un
 	// placeholder, ce qui rend le round-trip ambigu.
 	LeakResidualPlaceholderSource
+	// LeakDocumentEntity : une entité redevient détectable une fois le document
+	// recomposé, alors qu'elle était invisible depuis un segment isolé. Signe
+	// d'une entité coupée par la segmentation du format (saut de ligne, cellule,
+	// changement de run) : chaque moitié, seule, ne ressemble à rien.
+	LeakDocumentEntity
+	// LeakUnwritableRegion : une entité se trouve dans une portion du document
+	// que le pipeline sait lire mais pas réécrire — typiquement du contenu
+	// bitmap océrisé. Ce n'est pas un remplacement manqué : la donnée sortira
+	// en clair quoi qu'il arrive, tant que le format ne permet pas de l'effacer.
+	LeakUnwritableRegion
+	// LeakVisualResidue : une entité reste lisible dans le document produit,
+	// constatée en le relisant tel qu'un lecteur le voit (rendu puis océrisé).
+	// Contrairement aux autres, ce défaut ne se déduit d'aucune manipulation de
+	// texte : il constate ce qui subsiste réellement à l'écran ou sur le papier.
+	LeakVisualResidue
 )
 
 func (k LeakKind) String() string {
@@ -39,6 +54,12 @@ func (k LeakKind) String() string {
 		return "invalid-utf8"
 	case LeakResidualPlaceholderSource:
 		return "residual-placeholder-source"
+	case LeakDocumentEntity:
+		return "document-entity"
+	case LeakUnwritableRegion:
+		return "unwritable-region"
+	case LeakVisualResidue:
+		return "visual-residue"
 	default:
 		return "unknown"
 	}
@@ -170,19 +191,34 @@ func VerifyWithPatterns(original string, res *Result, patterns []ner.RegexPatter
 // occurrences des remplacements du mapping, plus les marqueurs de caviardage
 // (absents du mapping par conception, cf. chantier S1).
 func safeZones(res *Result) []bool {
-	safe := make([]bool, len(res.Text))
+	replacements := make([]string, 0, len(res.OriginalToPlaceholder))
+	for _, replacement := range res.OriginalToPlaceholder {
+		replacements = append(replacements, replacement)
+	}
+	return SafeZones(res.Text, replacements)
+}
+
+// SafeZones marque, octet par octet, les portions de text écrites par
+// l'anonymiseur : occurrences des remplacements fournis, placeholders et
+// marqueurs de caviardage.
+//
+// Tout contrôle qui repasse sur une sortie anonymisée doit les exclure, sous
+// peine de signaler les remplacements eux-mêmes : « [PERSONNE_1] » se laisse
+// volontiers reconnaître comme un nom propre.
+func SafeZones(text string, replacements []string) []bool {
+	safe := make([]bool, len(text))
 	mark := func(start, end int) {
 		for i := start; i < end && i < len(safe); i++ {
 			safe[i] = true
 		}
 	}
 
-	for _, replacement := range res.OriginalToPlaceholder {
+	for _, replacement := range replacements {
 		if replacement == "" {
 			continue
 		}
 		for pos := 0; ; {
-			idx := strings.Index(res.Text[pos:], replacement)
+			idx := strings.Index(text[pos:], replacement)
 			if idx < 0 {
 				break
 			}
@@ -193,12 +229,18 @@ func safeZones(res *Result) []bool {
 	}
 
 	for _, pattern := range []*regexp.Regexp{placeholderPattern, legacyRedactedPattern} {
-		for _, loc := range pattern.FindAllStringIndex(res.Text, -1) {
+		for _, loc := range pattern.FindAllStringIndex(text, -1) {
 			mark(loc[0], loc[1])
 		}
 	}
 
 	return safe
+}
+
+// Overlaps rapporte si l'intervalle [start, end) touche une zone marquée par
+// SafeZones.
+func Overlaps(safe []bool, start, end int) bool {
+	return overlapsSafe(safe, start, end)
 }
 
 func overlapsSafe(safe []bool, start, end int) bool {

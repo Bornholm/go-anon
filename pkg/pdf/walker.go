@@ -11,6 +11,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/bornholm/go-anon/pkg/docprocessor"
+	"github.com/bornholm/go-anon/pkg/ocr"
 	pdfapi "github.com/pdfcpu/pdfcpu/pkg/api"
 	pdfcore "github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
@@ -28,19 +29,28 @@ type fontInfo struct {
 
 // textToken is one text-rendering operation in a content stream.
 type textToken struct {
-	start    int      // byte offset of first operand in content stream (inclusive)
-	end      int      // byte offset after operator keyword (exclusive)
-	text     string   // decoded Unicode content
-	yPos     float64  // Y translation at render time
-	font     fontInfo // active font at render time
-	isUTF16  bool     // true if original was UTF-16BE hex string
-	isCIDFont bool    // true if font uses glyph indices decoded via CMap
+	start      int      // byte offset of first operand in content stream (inclusive)
+	end        int      // byte offset after operator keyword (exclusive)
+	text       string   // decoded Unicode content
+	yPos       float64  // Y translation at render time
+	font       fontInfo // active font at render time
+	isUTF16    bool     // true if original was UTF-16BE hex string
+	isCIDFont  bool     // true if font uses glyph indices decoded via CMap
+	renderMode int      // text rendering mode (Tr) at render time
+}
+
+// isInvisible rapporte si le token n'est pas rendu à l'écran : mode 3
+// (invisible) ou 7 (détourage seul). C'est la signature d'une couche OCR
+// superposée à une image — le texte est extractible mais le lecteur voit les
+// pixels, pas lui.
+func (t textToken) isInvisible() bool {
+	return t.renderMode == 3 || t.renderMode == 7
 }
 
 // pageData holds extracted content for one PDF page.
 type pageData struct {
 	pageNr  int
-	content []byte      // decompressed consolidated content stream
+	content []byte // decompressed consolidated content stream
 	tokens  []textToken
 }
 
@@ -52,6 +62,9 @@ type segmentData struct {
 	text        string
 	replacement string
 	modified    bool
+	// invisible : tous les tokens du segment sont en mode de rendu non visible.
+	// Anonymiser un tel segment ne change rien à ce que le lecteur voit.
+	invisible bool
 }
 
 // Walker implements docprocessor.Walker for PDF files.
@@ -60,6 +73,28 @@ type Walker struct {
 	ctx       *model.Context
 	pages     []pageData
 	segments  []segmentData
+	// rasterPages liste les numéros de page (base 1) détectées comme scannées :
+	// leur contenu échappe entièrement au pipeline d'anonymisation. Signalées
+	// par Sanitize comme surface non traitée.
+	rasterPages []int
+	// hybridPages liste les pages scannées surmontées d'une couche texte
+	// invisible : le pipeline y anonymise le texte extractible, mais les pixels
+	// rendus au lecteur restent intacts.
+	hybridPages []int
+	// ocrPages porte le résultat de RunOCR, quand il a été demandé.
+	ocrPages []ocrPage
+	// rasterizer et ocrDPI sont mémorisés par RunOCR : le caviardage doit rendre
+	// les pages exactement comme l'OCR les a vues, sinon les boîtes ne
+	// correspondent plus aux pixels.
+	rasterizer Rasterizer
+	ocrDPI     int
+	// verifyEngine relit le document produit ; nil désactive la vérification
+	// visuelle.
+	verifyEngine ocr.Engine
+	ocrLang      string
+	// redactions : zones à caviarder, par index de région OCR, en offsets dans
+	// le texte de la région.
+	redactions map[int][][2]int
 }
 
 // NewWalkerFromFile opens a PDF and extracts its text segments.
@@ -88,6 +123,16 @@ func NewWalkerFromFile(path string) (docprocessor.Walker, error) {
 		}
 
 		tokens := extractTextTokens(contentBytes, cmaps)
+
+		// À évaluer avant le filtrage des pages sans token : c'est précisément
+		// une page sans texte extractible qui est susceptible d'être un scan.
+		switch classifyPage(ctx, pageNr, contentBytes, tokens) {
+		case pageRaster:
+			w.rasterPages = append(w.rasterPages, pageNr)
+		case pageHybrid:
+			w.hybridPages = append(w.hybridPages, pageNr)
+		}
+
 		if len(tokens) == 0 {
 			continue
 		}
@@ -193,6 +238,9 @@ func (w *Walker) SaveTo(outputPath string) error {
 		d.Update("Contents", *ir)
 	}
 
+	if len(w.redactions) > 0 {
+		return w.saveWithRedactions(outputPath)
+	}
 	return pdfapi.WriteContextFile(w.ctx, outputPath)
 }
 
@@ -366,6 +414,13 @@ func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap) []textTok
 	inText := false
 	currentFont := fontInfo{name: "", size: 10}
 
+	// Le mode de rendu (Tr) appartient à l'état graphique : il est sauvegardé
+	// par q / restauré par Q, et n'est PAS réinitialisé par BT. Seul ce champ
+	// est empilé — le reste de l'état (fonte, matrices) suit le comportement
+	// historique, que l'on ne modifie pas ici pour ne pas déplacer les offsets.
+	renderMode := 0
+	var renderModeStack []int
+
 	type stackItem struct {
 		raw   []byte
 		start int
@@ -441,6 +496,31 @@ func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap) []textTok
 		opEnd := i
 
 		switch op {
+		case "q":
+			renderModeStack = append(renderModeStack, renderMode)
+			stack = stack[:0]
+
+		case "Q":
+			if n := len(renderModeStack); n > 0 {
+				renderMode = renderModeStack[n-1]
+				renderModeStack = renderModeStack[:n-1]
+			}
+			stack = stack[:0]
+
+		case "Tr":
+			if len(stack) >= 1 {
+				renderMode = int(parseFloatBytes(stack[len(stack)-1].raw))
+			}
+			stack = stack[:0]
+
+		case "BI":
+			// Image en ligne : sauter jusqu'à EI. Sans cela les données binaires
+			// qui suivent ID sont interprétées comme des opérateurs et peuvent
+			// engloutir du texte réel (une parenthèse ouvrante dans les pixels
+			// déclencherait scanLiteralString).
+			i = skipInlineImage(content, i)
+			stack = stack[:0]
+
 		case "BT":
 			inText = true
 			textM = identity
@@ -505,13 +585,14 @@ func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap) []textTok
 					text, isUTF16, isCID := decodeTextBytes(s.raw, currentFont.cmap)
 					if strings.TrimSpace(text) != "" {
 						tokens = append(tokens, textToken{
-							start:     s.start,
-							end:       opEnd,
-							text:      text,
-							yPos:      textM[5],
-							font:      currentFont,
-							isUTF16:   isUTF16,
-							isCIDFont: isCID,
+							start:      s.start,
+							end:        opEnd,
+							text:       text,
+							yPos:       textM[5],
+							font:       currentFont,
+							isUTF16:    isUTF16,
+							isCIDFont:  isCID,
+							renderMode: renderMode,
 						})
 					}
 				}
@@ -526,13 +607,14 @@ func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap) []textTok
 					if strings.TrimSpace(text) != "" {
 						isCID := currentFont.cmap != nil
 						tokens = append(tokens, textToken{
-							start:     s.start,
-							end:       opEnd,
-							text:      text,
-							yPos:      textM[5],
-							font:      currentFont,
-							isUTF16:   isUTF16,
-							isCIDFont: isCID,
+							start:      s.start,
+							end:        opEnd,
+							text:       text,
+							yPos:       textM[5],
+							font:       currentFont,
+							isUTF16:    isUTF16,
+							isCIDFont:  isCID,
+							renderMode: renderMode,
 						})
 					}
 				}
@@ -548,13 +630,14 @@ func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap) []textTok
 					text, isUTF16, isCID := decodeTextBytes(s.raw, currentFont.cmap)
 					if strings.TrimSpace(text) != "" {
 						tokens = append(tokens, textToken{
-							start:     s.start,
-							end:       opEnd,
-							text:      text,
-							yPos:      textM[5],
-							font:      currentFont,
-							isUTF16:   isUTF16,
-							isCIDFont: isCID,
+							start:      s.start,
+							end:        opEnd,
+							text:       text,
+							yPos:       textM[5],
+							font:       currentFont,
+							isUTF16:    isUTF16,
+							isCIDFont:  isCID,
+							renderMode: renderMode,
 						})
 					}
 				}
@@ -570,13 +653,14 @@ func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap) []textTok
 					text, isUTF16, isCID := decodeTextBytes(s.raw, currentFont.cmap)
 					if strings.TrimSpace(text) != "" {
 						tokens = append(tokens, textToken{
-							start:     stack[len(stack)-3].start,
-							end:       opEnd,
-							text:      text,
-							yPos:      textM[5],
-							font:      currentFont,
-							isUTF16:   isUTF16,
-							isCIDFont: isCID,
+							start:      stack[len(stack)-3].start,
+							end:        opEnd,
+							text:       text,
+							yPos:       textM[5],
+							font:       currentFont,
+							isUTF16:    isUTF16,
+							isCIDFont:  isCID,
+							renderMode: renderMode,
 						})
 					}
 				}
@@ -610,14 +694,19 @@ func groupIntoSegments(pageIdx int, tokens []textToken) []segmentData {
 
 func makeSegment(pageIdx int, tokens []textToken, start, end int) segmentData {
 	var sb strings.Builder
+	invisible := true
 	for _, t := range tokens[start : end+1] {
 		sb.WriteString(t.text)
+		if !t.isInvisible() {
+			invisible = false
+		}
 	}
 	return segmentData{
 		pageIdx:    pageIdx,
 		tokenStart: start,
 		tokenEnd:   end,
 		text:       sb.String(),
+		invisible:  invisible,
 	}
 }
 
