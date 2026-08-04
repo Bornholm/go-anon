@@ -13,11 +13,19 @@ const (
 )
 
 type Manifest struct {
-	SchemaVersion int                      `json:"schema_version"`
-	Version       string                   `json:"version"`
-	PublishedAt   time.Time                `json:"published_at"`
-	Models        map[string]ModelEntry    `json:"models"`
+	SchemaVersion int                       `json:"schema_version"`
+	Version       string                    `json:"version"`
+	PublishedAt   time.Time                 `json:"published_at"`
+	Models        map[string]ModelEntry     `json:"models"`
 	Gazetteers    map[string]GazetteerEntry `json:"gazetteers,omitempty"`
+	// Clusters distribue les Brown clusters par langue.
+	//
+	// Champ facultatif ajouté sans changer schema_version : un client antérieur
+	// l'ignore, un manifeste antérieur le laisse vide. Les clusters sont une
+	// feature du modèle au même titre que les gazetteers — s'ils manquent à
+	// l'inférence alors que l'entraînement les utilisait, le modèle perd
+	// silencieusement du rappel.
+	Clusters map[string]ClusterEntry `json:"clusters,omitempty"`
 }
 
 type ModelEntry struct {
@@ -33,6 +41,17 @@ type GazetteerEntry struct {
 	SizeBytes int64    `json:"size_bytes"`
 	Languages []string `json:"languages"`
 	Type      string   `json:"type"`
+}
+
+// ClusterEntry décrit un fichier de Brown clusters.
+//
+// Contrairement à GazetteerEntry, l'indexation se fait directement par langue :
+// un jeu de clusters est lié au corpus qui l'a produit et n'est pas partageable
+// entre langues, là où une liste de villes peut l'être.
+type ClusterEntry struct {
+	URL       string `json:"url"`
+	SHA256    string `json:"sha256"`
+	SizeBytes int64  `json:"size_bytes"`
 }
 
 func ParseManifest(data []byte) (*Manifest, error) {
@@ -91,6 +110,20 @@ func (m *Manifest) Validate() error {
 		}
 		if entry.Type == "" {
 			return fmt.Errorf("parse manifest: missing type for gazetteer %q", name)
+		}
+	}
+	for lang, entry := range m.Clusters {
+		if err := validateLang(lang); err != nil {
+			return fmt.Errorf("parse manifest: cluster key %q: %w", lang, err)
+		}
+		if entry.URL == "" {
+			return fmt.Errorf("parse manifest: missing url for clusters %q", lang)
+		}
+		if entry.SHA256 == "" {
+			return fmt.Errorf("parse manifest: missing sha256 for clusters %q", lang)
+		}
+		if entry.SizeBytes <= 0 {
+			return fmt.Errorf("parse manifest: invalid size_bytes for clusters %q: %d", lang, entry.SizeBytes)
 		}
 	}
 	return nil

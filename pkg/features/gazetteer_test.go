@@ -108,3 +108,38 @@ func TestName(t *testing.T) {
 		t.Errorf("Name() = %q, want %q", g.Name(), "firstnames_fr")
 	}
 }
+
+// TestLoadGazetteer_CSVEntries : les listes de référence circulent souvent en
+// CSV — le fichier des prénoms de l'INSEE est fait de lignes « PRENOM,effectif ».
+// Prendre la ligne entière produisait des clés introuvables : le gazetteer se
+// chargeait sans erreur, annonçait ses centaines de milliers d'entrées, et n'en
+// reconnaissait aucune. Panne d'autant plus coûteuse qu'elle était silencieuse.
+func TestLoadGazetteer_CSVEntries(t *testing.T) {
+	g := loadTestGazetteer(t, "firstnames",
+		"prenom,sum\nHERVE,34897\nCOLINE,1204\nMARIE,900000\n")
+
+	for _, name := range []string{"Herve", "coline", "MARIE"} {
+		if !g.Contains(name) {
+			t.Errorf("%q devrait être reconnu", name)
+		}
+	}
+	if g.Contains("prenom,sum") {
+		t.Error("l'entrée brute de l'en-tête ne devrait pas être retenue")
+	}
+}
+
+// TestLoadGazetteer_PlainEntries : non-régression sur le format simple, un terme
+// par ligne, qu'utilisent les autres listes distribuées.
+func TestLoadGazetteer_PlainEntries(t *testing.T) {
+	g := loadTestGazetteer(t, "locations",
+		"# commentaire\nParis\nSaint-Étienne\n\nLyon\n")
+
+	for _, name := range []string{"paris", "Saint-Étienne", "LYON"} {
+		if !g.Contains(name) {
+			t.Errorf("%q devrait être reconnu", name)
+		}
+	}
+	if g.Contains("# commentaire") {
+		t.Error("les commentaires ne devraient pas être retenus")
+	}
+}

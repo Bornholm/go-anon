@@ -351,3 +351,64 @@ func TestValidateGazetteerInvalidSize(t *testing.T) {
 		t.Fatal("expected error for invalid size")
 	}
 }
+
+// TestParseManifest_WithClusters : contrat avec go-anon-resources. Le champ
+// clusters est indexé par code de langue et validé comme tel.
+func TestParseManifest_WithClusters(t *testing.T) {
+	data := []byte(`{
+	  "schema_version": 1,
+	  "version": "v2026.8.4-abc",
+	  "published_at": "2026-08-04T09:00:00Z",
+	  "models": {"fr": {"url": "https://x/fr.crf.gz", "sha256": "aa", "size_bytes": 10}},
+	  "clusters": {"fr": {"url": "https://x/clusters_fr.txt", "sha256": "bb", "size_bytes": 20}}
+	}`)
+
+	m, err := ParseManifest(data)
+	if err != nil {
+		t.Fatalf("ParseManifest: %v", err)
+	}
+	entry, ok := m.Clusters["fr"]
+	if !ok {
+		t.Fatal("clusters fr absents")
+	}
+	if entry.URL != "https://x/clusters_fr.txt" || entry.SizeBytes != 20 {
+		t.Errorf("entrée = %+v", entry)
+	}
+}
+
+// TestParseManifest_WithoutClusters : le champ est facultatif, donc un manifest
+// publié avant leur distribution reste valide. Sans cela, ajouter les clusters
+// casserait tous les clients existants.
+func TestParseManifest_WithoutClusters(t *testing.T) {
+	data := []byte(`{
+	  "schema_version": 1,
+	  "version": "v1",
+	  "published_at": "2026-08-04T09:00:00Z",
+	  "models": {"fr": {"url": "https://x/fr.crf.gz", "sha256": "aa", "size_bytes": 10}}
+	}`)
+
+	m, err := ParseManifest(data)
+	if err != nil {
+		t.Fatalf("ParseManifest: %v", err)
+	}
+	if len(m.Clusters) != 0 {
+		t.Errorf("clusters = %+v, attendu vide", m.Clusters)
+	}
+}
+
+// TestParseManifest_RejectsBadClusterKey : la clé sert à construire un chemin
+// de cache ; un code hors ^[a-z]{2}$ ouvrirait une traversée de répertoire.
+func TestParseManifest_RejectsBadClusterKey(t *testing.T) {
+	for _, key := range []string{"../etc", "FR", "français", ""} {
+		data := []byte(`{
+		  "schema_version": 1,
+		  "version": "v1",
+		  "published_at": "2026-08-04T09:00:00Z",
+		  "models": {"fr": {"url": "https://x/fr.crf.gz", "sha256": "aa", "size_bytes": 10}},
+		  "clusters": {"` + key + `": {"url": "https://x/c.txt", "sha256": "bb", "size_bytes": 20}}
+		}`)
+		if _, err := ParseManifest(data); err == nil {
+			t.Errorf("clé %q acceptée à tort", key)
+		}
+	}
+}

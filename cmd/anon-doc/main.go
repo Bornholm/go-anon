@@ -54,7 +54,7 @@ func main() {
 	outputPath := flag.String("output", "", "fichier de sortie (obligatoire)")
 	format := flag.String("format", "", `format du document : "docx" (auto-détecté si absent)`)
 	strategy := flag.String("strategy", "tag", `stratégie : "tag", "redact" ou "hash"`)
-	preset := flag.String("preset", string(goanon.PresetHighRecall), `compromis précision/rappel : "high-recall" (défaut, recommandation RGPD) ou "balanced" (compromis F1)`)
+	preset := flag.String("preset", "", `passes de post-traitement : "" (défaut, aucune), "balanced" ou "high-recall". Voir l'avertissement dans docs/rgpd.md avant d'activer`)
 	hashScope := flag.String("hash-scope", "", `scope de la stratégie "hash" : casse la corrélation des pseudonymes entre scopes`)
 	insecureHash := flag.Bool("insecure-hash", false, `autoriser la stratégie "hash" sans clé (SHA-256 non salé, hors production)`)
 	strict := flag.Bool("strict", false, "mode fail-closed : échouer sans produire de document si la vérification détecte une fuite")
@@ -70,7 +70,7 @@ func main() {
 	mappingTTL := flag.Duration("mapping-ttl", 0, "durée de rétention du mapping (ex. 720h) ; 0 = illimité")
 	saveMappingInsecure := flag.String("save-mapping-insecure", "", "chemin JSON pour écrire le mapping EN CLAIR (déconseillé)")
 	gazetteerFlag := flag.String("gazetteers", "", `gazetteers à utiliser : "nom:fichier.txt,..."`)
-	clustersPath := flag.String("clusters", "", "fichier Brown clusters (optionnel)")
+	clustersPath := flag.String("clusters", "", `fichier Brown clusters, ou "auto"/"auto:fr" (défaut : suit -model)`)
 	cacheDir := flag.String("models-cache", "", "répertoire de cache pour les modèles téléchargés (optionnel)")
 	refresh := flag.Bool("refresh-models", false, "forcer le rafraîchissement du manifeste des modèles")
 	offline := flag.Bool("offline", false, "interdire toute requête réseau")
@@ -144,23 +144,28 @@ func main() {
 	}
 
 	// --- Gazetteers ---
-	gazetteers, err := cmdutil.ParseGazetteers(*gazetteerFlag)
-	if err != nil {
-		log.Fatalf("chargement gazetteers : %v", err)
+	// Le mode auto doit être reconnu **avant** l'analyse : « auto » n'est pas
+	// une paire « nom:chemin » et ParseGazetteers le rejetterait, rendant la
+	// branche automatique inatteignable.
+	gzFlag := *gazetteerFlag
+	if gzFlag == "" && isAuto {
+		// Un modèle téléchargé arrive avec ses gazetteers, et il a été entraîné
+		// avec eux : ne pas les charger prive l'inférence de features que le
+		// modèle attend, sans que rien n'échoue. Le défaut suit donc -model.
+		gzFlag = *modelFlag
 	}
 
-	if gzLang, isAutoGz := resolveAutoMode(*gazetteerFlag); isAutoGz {
+	var gazetteers map[string]*features.Gazetteer
+	if gzLang, isAutoGz := resolveAutoMode(gzFlag); isAutoGz {
 		gzModelLang := gzLang
 		if gzModelLang == "" {
 			gzModelLang = lang
 		}
-		autoGz := resolveAutoGazetteers(gzModelLang, *cacheDir, *refresh, *offline)
-		if gazetteers == nil {
-			gazetteers = autoGz
-		} else {
-			for k, v := range autoGz {
-				gazetteers[k] = v
-			}
+		gazetteers = resolveAutoGazetteers(gzModelLang, *cacheDir, *refresh, *offline)
+	} else if gzFlag != "" {
+		gazetteers, err = cmdutil.ParseGazetteers(gzFlag)
+		if err != nil {
+			log.Fatalf("chargement gazetteers : %v", err)
 		}
 	}
 
@@ -169,8 +174,21 @@ func main() {
 	if len(gazetteers) > 0 {
 		recOpts = append(recOpts, goanon.WithGazetteers(gazetteers))
 	}
-	if *clustersPath != "" {
-		f, err := os.Open(*clustersPath)
+	// Les clusters suivent la même règle que les gazetteers : ce sont des
+	// features du modèle, et un modèle téléchargé arrive avec les siennes.
+	clFlag := *clustersPath
+	if clFlag == "" && isAuto {
+		clFlag = *modelFlag
+	}
+	if clLang, isAutoCl := resolveAutoMode(clFlag); isAutoCl {
+		clModelLang := clLang
+		if clModelLang == "" {
+			clModelLang = lang
+		}
+		clFlag = resolveAutoClusters(clModelLang, *cacheDir, *refresh, *offline)
+	}
+	if clFlag != "" {
+		f, err := os.Open(clFlag)
 		if err != nil {
 			log.Fatalf("chargement clusters : %v", err)
 		}
@@ -182,25 +200,34 @@ func main() {
 		recOpts = append(recOpts, goanon.WithBrownClusters(clusters))
 	}
 
-	// Preset de post-traitement. Le défaut est « high-recall », pas le compromis
-	// F1 : pour la conformité, un faux négatif (donnée personnelle en clair) est
-	// sans commune mesure avec un faux positif (sur-caviardage bénin). C'est la
-	// recommandation de docs/rgpd.md, appliquée d'office plutôt que laissée en
-	// option — un défaut qu'il faut penser à activer ne protège personne.
-	switch *preset {
-	case string(goanon.PresetBalanced), string(goanon.PresetHighRecall):
-		recOpts = append(recOpts, goanon.PresetOptions(goanon.Preset(*preset), gazetteers["firstnames"])...)
-	default:
-		log.Fatalf("preset inconnu %q (attendu %q ou %q)",
-			*preset, goanon.PresetBalanced, goanon.PresetHighRecall)
-	}
-	if *preset == string(goanon.PresetHighRecall) && gazetteers["firstnames"] == nil {
-		// Sans gazetteer de prénoms, HighRecall dégénère silencieusement vers
-		// Balanced : son levier de rappel est FirstNameDetectionPass, qui n'a
-		// alors rien à injecter. Mieux vaut le dire que laisser croire à une
-		// couverture qu'on n'a pas.
-		log.Printf("avertissement : preset high-recall sans gazetteer \"firstnames\" — " +
-			"le levier de rappel est inopérant ; passer -gazetteers \"firstnames:...\" ou \"auto\"")
+	// Aucun preset par défaut — mesuré, pas supposé.
+	//
+	// `eval -preset` sur WikiNER fr, avec le gazetteer de prénoms réparé :
+	//
+	//   aucun       P=97,3  R=97,4  F1=97,3
+	//   balanced    P=85,4  R=85,6  F1=85,5
+	//   high-recall P=83,1  R=85,6  F1=84,3
+	//
+	// Les deux presets dégradent le rappel autant que la précision. Le détail
+	// par type explique pourquoi : FirstNameReclassify relabellise ~310 LOC
+	// correctes en PER (prédictions PER 805→1188 pour UNE correspondance de
+	// plus), le gazetteer INSEE comptant 209 000 prénoms dont beaucoup sont
+	// aussi des toponymes français.
+	//
+	// Ces passes n'avaient jamais été exercées : jusqu'à la correction du
+	// chargement des gazetteers (format CSV), elles s'appuyaient sur une liste
+	// silencieusement vide. Les réactiver demande de les régler contre un
+	// gazetteer qui fonctionne, ce qui reste à faire.
+	if *preset != "" {
+		switch *preset {
+		case string(goanon.PresetBalanced), string(goanon.PresetHighRecall):
+			recOpts = append(recOpts, goanon.PresetOptions(goanon.Preset(*preset), gazetteers["firstnames"])...)
+			log.Printf("avertissement : le preset %q dégrade actuellement précision ET rappel "+
+				"sur WikiNER fr (cf. commentaire dans cmd/anon-doc)", *preset)
+		default:
+			log.Fatalf("preset inconnu %q (attendu %q, %q ou vide)",
+				*preset, goanon.PresetBalanced, goanon.PresetHighRecall)
+		}
 	}
 
 	rec, err := goanon.NewRecognizer(m, recOpts...)
@@ -610,4 +637,41 @@ func resolveAutoGazetteers(lang, cacheDir string, refresh, offline bool) map[str
 	}
 
 	return result
+}
+
+// resolveAutoClusters télécharge les Brown clusters de la langue et retourne
+// leur chemin local, ou une chaîne vide si le manifeste n'en publie pas.
+//
+// L'absence n'est pas fatale : les modèles antérieurs à la distribution des
+// clusters restent utilisables. Recognizer.Warnings() signale déjà le cas où le
+// modèle en attendait.
+func resolveAutoClusters(lang, cacheDir string, refresh, offline bool) string {
+	opts := []modelstore.Option{
+		modelstore.WithOfflineMode(offline),
+		modelstore.WithInsecureSkipVerify(insecureSkipModelVerify),
+	}
+	if cacheDir != "" {
+		opts = append(opts, modelstore.WithCacheDir(cacheDir))
+	}
+
+	store, err := modelstore.New(opts...)
+	if err != nil {
+		log.Fatalf("initialisation store clusters : %v", err)
+	}
+
+	ctx := context.Background()
+	if refresh {
+		if err := store.Refresh(ctx); err != nil {
+			log.Fatalf("rafraîchissement manifeste : %v", err)
+		}
+	}
+
+	path, err := store.GetClusters(ctx, lang)
+	if err != nil {
+		log.Fatalf("téléchargement clusters %q : %v", lang, err)
+	}
+	if path != "" {
+		log.Printf("clusters chargés : %s", path)
+	}
+	return path
 }

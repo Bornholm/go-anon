@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	manifestCacheFile   = ".manifest.json"
-	manifestMetaFile    = ".manifest-meta.json"
-	modelFileSuffix     = ".crf.gz"
+	manifestCacheFile = ".manifest.json"
+	manifestMetaFile  = ".manifest-meta.json"
+	modelFileSuffix   = ".crf.gz"
 )
 
 type manifestMeta struct {
@@ -125,4 +125,10 @@ func isManifestFresh(dir string, ttl time.Duration) bool {
 		return false
 	}
 	return time.Since(meta.FetchedAt) < ttl
+}
+
+// clusterCachePath nomme le fichier de clusters en cache. Le préfixe évite
+// toute collision avec un gazetteer qui porterait un code de langue pour nom.
+func clusterCachePath(dir, lang string) string {
+	return filepath.Join(dir, "clusters_"+lang+".txt")
 }

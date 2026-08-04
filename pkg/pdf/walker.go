@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/bornholm/go-anon/pkg/docprocessor"
 	"github.com/bornholm/go-anon/pkg/ocr"
@@ -32,6 +33,7 @@ type textToken struct {
 	start      int      // byte offset of first operand in content stream (inclusive)
 	end        int      // byte offset after operator keyword (exclusive)
 	text       string   // decoded Unicode content
+	xPos       float64  // X translation at render time
 	yPos       float64  // Y translation at render time
 	font       fontInfo // active font at render time
 	isUTF16    bool     // true if original was UTF-16BE hex string
@@ -588,6 +590,7 @@ func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap) []textTok
 							start:      s.start,
 							end:        opEnd,
 							text:       text,
+							xPos:       textM[4],
 							yPos:       textM[5],
 							font:       currentFont,
 							isUTF16:    isUTF16,
@@ -610,6 +613,7 @@ func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap) []textTok
 							start:      s.start,
 							end:        opEnd,
 							text:       text,
+							xPos:       textM[4],
 							yPos:       textM[5],
 							font:       currentFont,
 							isUTF16:    isUTF16,
@@ -633,6 +637,7 @@ func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap) []textTok
 							start:      s.start,
 							end:        opEnd,
 							text:       text,
+							xPos:       textM[4],
 							yPos:       textM[5],
 							font:       currentFont,
 							isUTF16:    isUTF16,
@@ -656,6 +661,7 @@ func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap) []textTok
 							start:      stack[len(stack)-3].start,
 							end:        opEnd,
 							text:       text,
+							xPos:       textM[4],
 							yPos:       textM[5],
 							font:       currentFont,
 							isUTF16:    isUTF16,
@@ -695,7 +701,11 @@ func groupIntoSegments(pageIdx int, tokens []textToken) []segmentData {
 func makeSegment(pageIdx int, tokens []textToken, start, end int) segmentData {
 	var sb strings.Builder
 	invisible := true
-	for _, t := range tokens[start : end+1] {
+	for i := start; i <= end; i++ {
+		t := tokens[i]
+		if i > start && needsSpace(tokens[i-1], t) {
+			sb.WriteByte(' ')
+		}
 		sb.WriteString(t.text)
 		if !t.isInvisible() {
 			invisible = false
@@ -708,6 +718,52 @@ func makeSegment(pageIdx int, tokens []textToken, start, end int) segmentData {
 		text:       sb.String(),
 		invisible:  invisible,
 	}
+}
+
+// avgGlyphRatio approxime l'avance moyenne d'un glyphe latin, en fraction du
+// corps. Grossier par nature — les métriques exactes demanderaient /Widths et
+// les AFM — mais l'usage ne demande pas mieux : on cherche à savoir s'il reste
+// un écart *après* le mot, pas à composer la ligne.
+const avgGlyphRatio = 0.5
+
+// spaceGapRatio est l'écart résiduel, en fraction du corps, au-delà duquel deux
+// opérations de texte consécutives sont réputées séparées visuellement.
+// En deçà, l'écart s'explique par le crénage ou l'imprécision de l'estimation.
+const spaceGapRatio = 0.2
+
+// needsSpace rapporte si une espace doit être insérée entre deux opérations de
+// texte consécutives d'une même ligne.
+//
+// Un flux PDF ne porte pas nécessairement les espaces : beaucoup de générateurs
+// positionnent chaque mot par un Td/Tm sans jamais émettre le caractère. Les
+// concaténer tels quels produit « M.HervéFERRAGE », que le modèle ne peut pas
+// reconnaître comme une personne — c'est une fuite, et elle n'a rien à voir avec
+// le découpage en segments.
+//
+// Le sens de l'erreur est choisi : sous-estimer l'avance ajoute une espace de
+// trop, ce qui est bénin ; la surestimer recolle les mots, ce qui masque une
+// entité.
+func needsSpace(prev, next textToken) bool {
+	if prev.text == "" || next.text == "" {
+		return false
+	}
+	if strings.HasSuffix(prev.text, " ") || strings.HasPrefix(next.text, " ") {
+		return false
+	}
+
+	// Retour en arrière : changement de colonne ou de cellule sur la même
+	// ligne. Quelle que soit l'avance, les deux fragments sont disjoints.
+	if next.xPos < prev.xPos {
+		return true
+	}
+
+	size := prev.font.size
+	if size <= 0 {
+		size = 10
+	}
+	advance := avgGlyphRatio * size * float64(utf8.RuneCountInString(prev.text))
+
+	return next.xPos-(prev.xPos+advance) > spaceGapRatio*size
 }
 
 // ── Content stream scanning helpers ───────────────────────────────────────

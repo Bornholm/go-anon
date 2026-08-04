@@ -30,12 +30,35 @@ func LoadGazetteer(name string, r io.Reader) (*Gazetteer, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		lower := strings.ToLower(line)
-		g.entries[lower]++
+		term := gazetteerTerm(line)
+		if term == "" {
+			continue
+		}
+		g.entries[term]++
 		g.total++
 	}
 
 	return g, scanner.Err()
+}
+
+// gazetteerTerm extrait le terme d'une ligne de gazetteer, en minuscules.
+//
+// Les listes de référence circulent souvent en CSV — le fichier des prénoms de
+// l'INSEE, par exemple, est fait de lignes « PRENOM,effectif ». Prendre la ligne
+// entière produit alors des clés comme « hervais,3 » qui ne peuvent jamais être
+// retrouvées : le gazetteer se charge sans erreur, annonce ses centaines de
+// milliers d'entrées, et n'en reconnaît aucune. Une panne d'autant plus
+// coûteuse qu'elle est silencieuse — et qu'un modèle entraîné avec le gazetteer
+// perd alors une feature à l'inférence.
+//
+// Le terme est donc borné au premier séparateur de colonne. Une entrée
+// légitimement composée d'une virgule (« Paris, France ») s'en trouve tronquée
+// à sa tête, ce qui reste le comportement utile pour une recherche par mot.
+func gazetteerTerm(line string) string {
+	if i := strings.IndexAny(line, ",;\t"); i >= 0 {
+		line = line[:i]
+	}
+	return strings.ToLower(strings.TrimSpace(line))
 }
 
 // Contains retourne true si word (insensible à la casse) est dans le gazetteer.
