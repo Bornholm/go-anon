@@ -141,10 +141,10 @@ func TestVerify_NoFalsePositiveOnCleanOutput(t *testing.T) {
 		},
 		{
 			name: "identifiants structurés",
-			text: "Contact : jean@example.com — IBAN FR7630006000011234567890189 — 192.168.1.42",
+			text: "Contact : jean@example.com — IBAN FR7630001007941234567890185 — 192.168.1.42",
 			surfaces: map[string]ner.EntityType{
 				"jean@example.com":            ner.TypeEMAIL,
-				"FR7630006000011234567890189": ner.TypeIBAN,
+				"FR7630001007941234567890185": ner.TypeIBAN,
 				"192.168.1.42":                ner.TypeIPV4,
 			},
 			strategy: TagReplace,

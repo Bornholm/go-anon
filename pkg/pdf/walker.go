@@ -736,7 +736,7 @@ const spaceGapRatio = 0.2
 //
 // Un flux PDF ne porte pas nécessairement les espaces : beaucoup de générateurs
 // positionnent chaque mot par un Td/Tm sans jamais émettre le caractère. Les
-// concaténer tels quels produit « M.HervéFERRAGE », que le modèle ne peut pas
+// concaténer tels quels produit « M.OlivierVANDAMME », que le modèle ne peut pas
 // reconnaître comme une personne — c'est une fuite, et elle n'a rien à voir avec
 // le découpage en segments.
 //
