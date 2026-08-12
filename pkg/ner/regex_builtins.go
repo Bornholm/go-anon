@@ -1,6 +1,10 @@
 package ner
 
-import "regexp"
+import (
+	"regexp"
+
+	"github.com/bornholm/go-anon/pkg/checksum"
+)
 
 // Types d'entités pour les patterns intégrés.
 const (
@@ -40,15 +44,44 @@ func WithBuiltinSecretPatterns() RecognizerOption {
 
 // BuiltinRegexPatterns contient les patterns prédéfinis, dans l'ordre de priorité.
 // L'ordre est significatif : IPV6 avant IPV4, SIRET avant SIREN (évite les recouvrements).
+//
+// IBAN, SIRET et SIREN sont validés par leur clé de contrôle (pkg/checksum) :
+// leur forme seule est trop peu discriminante sur les documents administratifs,
+// où abondent les numéros de TVA, références de dossier et identifiants
+// sectoriels de même gabarit.
 var BuiltinRegexPatterns = []RegexPattern{
 	{Re: reEmail, EntityType: TypeEMAIL, Confidence: 1.0},
 	{Re: reIPv6, EntityType: TypeIPV6, Confidence: 1.0},
 	{Re: reIPv4, EntityType: TypeIPV4, Confidence: 1.0},
-	{Re: reIBAN, EntityType: TypeIBAN, Confidence: 1.0},
-	{Re: reSIRET, EntityType: TypeSIRET, Confidence: 1.0},
-	{Re: reSIREN, EntityType: TypeSIREN, Confidence: 1.0},
+	{Re: reIBAN, EntityType: TypeIBAN, Confidence: 1.0, Validate: checksum.IBAN},
+	{Re: reSIRET, EntityType: TypeSIRET, Confidence: 1.0, Validate: checksum.SIRET},
+	{Re: reSIREN, EntityType: TypeSIREN, Confidence: 1.0, Validate: checksum.SIREN},
 	{Re: rePhoneIntl, EntityType: TypePHONE, Confidence: 1.0},
 	{Re: rePhoneFR, EntityType: TypePHONE, Confidence: 1.0},
+}
+
+// reSIRENContext exige une mention explicite (SIREN, RCS, SIRET) avant le
+// numéro, avec une raison sociale ou une ville éventuellement intercalée
+// (« RCS : Dijon 321456782 »). Le groupe capturant 1 isole le numéro.
+var reSIRENContext = regexp.MustCompile(
+	`(?i)\b(?:SIREN|R\.?C\.?S\.?|SIRET)\b[\s:n°.-]*(?:[\p{Lu}][\p{L}'-]+\s+){0,2}(\d{9})\b`)
+
+// SIRENContextualPattern remplace le pattern SIREN par défaut par une variante
+// exigeant un marqueur textuel en amont du numéro.
+//
+// Motif : neuf chiffres sont intrinsèquement ambigus, et la clé de Luhn ne lève
+// pas l'ambiguïté — un identifiant sectoriel a une chance sur dix de la
+// satisfaire par coïncidence (constaté sur un numéro FINESS de laboratoire dans
+// le corpus d'observation). Exiger le contexte échange du rappel contre de la précision : à
+// n'activer que si les faux positifs SIREN sont plus coûteux que les oublis.
+// Le SIREN identifie une personne morale, pas physique, sauf pour un
+// entrepreneur individuel.
+var SIRENContextualPattern = RegexPattern{
+	Re:         reSIRENContext,
+	EntityType: TypeSIREN,
+	Confidence: 1.0,
+	Submatch:   1,
+	Validate:   checksum.SIREN,
 }
 
 var (

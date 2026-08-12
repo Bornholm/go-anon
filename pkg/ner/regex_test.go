@@ -484,7 +484,10 @@ func TestSecretPatterns_JWTBeforeSecretKV(t *testing.T) {
 // TestSIRETBeforeSIREN vérifie que dans les builtins, SIRET est détecté
 // et empêche SIREN de matcher sur les mêmes bytes.
 func TestSIRETBeforeSIREN(t *testing.T) {
-	text := "SIRET: 12345678900042"
+	// SIRET dont la clé de Luhn est valide, comme le SIREN qu'il contient :
+	// sans cela le test ne distinguerait pas la priorité des patterns d'un
+	// simple rejet par la clé de contrôle.
+	text := "SIRET: 32145678200002"
 	f := RegexEntityFilter(BuiltinRegexPatterns)
 	got := f(text, nil)
 	for _, e := range got {
@@ -500,5 +503,92 @@ func TestSIRETBeforeSIREN(t *testing.T) {
 	}
 	if !siretFound {
 		t.Error("SIRET doit être détecté")
+	}
+}
+
+// TestValidateRejectsMatch vérifie que le hook Validate écarte un match sans
+// bloquer les patterns suivants sur la même zone.
+func TestValidateRejectsMatch(t *testing.T) {
+	patterns := []RegexPattern{
+		{
+			Re:         regexp.MustCompile(`\d{4}`),
+			EntityType: "REJETE",
+			Validate:   func(string) bool { return false },
+		},
+		{
+			Re:         regexp.MustCompile(`\d{4}`),
+			EntityType: "RETENU",
+		},
+	}
+	got := RegexEntityFilter(patterns)("code 1234 fin", nil)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité, got %d : %+v", len(got), got)
+	}
+	if got[0].Type != "RETENU" {
+		t.Errorf("le pattern rejeté ne doit pas réserver la zone, got %+v", got[0])
+	}
+}
+
+// TestBuiltinChecksumFalsePositives couvre les formes qui trompent reIBAN —
+// numéro de TVA intracommunautaire, référence de dossier — et que la clé
+// mod-97 écarte. Ces formes ont été relevées sur des documents réels ; les
+// valeurs ci-dessous sont synthétiques, seule la forme est reprise.
+func TestBuiltinChecksumFalsePositives(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		typ  EntityType
+		want bool
+	}{
+		{"TVA intracom FR", "no TVA Intracommunautaire : FR12321456782", TypeIBAN, false},
+		{"TVA intracom FR", "N° TVA intracom : FR34407123454", TypeIBAN, false},
+		{"référence de dossier", "Référence CS4185039772", TypeIBAN, false},
+		{"IBAN valide", "RIB N° : FR76 3000 1007 9412 3456 7890 185", TypeIBAN, true},
+		{"IBAN valide", "IBAN: FR75 1273 9000 5012 3456 7890 143", TypeIBAN, true},
+		{"SIRET valide", "SIRET : 321 456 782 00002 APE: 803Z", TypeSIRET, true},
+		{"SIRET valide", "SIRET 407 123 454 00008", TypeSIRET, true},
+		{"SIRET à clé fausse", "SIRET : 321 456 782 00003", TypeSIRET, false},
+	}
+	f := RegexEntityFilter(BuiltinRegexPatterns)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			found := false
+			for _, e := range f(tt.text, nil) {
+				if e.Type == tt.typ {
+					found = true
+				}
+			}
+			if found != tt.want {
+				t.Errorf("détection %s dans %q = %v, want %v", tt.typ, tt.text, found, tt.want)
+			}
+		})
+	}
+}
+
+// TestSIRENContextualPattern vérifie la variante contextuelle sur les formes
+// rencontrées en pratique, et son rejet d'un identifiant sectoriel qui
+// satisfait Luhn par coïncidence — cas d'un numéro FINESS, que seul le
+// contexte permet d'écarter. Valeurs synthétiques.
+func TestSIRENContextualPattern(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{"RCS avec ville", "RCS : Dijon 321456782", true},
+		{"SIREN explicite", "SIREN 321456782", true},
+		{"R.C.S. pointé", "R.C.S. PARIS 407123454", true},
+		{"identifiant sectoriel (faux positif du pattern nu)", "FINESS ET 602453193", false},
+		{"numéro nu sans marqueur", "Référence 321456782", false},
+		{"marqueur mais clé fausse", "SIREN 321456783", false},
+	}
+	f := RegexEntityFilter([]RegexPattern{SIRENContextualPattern})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := f(tt.text, nil)
+			if (len(got) > 0) != tt.want {
+				t.Errorf("détection SIREN dans %q = %v, want %v (%+v)", tt.text, len(got) > 0, tt.want, got)
+			}
+		})
 	}
 }

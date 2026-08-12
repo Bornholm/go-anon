@@ -10,11 +10,19 @@ import (
 // Confidence à 0 est interprété comme 1.0.
 // Submatch indique quel groupe capturant utiliser comme span de l'entité :
 // 0 (défaut) = match complet, 1 = premier groupe capturant, etc.
+//
+// Validate, si non nil, est appelée sur le texte du span retenu ; un retour
+// false écarte le match sans qu'il occupe la zone couverte, laissant les
+// patterns suivants la chance de la revendiquer. Sert aux identifiants à clé
+// de contrôle (cf. pkg/checksum), dont la seule forme est très peu
+// discriminante : une regex IBAN capture aussi les numéros de TVA
+// intracommunautaire, une regex SIREN toute suite de neuf chiffres.
 type RegexPattern struct {
 	Re         *regexp.Regexp
 	EntityType EntityType
 	Confidence float64
 	Submatch   int
+	Validate   func(string) bool
 }
 
 // RegexEntityFilter retourne un EntityFilter qui injecte des entités détectées
@@ -55,6 +63,13 @@ func RegexEntityFilter(patterns []RegexPattern) EntityFilter {
 					}
 				}
 				if overlaps {
+					continue
+				}
+				// La validation intervient après la sélection du span et avant
+				// le marquage de la zone : un match rejeté ne masque pas les
+				// patterns suivants (un numéro de TVA écarté par la clé IBAN
+				// reste candidat pour un pattern moins spécifique).
+				if p.Validate != nil && !p.Validate(text[start:end]) {
 					continue
 				}
 				for i := start; i < end && i < len(covered); i++ {
