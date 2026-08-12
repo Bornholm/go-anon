@@ -73,6 +73,13 @@ echo "Jean Dupont habite à Paris." | ./bin/demo -lang fr -model model_fr.crf.gz
 ./bin/server -models auto
 ./bin/server -models "fr:auto,en:/path/to/en.crf.gz" -port 8080
 
+# Génération d'un corpus synthétique annoté (documents administratifs)
+# Templates dans templates/<lang>/, gazetteers embarqués dans pkg/synth/gazetteer/seed.
+./bin/synthcorpus generate -lang fr -count 100 -seed 1 -out data/synth/p0
+./bin/synthcorpus validate -corpus data/synth/p0    # invariants BIO, spans, labels
+./bin/synthcorpus stats    -corpus data/synth/p0    # diversité, formes, templates
+./bin/synthcorpus sample   -template facture-artisan -index 1  # relecture humaine
+
 # Génération de Brown clusters
 ./bin/brown-cluster -input data/wikiner_fr_full.train.wikiner \
   -format wikiner -vocab 10000 -clusters 200 \
@@ -143,6 +150,8 @@ Points de configuration importants (cf. `pkg/ner` et `goanon.go`) :
 | `pkg/tokenizer`    | `UnicodeTokenizer` — offsets byte-précis, options FR/ES (apostrophe) et EN (trait d'union)                   |
 | `pkg/lang`         | Profils linguistiques : stop-words, préfixes honorifiques, features spécifiques FR/EN/ES                     |
 | `pkg/langdetect`   | Interface `Detector` de détection automatique de langue ; implémentation `WhatlangDetector` (whatlanggo)      |
+| `pkg/synth`        | Générateur de corpus synthétique : `gazetteer` (TSV pondéré), `template` (parser dédié + AST), `render` (segments annotés, offsets dérivés), `value` (générateurs PER/ORG/ADDR et valeurs de contexte), `generate` (parcours d'AST, bruit, projection BIO, manifest) |
+| `pkg/checksum`     | Clés de contrôle des identifiants : Luhn (SIREN/SIRET, exception La Poste), mod-97-10 (IBAN), clé NIR. Branché sur `ner.RegexPattern.Validate` |
 | `pkg/modelstore`   | Téléchargement automatique, cache, vérification SHA-256 **et signature Ed25519/minisign du manifeste** (authenticité de la source, clé embarquée dans `keys.go`), découverte des modèles depuis GitHub Releases ; code de langue borné `^[a-z]{2}$` (anti-traversée) |
 
 ## Modèles pré-entraînés
