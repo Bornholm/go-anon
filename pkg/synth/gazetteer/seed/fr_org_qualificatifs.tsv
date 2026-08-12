@@ -1,0 +1,23 @@
+# qualificatif au masculin	poids	{"fem": forme féminine, "f": familles admises (absent = toutes)}
+Régional	90	{"fem":"Régionale"}
+National	70	{"fem":"Nationale"}
+Départemental	65	{"fem":"Départementale","f":"social administration technique"}
+Interdépartemental	20	{"fem":"Interdépartementale","f":"social administration technique"}
+Municipal	30	{"fem":"Municipale","f":"social administration"}
+Intercommunal	28	{"fem":"Intercommunale","f":"social administration"}
+Communal	26	{"fem":"Communale","f":"social administration"}
+Général	55	{"fem":"Générale"}
+Européen	22	{"fem":"Européenne","f":"administration commerce"}
+Métropolitain	24	{"fem":"Métropolitaine","f":"social administration commerce"}
+Territorial	30	{"fem":"Territoriale","f":"social administration"}
+Public	40	{"fem":"Publique","f":"sante social administration"}
+Privé	35	{"fem":"Privée","f":"sante commerce"}
+Central	26	{"fem":"Centrale"}
+Universitaire	28	{"fem":"Universitaire","f":"sante"}
+Mutualiste	18	{"fem":"Mutualiste","f":"sante social"}
+Technique	25	{"fem":"Technique","f":"technique commerce"}
+Interprofessionnel	16	{"fem":"Interprofessionnelle","f":"technique commerce"}
+Intercantonal	10	{"fem":"Intercantonale","f":"administration"}
+Spécialisé	20	{"fem":"Spécialisée","f":"sante technique"}
+Mutuel	22	{"fem":"Mutuelle","f":"assurance"}
+Réunis	14	{"fem":"Réunies","f":"assurance"}

@@ -1,0 +1,15 @@
+# type de voie	poids
+rue	1000
+avenue	260
+boulevard	140
+route	130
+chemin	120
+impasse	90
+place	80
+allée	70
+cours	40
+quai	30
+square	25
+sentier	20
+grande rue	15
+petite rue	10

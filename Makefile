@@ -19,6 +19,7 @@ build-tools:
 	CGO_ENABLED=0 go build -o bin/demo         ./cmd/demo
 	CGO_ENABLED=0 go build -o bin/prune        ./cmd/prune
 	CGO_ENABLED=0 go build -o bin/brown-cluster ./cmd/brown-cluster
+	CGO_ENABLED=0 go build -o bin/synthcorpus  ./cmd/synthcorpus
 
 test:
 	go test ./...

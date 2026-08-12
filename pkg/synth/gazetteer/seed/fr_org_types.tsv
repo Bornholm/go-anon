@@ -1,0 +1,48 @@
+# tête nominale d'organisation	poids	{"g": genre pour l'accord, "f": famille}
+Centre Hospitalier	40	{"g":"m","f":"sante"}
+Clinique	35	{"g":"f","f":"sante"}
+Laboratoire	38	{"g":"m","f":"sante"}
+Polyclinique	18	{"g":"f","f":"sante"}
+Groupe Hospitalier	22	{"g":"m","f":"sante"}
+Centre de Santé	20	{"g":"m","f":"sante"}
+Hôpital	25	{"g":"m","f":"sante"}
+Maison de Santé	16	{"g":"f","f":"sante"}
+Caisse	45	{"g":"f","f":"social"}
+Mutuelle	35	{"g":"f","f":"social"}
+Centre Communal	28	{"g":"m","f":"social"}
+Foyer	15	{"g":"m","f":"social"}
+Comité	20	{"g":"m","f":"social"}
+Union	24	{"g":"f","f":"social"}
+Institution	14	{"g":"f","f":"social"}
+Agence	42	{"g":"f","f":"administration"}
+Direction	36	{"g":"f","f":"administration"}
+Trésorerie	26	{"g":"f","f":"administration"}
+Office	34	{"g":"m","f":"administration"}
+Établissement	28	{"g":"m","f":"administration"}
+Institut	32	{"g":"m","f":"administration"}
+Observatoire	14	{"g":"m","f":"administration"}
+Délégation	16	{"g":"f","f":"administration"}
+Service	22	{"g":"m","f":"administration"}
+Centre	30	{"g":"m","f":"administration"}
+Société	48	{"g":"f","f":"commerce"}
+Compagnie	30	{"g":"f","f":"commerce"}
+Comptoir	16	{"g":"m","f":"commerce"}
+Entreprise	26	{"g":"f","f":"commerce"}
+Maison	14	{"g":"f","f":"commerce"}
+Groupe	28	{"g":"m","f":"commerce"}
+Cabinet	32	{"g":"m","f":"technique"}
+Bureau	28	{"g":"m","f":"technique"}
+Coopérative	20	{"g":"f","f":"technique"}
+Groupement	22	{"g":"m","f":"technique"}
+Syndicat	26	{"g":"m","f":"technique"}
+Fédération	18	{"g":"f","f":"technique"}
+Chambre	24	{"g":"f","f":"technique"}
+Atelier	14	{"g":"m","f":"technique"}
+Association	20	{"g":"f","f":"technique"}
+Compagnie d'Assurances	34	{"g":"f","f":"assurance"}
+Mutuelle d'Assurance	30	{"g":"f","f":"assurance"}
+Caisse d'Assurances	22	{"g":"f","f":"assurance"}
+Groupe Assurances	20	{"g":"m","f":"assurance"}
+Société d'Assurances	28	{"g":"f","f":"assurance"}
+Cabinet de Courtage	24	{"g":"m","f":"assurance"}
+Union d'Assurances	16	{"g":"f","f":"assurance"}

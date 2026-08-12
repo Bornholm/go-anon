@@ -1,0 +1,56 @@
+# complément de dénomination, préposition incluse	poids	{"f": famille}
+de Biologie Médicale	40	{"f":"sante"}
+d'Analyses Médicales	38	{"f":"sante"}
+de Radiologie	25	{"f":"sante"}
+de Cardiologie	20	{"f":"sante"}
+d'Imagerie Médicale	26	{"f":"sante"}
+de Soins de Suite	18	{"f":"sante"}
+de Rééducation Fonctionnelle	16	{"f":"sante"}
+de Santé au Travail	22	{"f":"sante"}
+de Pathologie	14	{"f":"sante"}
+d'Anesthésie	12	{"f":"sante"}
+d'Action Sociale	40	{"f":"social"}
+d'Allocations Familiales	38	{"f":"social"}
+d'Assurance Maladie	36	{"f":"social"}
+de Retraite Complémentaire	24	{"f":"social"}
+d'Aide à Domicile	22	{"f":"social"}
+de Prévoyance	28	{"f":"social"}
+de Solidarité	20	{"f":"social"}
+de l'Enfance et de la Famille	16	{"f":"social"}
+d'Insertion Professionnelle	18	{"f":"social"}
+de l'Habitat	36	{"f":"administration"}
+de la Statistique	22	{"f":"administration"}
+des Finances Publiques	30	{"f":"administration"}
+de l'Environnement	26	{"f":"administration"}
+de l'Équipement	20	{"f":"administration"}
+de la Formation Professionnelle	24	{"f":"administration"}
+de l'Emploi	26	{"f":"administration"}
+des Transports	28	{"f":"administration"}
+de l'Eau et de l'Assainissement	18	{"f":"administration"}
+du Logement Social	24	{"f":"administration"}
+du Patrimoine	14	{"f":"administration"}
+de Distribution	34	{"f":"commerce"}
+de Négoce	20	{"f":"commerce"}
+d'Approvisionnement	16	{"f":"commerce"}
+de Commerce et d'Industrie	30	{"f":"commerce"}
+des Vins et Spiritueux	14	{"f":"commerce"}
+de Matériaux	22	{"f":"commerce"}
+d'Équipement	20	{"f":"commerce"}
+de Fournitures Industrielles	16	{"f":"commerce"}
+d'Études Techniques	34	{"f":"technique"}
+de Travaux Publics	32	{"f":"technique"}
+d'Ingénierie	26	{"f":"technique"}
+de Maintenance Industrielle	22	{"f":"technique"}
+des Eaux	24	{"f":"technique"}
+d'Électricité	20	{"f":"technique"}
+de Construction	28	{"f":"technique"}
+de Métrologie	12	{"f":"technique"}
+des Métiers et de l'Artisanat	26	{"f":"technique"}
+de la Construction	30	{"f":"assurance"}
+de Responsabilité Civile	26	{"f":"assurance"}
+de Protection Juridique	22	{"f":"assurance"}
+du Bâtiment	28	{"f":"assurance"}
+de Garantie Décennale	24	{"f":"assurance"}
+des Risques Professionnels	20	{"f":"assurance"}
+de Prévoyance et Retraite	18	{"f":"assurance"}
+Dommages-Ouvrage	16	{"f":"assurance"}

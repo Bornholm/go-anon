@@ -1,0 +1,155 @@
+# dénomination irrégulière, que l'assemblage ne produit pas	poids
+#
+# Cette liste ne sert pas à couvrir le domaine : la composition
+# (org_types × org_qualificatifs × org_domaines × org_territoires) s'en charge
+# avec bien plus d'entropie. Elle porte les formes que la composition ne sait
+# pas produire — marques, mots-valises, sigles lexicalisés, anglicismes, noms
+# propres — pour que le corpus ne soit pas uniformément régulier.
+#
+# Elle reste minoritaire dans le tirage (cf. NewOrg) : une liste plate finit
+# toujours par se répéter, et c'est exactement ce qu'on cherche à éviter.
+France Éducation international	20
+Trésorerie Générale des Yvelines	18
+Agence Nationale de l'Habitat	17
+Office Public de l'Habitat	16
+Centre Communal d'Action Sociale	15
+Chambre de Commerce et d'Industrie	14
+Institut National de la Statistique	13
+Caisse Primaire d'Assurance Maladie	12
+Hôpital Privé Anesthésie	11
+Clinique du Parc	10
+Groupe Hospitalier Régional	9
+Laboratoire Biogroup	9
+Mutuelle Générale de Prévoyance	8
+Société Générale de Distribution	8
+Compagnie Régionale des Transports	7
+Établissement Français du Sang	7
+Biolab Diagnostics	10
+Cerballiance	9
+Unilabs France	9
+Synlab Provence	8
+Novescia	8
+Bioclinic	8
+Oriade Noviale	7
+Inovie Labosud	7
+Eurofins Biomnis	9
+Ramsay Santé	9
+Elsan Développement	8
+Vivalto Vie	7
+Korian Solutions	7
+Almaviva Santé	6
+Résidence Les Tilleuls	9
+Foyer Saint-Vincent	8
+Villa Beausoleil	7
+Domitys Le Clos	6
+Les Jardins d'Arcadie	7
+Habitat et Humanisme	9
+Emmaüs Solidarité	9
+Secours Populaire	10
+Restos du Cœur	9
+Petits Frères des Pauvres	8
+Croix-Rouge Insertion	9
+Apprentis d'Auteuil	7
+Aide et Action	6
+Solidarités Nouvelles	6
+Le Refuge	5
+France Travail	14
+Action Logement	12
+Ademe	9
+Cnav	8
+Urssaf Rhône-Alpes	11
+Msa Ardèche-Drôme-Loire	9
+Cnaf	8
+Ircantec	7
+Agirc-Arrco	9
+Pôle Formation UIMM	7
+Afpa	8
+Greta Viva 5	6
+Onisep	6
+Cerema	6
+Ineris	5
+Ifremer	6
+Anses	7
+Inrae	7
+Météo-France	8
+Voies Navigables de France	7
+Réseau de Transport d'Électricité	8
+Enedis	11
+GRDF	10
+Suez Eau France	10
+Veolia Eau	11
+Saur	8
+Eaux de Marseille	7
+Dalkia	7
+Engie Solutions	10
+Sodexo Justice Services	6
+Elior Services	7
+Onet Propreté	8
+Derichebourg Multiservices	7
+Samsic Facility	7
+Atalian Global Services	6
+Vinci Facilities	8
+Eiffage Énergie Systèmes	9
+Bouygues Bâtiment Sud-Est	8
+Spie Batignolles	8
+Colas Rhône-Alpes	9
+Eurovia Méditerranée	8
+NGE Génie Civil	7
+Fayat Bâtiment	7
+Demathieu Bard	6
+Léon Grosse	7
+Pitance Frères	5
+Sogea Environnement	6
+Socotec	9
+Apave	9
+Bureau Veritas	10
+Qualiconsult	7
+Dekra Industrial	7
+Alpes Contrôles	6
+Cabinet Alpha Conseil	8
+Ipsos Observer	6
+Altran Technologies	7
+Assystem Care	6
+Sopra Steria Next	8
+Capgemini Invent	8
+Atos Worldgrid	6
+Econocom Products	6
+Docaposte	8
+Berger-Levrault	8
+Arpège Solutions	6
+Ciril Group	6
+JVS-Mairistem	6
+Sigma Informatique	6
+Comptoir des Alpes	6
+Maison Bertrand	7
+Établissements Guichard	6
+Comptoir Lyonnais de Matériaux	6
+Point P Matériaux	8
+Gedimat Vallée du Rhône	7
+Tout Faire Matériaux	6
+Prolians Vidal	6
+Descours et Cabaud	7
+Rexel Sud-Est	7
+Sonepar Alpes	7
+Cedeo Valence	6
+Brossette Bâtimat	5
+Terreal Toiture	6
+Wienerberger France	6
+Placoplatre Distribution	5
+Knauf Insulation	6
+Isover Saint-Gobain	7
+Groupama Méditerranée	10
+Maif Prévention	9
+Macif Sud-Est	9
+Matmut Protection	8
+Smacl Assurances	7
+Aésio Mutuelle	8
+Harmonie Mutuelle	10
+Malakoff Humanis	9
+Klesia Prévoyance	7
+Apicil Gestion	7
+Crédit Agricole Sud Rhône-Alpes	10
+Caisse d'Épargne Loire Drôme Ardèche	9
+Banque Populaire Auvergne	9
+Crédit Mutuel du Sud-Est	9
+Banque Postale Financement	9

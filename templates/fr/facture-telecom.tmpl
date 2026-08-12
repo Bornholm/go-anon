@@ -1,0 +1,44 @@
+type: facture
+lang: fr
+source: facture d'opérateur télécom (LaTeX)
+weight: 1.0
+---
+{{pad:130-140}}Site Internet : {{decoy:designation}}.fr
+{{pad:100-110}}Service abonné au {{decoy:id_secteur}} (appel gratuit depuis une ligne {{ORG:seller|form=court|famille=commerce}})
+{{pad:120-130}}Horaires sur {{decoy:designation}}.fr/contact.html
+
+Forfait {{ORG:seller|form=court|famille=commerce}} 5G{{pad:80-90}}{{PER:buyer|form=prenom_nom_caps}}
+N◦ de ligne : {{phone:buyer|form=compact}}{{pad:70-80}}{{ADDR:buyer_addr|form=street_caps}}
+Identifiant : {{decoy:id_secteur}}{{pad:70-80}}{{ADDR:buyer_addr|form=citycode_caps}}
+
+• Facture no {{ref:invoice|pattern=numeric10}} du {{date:issue|format=long}}
+
+Total de la facture HT{{pad:100-110}}{{amount:subtotal}}
+TVA [20.00%]{{pad:105-115}}{{amount:vat}}
+
+Somme à payer TTC*{{pad:100-110}}{{amount:total}}
+*Cette somme sera prélevée sur votre compte le {{date:debit|format=dash}}.
+
+{{pad:110-120}}{{decoy:ref_longue}}
+
+[?engagement]Fin d'engagement : sans engagement.[/]
+{{decoy:mention}}
+{{decoy:mention}}
+Pour vous informer sur nos tarifs ou pour toute question concernant votre facture, vous pouvez contacter notre service abonné dont les coor-
+données figurent ci-dessus ou écrire à {{ORG:seller|famille=commerce}} – {{ADDR:seller_cedex|form=citycedex_caps}}. En cas de réclamation : {{ORG:seller|famille=commerce}} – {{ADDR:seller_cedex|form=citycedex_caps}}
+
+{{pad:20-24}}{{ORG:seller|form=juridique_capital|famille=commerce}} – RCS {{ADDR:rcs_city|form=city_caps}} {{siren:seller}} – Siège social : {{ADDR:seller_addr|form=inline}}{{pad:6-10}}1/3
+{{pad:60-64}}no TVA Intracommunautaire : {{decoy:ref_longue}}
+• Détails de votre facture
+
+I Services de {{ORG:seller|form=court|famille=commerce}} (Total : {{amount:total}} TTC)
+Abonnements, forfaits et options du {{date:period_start|format=dm_dash}} au {{date:period_end|format=dm_dash}}{{pad:60-70}}Coût en e TTC (HT)
+Abonnement "Forfait {{ORG:seller|form=court|famille=commerce}} 5G"{{pad:80-90}}{{amount:total}} ({{amount:subtotal}})
+
+@block communications
+{{pad:3-5}}{{date:call|format=dash_time}}{{pad:15-25}}France{{pad:15-25}}{{decoy:id_secteur}}{{pad:40-50}}{{decoy:designation}}{{pad:15-25}}0.00
+@end
+{{LINES:2-8}}
+
+{{pad:12-16}}{{ORG:seller|form=juridique_capital|famille=commerce}} – RCS {{ADDR:rcs_city|form=city_caps}} {{siren:seller}} – Siège social : {{ADDR:seller_addr|form=inline}}{{pad:6-10}}3/3
+{{pad:55-59}}no TVA Intracommunautaire : {{decoy:ref_longue}}

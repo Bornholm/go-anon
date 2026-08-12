@@ -1,0 +1,63 @@
+type: facture
+lang: fr
+source: facture d'artisan (Stimulsoft Reports)
+weight: 1.0
+noise: 0.4
+---
+{{pad:3-5}}{{ORG:seller|form=juridique_patronyme}}
+{{pad:3-5}}{{ADDR:seller_addr|form=street}}
+{{pad:3-5}}{{ADDR:seller_addr|form=citycode}}
+{{pad:3-5}}Tél portable : {{phone:seller|form=compact}}
+{{pad:3-5}}Email : {{email:seller|from=seller}}
+
+{{pad:100-110}}{{PER:buyer|form=civ_nom_prenom}}
+{{pad:100-110}}{{ADDR:buyer_addr|form=street}}
+{{pad:100-110}}{{ADDR:buyer_addr|form=citycode_caps}}
+
+{{pad:4-6}}Facture
+
+{{pad:7-9}}Numéro{{pad:22-28}}Date{{pad:15-19}}Code client{{pad:8-12}}Date échéance
+
+{{pad:3-5}}{{ref:invoice|pattern=FA}}{{pad:17-21}}{{date:issue|format=slash}}{{pad:16-20}}{{decoy:id_secteur}}{{pad:11-15}}{{date:due|format=slash}}
+
+Date de livraison : {{date:delivery|format=slash}}
+
+{{pad:39-41}}Description{{pad:39-41}}Qté{{pad:10-14}}P.U. HT{{pad:6-10}}Montant HT{{pad:7-11}}TVA{{pad:7-11}}Montant TTC
+
+Transféré de : Devis N° {{ref:quote|pattern=DE}} du {{date:quote|format=slash}}.{{pad:45-50}}0.00{{pad:9-13}}0.00{{pad:13-17}}0.00{{pad:8-12}}0.00{{pad:10-14}}0.00
+[?adresse_libre]{{noise:intraword}}Visite technique effectuée le {{date:visit|format=slash}}, pour une
+installation à l'adresse {{ADDR:site_addr|form=inline}}.{{/noise}}[/]
+
+@block lignes
+{{decoy:designation}}{{pad:45-55}}1.00{{pad:5-9}}{{amount}}{{pad:9-13}}{{amount}}{{pad:8-12}}5.50{{pad:7-11}}{{amount}}
+@end
+{{LINES:3-8}}
+
+{{pad:24-26}}Siret : {{siret:seller}} - APE : {{decoy:code_court}} - RCS : {{ADDR:rcs_city|form=city}} {{siren:seller}} - N° TVA intracom : {{decoy:ref_longue}} - Capital : {{amount:capital}}
+{{pad:100-110}}1 sur 2
+{{pad:2-4}}Facture N° {{ref:invoice}}
+
+[?acomptes]
+Récapitulatif des factures d'acompte :
+
+{{pad:15-17}}Date{{pad:35-39}}Numéro{{pad:35-39}}Montant HT{{pad:35-39}}Montant TVA{{pad:20-24}}Montant TTC
+{{date:acompte|format=slash}}{{pad:36-40}}{{ref:acompte|pattern=FD}}{{pad:60-70}}{{amount:acompte_ht}}{{pad:40-50}}{{amount:acompte_tva}}{{pad:15-20}}{{amount:acompte_ttc}}
+[/]
+
+{{decoy:mention}}
+{{decoy:mention}}
+Échéance de règlement : 10 jours après la date de facture.
+Assurance décennale obligatoire souscrite auprès de la compagnie d'assurance {{ORG:insurer|famille=assurance}} située à {{ADDR:insurer_city|form=city}}:{{decoy:ref_longue}}, valable en France
+métropolitaine.
+IBAN: {{iban:seller}}
+BIC: {{decoy:code_court}}
+
+{{pad:60-70}}Qualibois n° {{decoy:code_court}}
+
+{{pad:4-6}}Taux{{pad:14-18}}Base HT{{pad:14-18}}Montant TVA{{pad:14-18}}Total HT{{pad:60-70}}{{amount:subtotal}}
+{{pad:5-7}}5.50{{pad:20-24}}{{amount:subtotal}}{{pad:20-24}}{{amount:vat}}{{pad:20-24}}Total TVA{{pad:45-55}}{{amount:vat}}
+{{pad:70-80}}Total TTC{{pad:45-55}}{{amount:total}}
+{{pad:70-80}}Net à payer{{pad:40-50}}{{amount:total}}
+
+{{pad:24-26}}Siret : {{siret:seller}} - APE : {{decoy:code_court}} - RCS : {{ADDR:rcs_city|form=city}} {{siren:seller}} - N° TVA intracom : {{decoy:ref_longue}} - Capital : {{amount:capital}}
+{{pad:100-110}}2 sur 2
