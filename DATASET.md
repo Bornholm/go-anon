@@ -710,13 +710,101 @@ vocabulaire irréductible entre deux corpus tirés des mêmes gazetteers.
 à 30 templates visés sont à 4 — suffisant pour valider le pipeline, insuffisant
 pour la variété (lot 2).
 
+#### Ce que le corpus généralise réellement
+
+Le F1 de 96,3 % ne dit rien tant qu'on ignore s'il mesure une compétence de
+domaine ou la mémorisation de quatre gabarits. Le protocole
+(`data/mix/loo/run.sh`) retire le compte-rendu de laboratoire de
+l'entraînement et l'utilise seul comme jeu de test.
+
+| Modèle | corpus d'entraînement | F1 sur le laboratoire |
+| --- | --- | --- |
+| témoin | WikiNER | 5,4 % |
+| mixte | WikiNER + les 4 templates | 98,5 % |
+| mixte-LOO | WikiNER + les 3 autres | **25,5 %** |
+
+L'effondrement est massif, et le détail par type l'explique — il suit
+exactement la **couverture des formes de surface**, pas la parenté des
+documents :
+
+| Type | formes du labo présentes ailleurs | F1 LOO | F1 témoin |
+| --- | --- | --- | --- |
+| `LOC` | 5 sur 7 | 44,4 % (rappel 72,5 %) | 8,3 % |
+| `PER` | 0 sur 6 | 18,3 % | 13,0 % |
+| `ORG` | 0 sur 2 | 1,1 % | 0,2 % |
+
+`LOC` transfère parce que `street`, `citycode`, `citycode_caps` et `city` sont
+communes aux quatre templates. `PER` ne transfère presque pas : le laboratoire
+est le seul à employer `titre_nom`, `nom_naissance`, `nom_prenom_etiquette` et
+`nom_seul`. `ORG` ne transfère pas du tout : `caps_tirets` n'existe nulle part
+ailleurs.
+
+**Conséquence directe sur le lot 2.** Ce que le CRF apprend est un répertoire de
+formes, pas un registre administratif abstrait. Ajouter des templates n'apporte
+que les formes qu'ils introduisent, et un template de plus qui réemploie les
+formes existantes n'apporte rien. La priorité n'est donc pas « 4 → 30
+templates » mais **la couverture de l'espace des formes** : croiser les formes
+existantes entre types de documents, et n'ajouter des templates que pour les
+formes qu'ils sont seuls à porter.
+
+**Limite du protocole.** Retirer un template retire à la fois un gabarit de
+document et un jeu de formes ; l'expérience ne les sépare pas. Le tableau
+par type est ce qui permet de trancher, pas le F1 global. Une mesure directe
+consisterait à réinjecter les formes du laboratoire dans les trois autres
+templates et à refaire le LOO — c'est le premier test du lot 2.
+
+Contrôle de non-régression : le LOO reste à 86,9 % sur WikiNER (témoin 87,2 %,
+mixte 88,1 %), écart dans le bruit SGD constaté entre époques.
+
+#### Précision sur documents réels
+
+Les deux modèles passés sur cinq PDF natifs du corpus d'observation, OCR
+désactivé. Sans annotation de référence, seule la précision est lisible ; le
+rappel ne l'est pas.
+
+| Type | témoin | mixte |
+| --- | ---: | ---: |
+| `PER` | 37 | 23 |
+| `LOC` | 55 | **69** |
+| `ORG` | 55 | 20 |
+| `MISC` | 206 | **53** |
+
+Les 206 `MISC` du témoin sont presque intégralement du bruit : totaux, en-têtes
+de colonnes, unités de mesure, fragments de mentions légales. Trois gains du
+mixte sont attribuables à des choix de conception :
+
+- **les adresses** — sur la facture d'établissement public, les deux modèles
+  n'ont aucune `LOC` en commun ; le mixte sort les quatre adresses réelles ;
+- **le bruit de crénage** — sur la facture d'énergie, le mixte reconnaît les
+  codes postaux et l'adresse en champ libre disloqués par l'espacement
+  intra-mot (§ 5 des observations), que le témoin ignore entièrement ;
+- **la raison sociale portant un patronyme** — le témoin la coupe en `ORG` +
+  `PER`, le mixte produit un span `ORG` unique. C'est le négatif `orgperson`
+  qui opère.
+
+Deux défauts résiduels, tous deux à traiter :
+
+- des `LOC` d'un seul caractère sur le document le plus bruité — post-filtre de
+  longueur minimale, pas un problème de corpus ;
+- des libellés d'analyse médicale classés `PER` (`Ratio TCK`, `Volume
+  Plaquettaire Moyen`). Le `decoy:analyse` ne produit que des libellés d'un
+  mot ; il lui manque les libellés composés à capitales initiales, dont la
+  signature de surface est celle d'un prénom-nom.
+
 ### Lot 2 — Variété structurelle
 
+Priorité réordonnée par la mesure de généralisation du lot 1 : la couverture
+des formes commande, le nombre de templates suit.
+
+- **Croisement des formes entre templates**, puis LOO refait — mesure directe de
+  ce qui, du gabarit ou de la forme, portait l'effondrement
+- Élargissement du `decoy:analyse` aux libellés composés à capitales initiales
+- Post-filtre de longueur minimale sur les spans
 - Sections optionnelles, blocs répétables, permutation de blocs
 - Cohérence de surface complète (§ 6.3)
 - Module de bruit d'espacement intra-mot, calibré sur le corpus d'observation (§ 8.2)
-- Sous-commande `stats`
-- Variété de templates par apport LLM validé humainement
+- Variété de templates par apport LLM validé humainement, **pour les formes
+  qu'ils sont seuls à porter**
 - Paliers P1 puis P2, balayage du dosage de mélange (§ 10.4)
 
 **Critère de sortie** : première courbe d'apprentissage, précision réelle en
