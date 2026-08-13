@@ -18,6 +18,8 @@ Votre n° client : {{decoy:id_secteur}}
 
 Vos références : {{ref:invoice}}{{pad:20-40}}Ordonnateur : {{PER:officer|form=civ_prenom_nom}}
 {{pad:60-80}}Agent comptable : {{PER:accountant|form=civ_prenom_nom}}
+[?suivi]Dossier suivi par {{PER:accountant|form=nom_seul}} - Service émetteur : {{ORG:seller|form=caps|famille=administration}}
+{{pad:4-8}}{{ADDR:seller_addr|form=citycode_dash}}[/]
 
 {{pad:24-30}}Désignation{{pad:16-22}}Quantité{{pad:8-12}}P.U H.T.{{pad:4-8}}Montant H.T.{{pad:4-8}}Taux TVA{{pad:4-8}}Imputation Comptable
 
@@ -43,6 +45,7 @@ Tél {{decoy:titre_caps}} : {{phone:seller|form=dotted}} - mél : {{email:seller
 
 FACTURE LIBELLEE EN EURO{{pad:20-40}}Le directeur général par interim
 {{pad:40-60}}{{PER:director|form=prenom_nom_caps}}
+[?visa]{{pad:40-60}}Visa du médecin coordonnateur : {{PER:doctor|form=titre_nom_caps}}[/]
 Somme arrêtée :
 {{decoy:mention}}
 {{pad:80-100}}{{ORG:seller|famille=administration}} n'est pas
