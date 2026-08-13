@@ -888,8 +888,40 @@ davantage le modèle aux régularités du générateur — dont l'écart au docu
 réel devient alors le facteur dominant. Le § 10.2 postulait que « le F1
 synthétique ne mesure rien d'utile » ; c'est désormais constaté.
 
+#### Un troisième jeu, écrit par un modèle de langue
+
+Le dépôt `go-anon-datasets` produit un corpus dont les **templates** sont écrits
+par un modèle de langue, dans cette même DSL, avec les mêmes gazetteers et le
+même renderer : seule la structure des documents change de source. Le modèle
+n'écrit ni valeur ni annotation, et le parser reste l'autorité — un template
+refusé lui est renvoyé pour correction.
+
+Dix types absents de go-anon (bulletin de paie, avis d'imposition, relevé
+bancaire, certificat médical, déclaration d'accident du travail, ordre de
+mission…), 120 documents, 27 786 tokens.
+
+| Modèle | jeu templates | **jeu LLM** |
+| --- | ---: | ---: |
+| témoin | 7,4 % | 11,5 % |
+| mixte, passe 3 | 94,8 % | 71,7 % |
+| mixte, passe 4 (decay) | 98,8 % | **75,5 %** |
+
+**La mesure n'est plus saturée**, et elle chiffre le coût de la généralisation :
+23 points d'écart entre des documents dont la structure a été vue et des
+documents dont elle ne l'a pas été. `ORG` reste le maillon faible (62,5 %),
+comme au leave-one-template-out.
+
+Elle contredit aussi, en partie, la crainte exprimée plus haut : le modèle le
+plus optimisé sur le jeu synthétique est **aussi** le meilleur ici (+3,8 points),
+alors que le comptage de faux positifs sur documents réels le donnait perdant.
+Des deux, c'est le comptage sur cinq documents non annotés qui est la mesure
+faible. La divergence constatée reste réelle, mais elle porte sur la précision
+en conditions d'extraction dégradée, pas sur la généralisation structurelle.
+
 **Conséquence.** L'effet de la variation de contexte des libellés n'est ni
-confirmé ni infirmé : aucune métrique disponible ne peut le mesurer. Le
+confirmé ni infirmé : aucune métrique disponible au moment du test ne pouvait le
+mesurer, et le jeu LLM ne le peut pas davantage — un modèle de langue ne
+reproduit pas le bruit d'extraction qui porte ce défaut. Le
 comptage de faux positifs sur cinq documents non annotés n'est pas une mesure,
 et le F1 synthétique est saturé. Le jeu de test réel annoté du lot 3, jusqu'ici
 traité comme une échéance lointaine, est devenu le prérequis de toute mesure
