@@ -860,9 +860,12 @@ formes porte le rappel, la variété des gabarits porte la précision.
 - ✅ Post-filtre de longueur minimale (`ner.MinRunesFilter`, opt-in)
 - ✅ **Variété structurelle par templates générés** — 72,7 → 80,8 % sur des
   structures jamais vues (`go-anon-datasets`)
-- Palier suivant : 30 templates générés, et contrôle à volume constant
-- `ORG` : maillon faible confirmé trois fois (60 à 64 %), à traiter dans les
-  gazetteers plutôt que dans le modèle
+- ✅ Contrôle à volume constant — le gain se partage, +3,5 volume / +4,6 variété
+- ✅ 24 structures générées — 82,1 % global, `ORG` 53 → 73 %
+- **Poursuivre la génération pour `ORG` seul** : `PER` et `LOC` saturent dès
+  10 structures, `ORG` progresse linéairement et n'a pas infléchi à 24
+- Rappel d'`ORG` (64,7 % pour 83,9 % de précision) : c'est lui qui compte en
+  conformité, un faux négatif étant une fuite
 - ⚠️ **Variation du contexte des libellés d'analyse** — livrée, effet non
   démontrable (voir ci-dessous)
 - **Jeu de test réel annoté** — devenu le goulot d'étranglement, voir lot 3
@@ -981,6 +984,31 @@ structures constantes — et c'est le type qui profite le plus de la variété
 structurelle. La priorité « traiter `ORG` dans les gazetteers » est donc mal
 posée : ce ne sont pas les dénominations qui manquent, ce sont les contextes
 d'organisation.
+
+#### 10 puis 24 structures : deux régimes
+
+Passe 7, à volume rigoureusement constant — mêmes 300 documents générés, tirés
+de 24 templates au lieu de 10 :
+
+| structures générées | global | `PER` | `LOC` | `ORG` |
+| ---: | ---: | ---: | ---: | ---: |
+| 0 (contrôle) | 76,2 % | 77,3 % | 83,4 % | 53,0 % |
+| 10 | 80,8 % | 81,4 % | 86,2 % | 63,7 % |
+| **24** | **82,1 %** | 82,6 % | 84,9 % | **73,1 %** |
+
+Deux régimes se séparent nettement. `PER` et `LOC` **saturent** : +1,2 et −1,3
+entre 10 et 24 structures, après +4,1 et +2,8 sur les dix premières. `ORG`, lui,
+progresse presque linéairement — +10,7 puis +9,4 — sans signe d'inflexion.
+
+Le F1 global masque cette divergence : ses +1,3 points suggèrent des rendements
+décroissants alors qu'un type sur trois est encore en pleine progression.
+Continuer à générer des templates reste rentable, mais pour `ORG` seul, et c'est
+sur `ORG` qu'il faut désormais lire la courbe.
+
+Le déséquilibre d'`ORG` mérite d'être noté : 83,9 % de précision pour 64,7 % de
+rappel. Le modèle est devenu prudent — il ne pose plus d'organisation à tort,
+mais en manque encore une sur trois. Pour un usage RGPD, où un faux négatif est
+une fuite, c'est le rappel qui reste à gagner.
 
 **Conséquence.** L'effet de la variation de contexte des libellés n'est ni
 confirmé ni infirmé : aucune métrique disponible au moment du test ne pouvait le
