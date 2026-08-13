@@ -947,11 +947,40 @@ Ce que cela établit : après le croisement des formes, qui portait le rappel, l
 identifiés au lot 2 sont donc tous deux réels et indépendants, et le second se
 paie dix minutes de génération par lot de dix templates.
 
-**Réserve.** L'entraînement de la passe 5 est aussi plus volumineux : variété et
-volume ont changé ensemble. Un contrôle à volume constant — même nombre de
-tokens, tirés de quatre templates contre quatorze — dirait lequel opère. Le gain
-étant concentré sur les documents non vus et nul sur les documents vus, la
-variété est l'explication la plus probable, mais elle n'est pas isolée.
+#### Le contrôle à volume constant partage le gain
+
+La passe 5 s'entraînait aussi sur un corpus plus gros : variété et volume
+avaient bougé ensemble. Le contrôle ajoute exactement le même volume — à
+2 000 lignes près sur 3,9 millions — mais tiré des **quatre templates écrits à
+la main** au lieu des dix générés.
+
+| | corpus supplémentaire | campagne 2 |
+| --- | --- | ---: |
+| passe 4 | — | 72,7 % |
+| contrôle | 4 templates manuels | 76,2 % |
+| passe 5 | 10 templates générés | **80,8 %** |
+
+Le gain de 8,1 points se partage : **+3,5 pour le volume, +4,6 pour la
+variété**. Mon interprétation initiale attribuait l'essentiel à la variété ;
+elle en explique un peu plus de la moitié. Générer des structures reste le
+meilleur emploi d'un même budget de tokens, mais l'écart avec un simple
+grossissement du corpus est plus étroit qu'annoncé.
+
+Le détail par type déplace en revanche une conclusion posée trois fois plus
+haut :
+
+| Type | contrôle | passe 5 | apport de la variété |
+| --- | ---: | ---: | ---: |
+| `PER` | 77,3 % | 81,4 % | +4,1 |
+| `LOC` | 83,4 % | 86,2 % | +2,8 |
+| **`ORG`** | 53,0 % | 63,7 % | **+10,7** |
+
+`ORG` était réputé insensible aux deux leviers du lot 2. C'est faux : il est
+insensible au **volume** — il recule même à 53,0 % quand on grossit le corpus à
+structures constantes — et c'est le type qui profite le plus de la variété
+structurelle. La priorité « traiter `ORG` dans les gazetteers » est donc mal
+posée : ce ne sont pas les dénominations qui manquent, ce sont les contextes
+d'organisation.
 
 **Conséquence.** L'effet de la variation de contexte des libellés n'est ni
 confirmé ni infirmé : aucune métrique disponible au moment du test ne pouvait le
