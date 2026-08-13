@@ -120,6 +120,46 @@ func TestMaxTokensFilter_SingleToken(t *testing.T) {
 	}
 }
 
+// --- MinRunesFilter ---
+
+func TestMinRunesFilter_RemovesFragments(t *testing.T) {
+	// Débris d'extraction relevés sur une facture dont le crénage disloque les
+	// mots : le CRF les étiquette, ils ne désignent personne.
+	entities := []Entity{
+		entity("1", TypeLOC, 0.9),
+		entity("A", TypeLOC, 0.9),
+		entity("-", TypeLOC, 0.9),
+		entity("21510 BEAULIEU", TypeLOC, 0.9),
+	}
+	got := MinRunesFilter(2)("", entities)
+	if len(got) != 1 {
+		t.Fatalf("attendu 1 entité, got %d : %v", len(got), got)
+	}
+	if got[0].Text != "21510 BEAULIEU" {
+		t.Errorf("mauvaise entité conservée : %q", got[0].Text)
+	}
+}
+
+func TestMinRunesFilter_CountsRunesNotBytes(t *testing.T) {
+	// « Éa » fait 3 octets et 2 runes : compter les octets laisserait passer
+	// des fragments d'un caractère dès qu'ils sont accentués.
+	entities := []Entity{
+		entity("Éa", TypePER, 0.9),
+		entity("É", TypePER, 0.9),
+	}
+	got := MinRunesFilter(2)("", entities)
+	if len(got) != 1 || got[0].Text != "Éa" {
+		t.Errorf("attendu la seule entité de 2 runes, got %v", got)
+	}
+}
+
+func TestMinRunesFilter_IgnoresSurroundingSpaces(t *testing.T) {
+	entities := []Entity{entity("  A  ", TypeLOC, 0.9)}
+	if got := MinRunesFilter(2)("", entities); len(got) != 0 {
+		t.Errorf("les espaces de bordure ne comptent pas : got %v", got)
+	}
+}
+
 // --- BlocklistFilter ---
 
 func TestBlocklistFilter_RemovesAllBlocked(t *testing.T) {

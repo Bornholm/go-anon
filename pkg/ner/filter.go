@@ -59,6 +59,30 @@ func MaxTokensFilter(max int) EntityFilter {
 	}
 }
 
+// MinRunesFilter supprime les entités dont le texte compte moins de min runes
+// une fois les espaces de bordure retirés.
+//
+// Les documents dont l'extraction disloque les mots — crénage PDF restitué
+// littéralement, colonnes entrelacées — produisent des séquences d'un ou deux
+// caractères isolés que le CRF étiquette volontiers : sur un relevé réel, une
+// facture ainsi bruitée a rendu des LOC valant « 1 », « A » ou « - ». Aucune
+// entité utile ne tient en si peu de signes, et un span d'un caractère ne peut
+// de toute façon pas être ré-identifiant.
+//
+// Le filtre compte les runes, pas les octets : « Éa » fait deux caractères et
+// non trois.
+func MinRunesFilter(min int) EntityFilter {
+	return func(_ string, entities []Entity) []Entity {
+		out := entities[:0]
+		for _, e := range entities {
+			if utf8.RuneCountInString(strings.TrimSpace(e.Text)) >= min {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+}
+
 // BlocklistFilter supprime les entités du type entityType dont tous les tokens
 // figurent dans la liste de mots interdits (comparaison insensible à la casse).
 // Permet d'éviter que des titres de poste ou termes génériques soient confondus
