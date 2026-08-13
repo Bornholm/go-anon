@@ -635,14 +635,25 @@ synthétique, n'a été entraîné qu'une fois.
 
 | Modèle            | F1 WikiNER | F1 synthétique |
 | ----------------- | ---------- | -------------- |
-| témoin            | 87,2 %     | 7,1 %          |
+| témoin            | 87,2 %     | 7,4 %          |
 | mixte, passe 1    | 87,6 %     | 93,2 %         |
-| mixte, passe 2    | **88,1 %** | **96,3 %**     |
-| delta passe 2     | **+0,9**   | +89,2          |
+| mixte, passe 2    | 88,1 %     | 96,3 %         |
+| mixte, passe 3    | **88,3 %** | **94,8 %**     |
+| delta passe 3     | **+1,1**   | +87,4          |
 
-Non-régression validée : **+0,9 point** sur WikiNER, très au-dessus du seuil de
+Les passes 1 et 2 sont mesurées sur le jeu de test d'alors ; la passe 3, qui
+introduit le croisement des formes et les libellés d'analyses composés, est
+mesurée sur un jeu régénéré. Seules les colonnes d'une même passe se comparent.
+Sur le jeu de la passe 3, le modèle de la passe 2 obtient 94,7 % — le
+croisement des formes ne rapporte donc **rien en domaine connu** (94,7 → 94,8),
+ce qui est attendu : il redistribue des formes que le corpus produisait déjà,
+il n'en crée pas. Son apport est ailleurs, sur les documents non vus, et c'est
+la mesure LOO ci-dessous qui l'établit. Par type il n'est pas neutre pour
+autant : `ORG` 90,1 → 94,4 et `PER` 96,8 → 97,4, `LOC` 96,3 → 93,2.
+
+Non-régression validée : **+1,1 point** sur WikiNER, très au-dessus du seuil de
 −0,5 fixé au § 10.3. Le mélange à 5,8 % ne coûte rien au texte courant, il lui
-rapporte. Par type, WikiNER : `MISC` +3,4, `PER` +0,2, `LOC` +0,7, `ORG` −0,8.
+rapporte. Par type, WikiNER : `MISC` +2,8, `LOC` +0,9, `PER` +0,3, `ORG` +0,5.
 
 Le gain `MISC` mérite d'être noté : c'est le type que le témoin sur-prédit
 massivement hors domaine (ci-dessous). Le corpus synthétique, qui ne contient
@@ -800,12 +811,12 @@ Les deux modèles passés sur cinq PDF natifs du corpus d'observation, OCR
 désactivé. Sans annotation de référence, seule la précision est lisible ; le
 rappel ne l'est pas.
 
-| Type | témoin | mixte |
-| --- | ---: | ---: |
-| `PER` | 37 | 23 |
-| `LOC` | 55 | **69** |
-| `ORG` | 55 | 20 |
-| `MISC` | 206 | **53** |
+| Type | témoin | mixte | mixte, passe 3 |
+| --- | ---: | ---: | ---: |
+| `PER` | 37 | 23 | 20 |
+| `LOC` | 55 | 69 | **80** |
+| `ORG` | 55 | 20 | 15 |
+| `MISC` | 206 | 53 | **32** |
 
 Les 206 `MISC` du témoin sont presque intégralement du bruit : totaux, en-têtes
 de colonnes, unités de mesure, fragments de mentions légales. Trois gains du
@@ -825,9 +836,18 @@ Deux défauts résiduels, tous deux à traiter :
 - des `LOC` d'un seul caractère sur le document le plus bruité — post-filtre de
   longueur minimale, pas un problème de corpus ;
 - des libellés d'analyse médicale classés `PER` (`Ratio TCK`, `Volume
-  Plaquettaire Moyen`). Le `decoy:analyse` ne produit que des libellés d'un
-  mot ; il lui manque les libellés composés à capitales initiales, dont la
+  Plaquettaire Moyen`). Le `decoy:analyse` ne produisait que des libellés d'un
+  mot ; il lui manquait les libellés composés à capitales initiales, dont la
   signature de surface est celle d'un prénom-nom.
+
+L'élargissement du `decoy:analyse` à trente libellés composés **corrige la
+moitié du défaut** : `Ratio TCK`, `Conclusion Allongement`, `Stago Néoplastine`
+et `Date` ne sont plus étiquetés `PER`, mais `Céphaline Kaolin` et `Volume
+Plaquettaire Moyen` résistent bien qu'ils figurent désormais mot pour mot dans
+le gazetteer. Le négatif ne suffit donc pas seul : sur le document réel ces
+libellés apparaissent isolés en tête de colonne, un contexte que le bloc
+`@block analyses` — libellé suivi d'une valeur et d'un code — ne reproduit pas.
+C'est le contexte gauche-droite qu'il faut varier, pas la liste.
 
 ### Lot 2 — Variété structurelle
 
@@ -835,10 +855,11 @@ Priorité réordonnée par la mesure de généralisation du lot 1 : le croisemen
 formes porte le rappel, la variété des gabarits porte la précision.
 
 - ✅ **Croisement des formes entre templates** — livré, rappel 36,7 → 79,9 %
-- Régénération du corpus principal et réentraînement du mixte sur les templates
-  croisés (les mesures de 88,1 % / 96,3 % portent sur les templates d'avant)
-- Élargissement du `decoy:analyse` aux libellés composés à capitales initiales
-- Post-filtre de longueur minimale sur les spans
+- ✅ Régénération du corpus et réentraînement du mixte — passe 3, 88,3 % WikiNER
+- ✅ Élargissement du `decoy:analyse` — moitié du défaut corrigée
+- ✅ Post-filtre de longueur minimale (`ner.MinRunesFilter`, opt-in)
+- **Variation du contexte des libellés d'analyse** : le négatif seul ne suffit
+  pas quand le contexte réel diffère de celui du bloc générateur
 - Sections optionnelles, blocs répétables, permutation de blocs
 - Cohérence de surface complète (§ 6.3)
 - Module de bruit d'espacement intra-mot, calibré sur le corpus d'observation (§ 8.2)
