@@ -858,8 +858,42 @@ formes porte le rappel, la variété des gabarits porte la précision.
 - ✅ Régénération du corpus et réentraînement du mixte — passe 3, 88,3 % WikiNER
 - ✅ Élargissement du `decoy:analyse` — moitié du défaut corrigée
 - ✅ Post-filtre de longueur minimale (`ner.MinRunesFilter`, opt-in)
-- **Variation du contexte des libellés d'analyse** : le négatif seul ne suffit
-  pas quand le contexte réel diffère de celui du bloc générateur
+- ⚠️ **Variation du contexte des libellés d'analyse** — livrée, effet non
+  démontrable (voir ci-dessous)
+- **Jeu de test réel annoté** — devenu le goulot d'étranglement, voir lot 3
+
+#### Deux résultats de méthode, et un blocage
+
+**Le pas d'apprentissage constant empêchait de mesurer quoi que ce soit.** À
+`lr=0.1` sans décroissance, le dev oscille jusqu'à la dernière époque (0,8725 →
+0,8657 → 0,8799 → 0,8665) et l'arrêt anticipé fige un point arbitraire de cette
+oscillation. Deux runs du même corpus peuvent ainsi différer de 1,5 point sur
+WikiNER, ce qui noie tout effet de corpus de cette taille. Avec `-lr-decay 0.9`,
+la courbe devient monotone (0,8209 → 0,9029 en 14 époques, sans rechute) et le
+même corpus qui donnait 86,8 % sur WikiNER en donne **88,8 %**.
+
+`-lr-decay 0.9` devient le protocole de référence. Rétroactivement, les écarts
+d'un à deux points entre passes rapportés plus haut (88,1 / 88,3) sont dans le
+bruit et ne doivent pas être lus comme des gains ; les écarts d'un ordre de
+grandeur (témoin 7 % contre mixte 95 %, LOO 25,5 → 48,9) sont, eux, robustes.
+
+**Le F1 synthétique diverge de la performance réelle.** Le modèle stabilisé
+atteint 98,8 % sur le jeu synthétique — et produit **17 faux positifs `PER` sur
+le compte-rendu réel**, contre 10 pour le modèle à 94,8 %. Tous les libellés
+d'analyse y reviennent, y compris ceux que la passe 3 avait éliminés.
+
+Ce n'est pas un paradoxe : à 98,8 % le corpus synthétique n'a plus rien à
+apprendre au modèle, et l'optimisation supplémentaire ne fait qu'ajuster
+davantage le modèle aux régularités du générateur — dont l'écart au document
+réel devient alors le facteur dominant. Le § 10.2 postulait que « le F1
+synthétique ne mesure rien d'utile » ; c'est désormais constaté.
+
+**Conséquence.** L'effet de la variation de contexte des libellés n'est ni
+confirmé ni infirmé : aucune métrique disponible ne peut le mesurer. Le
+comptage de faux positifs sur cinq documents non annotés n'est pas une mesure,
+et le F1 synthétique est saturé. Le jeu de test réel annoté du lot 3, jusqu'ici
+traité comme une échéance lointaine, est devenu le prérequis de toute mesure
+ultérieure.
 - Sections optionnelles, blocs répétables, permutation de blocs
 - Cohérence de surface complète (§ 6.3)
 - Module de bruit d'espacement intra-mot, calibré sur le corpus d'observation (§ 8.2)
@@ -873,6 +907,10 @@ hausse, WikiNER stable.
 ### Lot 3 — Jeu de test réel et extension typologique
 
 Le jeu annoté (§ 10.2) devient bloquant ici, avec son cadre juridique arbitré.
+**Ce lot a été promu** : la mesure de la fin du lot 2 a montré qu'aucune
+métrique existante ne distingue plus une amélioration réelle d'un
+sur-ajustement au générateur. Sans jeu de test réel, le lot 2 ne peut pas être
+clos autrement que par relecture humaine.
 
 - Jeu de test réel : 100 – 200 documents annotés
 - Devis (proche de la facture, forte réutilisation)

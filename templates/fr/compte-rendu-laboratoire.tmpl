@@ -43,7 +43,21 @@ Référence {{ref:file|pattern=CS}}
 @block analyses
 {{pad:1-3}}{{decoy:analyse}}{{pad:20-40}}{{amount|form=medical}}{{pad:20-30}}{{decoy:code_court}}
 @end
-{{LINES:6-14}}
+
+@block titres
+{{decoy:analyse}}
+@end
+
+@block intervalles
+{{pad:1-3}}{{decoy:analyse}}{{pad:20-40}}{{amount|form=medical}}{{pad:10-20}}{{amount|form=medical}} − {{amount|form=medical}}
+{{pad:20-40}}{{amount|form=medical}}{{pad:10-20}}{{decoy:analyse}}
+{{pad:1-3}}{{decoy:analyse}} :
+{{pad:20-30}}{{amount|form=medical}}
+@end
+
+{{LINES:titres:1-2}}
+{{LINES:analyses:6-14}}
+{{LINES:intervalles:1-3}}
 
 {{pad:62-66}}{{PER:biologist|form=titre_nom}} (Biologiste){{pad:80-90}}Page 1 sur 4
 {{pad:60-64}}Enf(G) {{PER:patient|form=nom_prenom_caps}} Né(e) {{PER:patient|form=nom_seul}} {{date:birth|format=slash}}
@@ -51,7 +65,9 @@ Référence {{ref:file|pattern=CS}}
 Dossier {{ref:file}} du {{date:sample|format=slash}}
 {{pad:88-92}}Intervalle de référence{{pad:3-5}}Antériorités
 
-{{LINES:4-10}}
+{{LINES:titres:1-2}}
+{{LINES:analyses:4-10}}
+{{LINES:intervalles:1-2}}
 
 {{pad:62-66}}{{PER:biologist|form=titre_nom}} (Biologiste){{pad:80-90}}Page 2 sur 4
 {{pad:60-64}}Enf(G) {{PER:patient|form=nom_prenom_caps}} Né(e) {{PER:patient|form=nom_seul}} {{date:birth|format=slash}}
