@@ -30,7 +30,7 @@ go build -o bin/brown-cluster ./cmd/brown-cluster/
   -train data/wikiner_fr_full.train.wikiner \
   -dev   data/wikiner_fr_full.dev.wikiner \
   -lang fr -format wikiner \
-  -workers 1 -epochs 20 -lr 0.1 -l2 0.01 \
+  -workers 1 -epochs 20 -lr 0.1 -lr-decay 0.9 -l2 0.01 \
   -clusters data/brown_clusters_fr.txt \
   -prune-threshold 0.001 \
   -output model_fr.crf.gz
