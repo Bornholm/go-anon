@@ -747,11 +747,49 @@ templates » mais **la couverture de l'espace des formes** : croiser les formes
 existantes entre types de documents, et n'ajouter des templates que pour les
 formes qu'ils sont seuls à porter.
 
-**Limite du protocole.** Retirer un template retire à la fois un gabarit de
-document et un jeu de formes ; l'expérience ne les sépare pas. Le tableau
-par type est ce qui permet de trancher, pas le F1 global. Une mesure directe
-consisterait à réinjecter les formes du laboratoire dans les trois autres
-templates et à refaire le LOO — c'est le premier test du lot 2.
+**Limite du protocole, et sa levée.** Retirer un template retire à la fois un
+gabarit de document et un jeu de formes. Les deux variables ont été séparées en
+réinjectant les quinze formes du laboratoire dans les trois autres templates
+(sections optionnelles : fiche client étiquetée, maître d'ouvrage titré,
+titulaire de contrat avec nom de naissance, raison sociale en capitales-tirets,
+code postal à tiret…), puis en refaisant le LOO à l'identique — même jeu de
+test, mêmes hyperparamètres.
+
+| | LOO | LOO à formes croisées | mixte complet |
+| --- | ---: | ---: | ---: |
+| précision | 19,6 % | 35,2 % | 98,4 % |
+| **rappel** | 36,7 % | **79,9 %** | 98,6 % |
+| F1 | 25,5 % | 48,9 % | 98,5 % |
+| F2 | 31,2 % | 63,7 % | 98,6 % |
+| `PER` F1 | 18,3 % | 61,6 % | 99,2 % |
+| `LOC` rappel | 72,5 % | **99,6 %** | 96,2 % |
+| `ORG` F1 | 1,1 % | 31,5 % | 100 % |
+
+**Le rappel tient à la forme, la précision tient à la structure.** Le seul
+croisement des formes — sans ajouter un seul type de document — fait passer le
+rappel de 36,7 à 79,9 % sur un document jamais vu, et le `LOC` à 99,6 %. Une
+entité dont la forme de surface a été vue ailleurs est retrouvée, où qu'elle
+soit.
+
+La précision, elle, plafonne à 35,2 % : le modèle sur-génère massivement (1 540
+`LOC` prédites pour 480 réelles). N'ayant jamais vu l'agencement d'un
+compte-rendu médical — ses libellés de champs, ses tableaux de résultats, ses
+mentions réglementaires — il y applique ses attentes de facture et étiquette
+trop. C'est là, et seulement là, que le nombre de gabarits compte : un template
+enseigne où les entités **ne sont pas**.
+
+`ORG` remonte moins que `PER` (31,5 contre 61,6), ce qui était prévisible : la
+famille `sante` n'existe dans aucun des trois autres templates, le vocabulaire
+médical des organisations reste donc inédit même après croisement des formes.
+
+Contrôle de non-régression : 87,3 % sur WikiNER (témoin 87,2 %, mixte 88,1 %).
+
+**Conséquence sur le lot 2.** Les deux leviers ne servent pas la même métrique,
+et l'ordre s'en déduit. Pour la conformité RGPD, où un faux négatif est une
+fuite et où le F2 est la référence, le croisement des formes double la
+performance à coût quasi nul — c'est le levier prioritaire. La multiplication
+des templates sert la précision, donc l'exploitabilité du document anonymisé,
+et vient ensuite.
 
 Contrôle de non-régression : le LOO reste à 86,9 % sur WikiNER (témoin 87,2 %,
 mixte 88,1 %), écart dans le bruit SGD constaté entre époques.
@@ -793,11 +831,12 @@ Deux défauts résiduels, tous deux à traiter :
 
 ### Lot 2 — Variété structurelle
 
-Priorité réordonnée par la mesure de généralisation du lot 1 : la couverture
-des formes commande, le nombre de templates suit.
+Priorité réordonnée par la mesure de généralisation du lot 1 : le croisement des
+formes porte le rappel, la variété des gabarits porte la précision.
 
-- **Croisement des formes entre templates**, puis LOO refait — mesure directe de
-  ce qui, du gabarit ou de la forme, portait l'effondrement
+- ✅ **Croisement des formes entre templates** — livré, rappel 36,7 → 79,9 %
+- Régénération du corpus principal et réentraînement du mixte sur les templates
+  croisés (les mesures de 88,1 % / 96,3 % portent sur les templates d'avant)
 - Élargissement du `decoy:analyse` aux libellés composés à capitales initiales
 - Post-filtre de longueur minimale sur les spans
 - Sections optionnelles, blocs répétables, permutation de blocs

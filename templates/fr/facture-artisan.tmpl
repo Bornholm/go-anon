@@ -13,6 +13,11 @@ noise: 0.4
 {{pad:100-110}}{{PER:buyer|form=civ_nom_prenom}}
 {{pad:100-110}}{{ADDR:buyer_addr|form=street}}
 {{pad:100-110}}{{ADDR:buyer_addr|form=citycode_caps}}
+[?fiche_client]
+{{pad:3-5}}Fiche client{{pad:8-12}}{{PER:buyer|form=nom_prenom_etiquette}}
+{{pad:3-5}}Adresse du chantier{{pad:4-8}}{{ADDR:site_addr|form=inline_dash_caps}}
+{{pad:3-5}}Maître d'ouvrage{{pad:6-10}}{{PER:owner|form=titre_nom}}
+[/]
 
 {{pad:4-6}}Facture
 
@@ -47,7 +52,7 @@ Récapitulatif des factures d'acompte :
 {{decoy:mention}}
 {{decoy:mention}}
 Échéance de règlement : 10 jours après la date de facture.
-Assurance décennale obligatoire souscrite auprès de la compagnie d'assurance {{ORG:insurer|famille=assurance}} située à {{ADDR:insurer_city|form=city}}:{{decoy:ref_longue}}, valable en France
+Assurance décennale obligatoire souscrite auprès de la compagnie d'assurance {{ORG:insurer|form=caps_tirets|famille=assurance}} située à {{ADDR:insurer_city|form=city}}:{{decoy:ref_longue}}, valable en France
 métropolitaine.
 IBAN: {{iban:seller}}
 BIC: {{decoy:code_court}}
