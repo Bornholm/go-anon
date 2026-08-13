@@ -858,6 +858,11 @@ formes porte le rappel, la variété des gabarits porte la précision.
 - ✅ Régénération du corpus et réentraînement du mixte — passe 3, 88,3 % WikiNER
 - ✅ Élargissement du `decoy:analyse` — moitié du défaut corrigée
 - ✅ Post-filtre de longueur minimale (`ner.MinRunesFilter`, opt-in)
+- ✅ **Variété structurelle par templates générés** — 72,7 → 80,8 % sur des
+  structures jamais vues (`go-anon-datasets`)
+- Palier suivant : 30 templates générés, et contrôle à volume constant
+- `ORG` : maillon faible confirmé trois fois (60 à 64 %), à traiter dans les
+  gazetteers plutôt que dans le modèle
 - ⚠️ **Variation du contexte des libellés d'analyse** — livrée, effet non
   démontrable (voir ci-dessous)
 - **Jeu de test réel annoté** — devenu le goulot d'étranglement, voir lot 3
@@ -917,6 +922,36 @@ alors que le comptage de faux positifs sur documents réels le donnait perdant.
 Des deux, c'est le comptage sur cinq documents non annotés qui est la mesure
 faible. La divergence constatée reste réelle, mais elle porte sur la précision
 en conditions d'extraction dégradée, pas sur la généralisation structurelle.
+
+#### La variété structurelle est bien le levier restant
+
+Le corpus LLM a d'abord servi de test. Cette passe le met à l'entraînement, en
+découpant **par template et non par document** — entraîner sur une campagne et
+tester sur un corpus qu'elle produit recréerait la circularité que ce jeu sert
+à casser. Une seconde campagne de dix types disjoints (huissier, jury
+d'assises, arrêté préfectoral, quittance de loyer…) sert de test, et n'est vue
+par aucun des deux modèles.
+
+| Modèle | entraînement | campagne 2 | templates manuels | WikiNER |
+| --- | --- | ---: | ---: | ---: |
+| mixte passe 4 | WikiNER + 4 manuels | 72,7 % | 98,8 % | 88,8 % |
+| **mixte passe 5** | + campagne 1 (10 types) | **80,8 %** | 98,2 % | 88,9 % |
+
+**+8,1 points sur des structures jamais vues**, sans contrepartie : WikiNER est
+stable (+0,1) et les templates manuels ne perdent que 0,6 point, dans le bruit.
+Par type, `PER` +8,0 et `LOC` +8,6 ; `ORG` ne gagne que 3,7 et reste à 63,7 %,
+confirmant pour la troisième fois qu'il est le maillon faible.
+
+Ce que cela établit : après le croisement des formes, qui portait le rappel, la
+**variété des structures** porte la précision — 69,9 → 80,9 %. Les deux leviers
+identifiés au lot 2 sont donc tous deux réels et indépendants, et le second se
+paie dix minutes de génération par lot de dix templates.
+
+**Réserve.** L'entraînement de la passe 5 est aussi plus volumineux : variété et
+volume ont changé ensemble. Un contrôle à volume constant — même nombre de
+tokens, tirés de quatre templates contre quatorze — dirait lequel opère. Le gain
+étant concentré sur les documents non vus et nul sur les documents vus, la
+variété est l'explication la plus probable, mais elle n'est pas isolée.
 
 **Conséquence.** L'effet de la variation de contexte des libellés n'est ni
 confirmé ni infirmé : aucune métrique disponible au moment du test ne pouvait le
