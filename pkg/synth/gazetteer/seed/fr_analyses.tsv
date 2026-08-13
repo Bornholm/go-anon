@@ -1,4 +1,12 @@
 # libellé d'analyse médicale	poids
+#
+# La seconde moitié de la liste porte les libellés **composés à capitales
+# initiales sur chaque mot** — « Volume Plaquettaire Moyen », « Céphaline
+# Kaolin ». Leur signature de surface est celle d'un prénom suivi d'un
+# patronyme, et c'est précisément ce que le modèle entraîné sans eux y voyait :
+# ils ont produit les faux positifs PER relevés sur le compte-rendu réel.
+# Ils ne sont pas décoratifs, ils sont le négatif qui apprend à ne pas
+# étiqueter.
 Hémogramme	25
 Ionogramme sanguin	24
 Glycémie à jeun	23
@@ -19,3 +27,33 @@ Temps de céphaline activée	15
 Taux de prothrombine	15
 Cholestérol HDL	14
 Triglycérides	14
+Volume Plaquettaire Moyen	24
+Céphaline Kaolin	22
+Temps de Céphaline Kaolin	20
+Ratio TCK	21
+Concentration Corpusculaire Moyenne	19
+Teneur Corpusculaire Moyenne	18
+Volume Globulaire Moyen	23
+Formule Leucocytaire	22
+Polynucléaires Neutrophiles	21
+Polynucléaires Eosinophiles	18
+Polynucléaires Basophiles	16
+Lymphocytes Totaux	20
+Monocytes Circulants	17
+Facteur Rhumatoïde	15
+Phosphatases Alcalines	19
+Gamma Glutamyl Transférase	17
+Lactate Déshydrogénase	16
+Créatine Phosphokinase	16
+Bilirubine Totale Conjuguée	15
+Anticorps Anti Nucléaires	14
+Antigène Prostatique Spécifique	14
+Clairance Rénale Estimée	15
+Débit de Filtration Glomérulaire	14
+Fer Sérique Total	17
+Capacité Totale de Fixation	13
+Index de Saturation	13
+Réticulocytes Sanguins	15
+Marqueurs Cardiaques	12
+Temps de Saignement	13
+Ionogramme Urinaire Complet	14
