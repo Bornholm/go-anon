@@ -26,6 +26,9 @@ go build -o bin/prune        ./cmd/prune/
 go build -o bin/brown-cluster ./cmd/brown-cluster/
 
 # Entraînement (exemple FR, corpus complet)
+# -lr-decay stabilise la fin d'entraînement. Sans lui le F1 de dev oscille
+# jusqu'à la dernière époque et l'arrêt anticipé fige un point arbitraire :
+# 88,8 % avec, 86,8 % sans, pour le même corpus.
 ./bin/train \
   -train data/wikiner_fr_full.train.wikiner \
   -dev   data/wikiner_fr_full.dev.wikiner \
@@ -39,10 +42,14 @@ go build -o bin/brown-cluster ./cmd/brown-cluster/
 # Passer les MÊMES -gazetteers/-clusters qu'à l'entraînement (sinon F1 sous-évalué ;
 # Recognizer.Warnings() alerte sur stderr). -keep-punct et -boundaries pilotent la
 # configuration d'inférence (défauts : ponctuation conservée, coupure . ! ? …).
+# Vérifier d'abord que le jeu de test ne recoupe pas l'entraînement :
+python scripts/check_overlap.py data/prod/train.conll data/wikiner_fr.test.conll
+
+GAZ=~/.cache/go-anon/models
 ./bin/eval -model model_fr.crf.gz -lang fr \
   -test data/wikiner_fr.test.conll -format conll \
   -clusters data/brown_clusters_fr.txt \
-  -gazetteers "firstnames:data/eu_prenoms.txt,lastnames:data/eu_patronymes.txt"
+  -gazetteers "firstnames:$GAZ/firstnames.txt,locations:$GAZ/locations.txt,organizations:$GAZ/organizations.txt"
 
 # Réduction d'un modèle existant sans ré-entraînement
 ./bin/prune -model model_fr_full_bio.crf.gz \
@@ -239,21 +246,30 @@ nouveau `FeatureSchema` (sinon dégradation silencieuse des modèles existants).
 
 ## Performances de référence (WikiNER, matching strict)
 
-> ⚠️ **Ces chiffres sont mesurés sur des jeux contaminés et surestiment le
-> modèle.** `data/fr/wikiner_fr.test.conll` partage **91,8 %** de ses phrases
-> avec `wikiner_fr_full.train`, et `data/wikiner_fr.dev.conll` **97,9 %**.
-> Mesuré sur `data/wikiner_fr.test.conll`, propre à 0,2 %, un modèle entraîné
-> dans ces conditions obtient **88,7 %** au lieu de 95,0 % sur le jeu
-> contaminé — 6,3 points d'écart pour le même modèle. Les valeurs `en` et `es`
-> n'ont pas été revérifiées et sont vraisemblablement affectées de la même
-> façon. Refaire un découpage disjoint et documenté est un prérequis à la
-> prochaine publication.
+Trois des quatre jeux d'évaluation du dépôt partagent l'essentiel de leurs
+phrases avec le corpus d'entraînement. Un modèle évalué dessus se note lui-même
+sur ce qu'il a appris par cœur.
 
-| Langue | F1    | Schéma / format |
-| ------ | ----- | --------------- |
-| fr     | 93,6 % | schéma 1 / v3   |
-| en     | 90,7 % | schéma 1 / v3   |
-| es     | 95,6 % | schéma 1 / v3 (`-early-stop 8 -epochs 30`, cf. `FIX.md`) |
+| Jeu | Phrases présentes dans `wikiner_fr_full.train` |
+| --- | ---: |
+| `data/wikiner_fr.dev.conll` | 97,9 % |
+| `data/fr/wikiner_fr.test.conll` | 91,8 % |
+| `data/wikiner_fr.test.conll` | 0,2 %, seul jeu utilisable |
+| `data/wikiner_fr_full.dev.wikiner` | 0,5 %, sert de dev |
+
+L'écart n'est pas anecdotique. Le même modèle obtient 95,0 % sur le jeu à
+91,8 % et 88,7 % sur le jeu propre. Vérifier avec `scripts/check_overlap.py`
+avant toute mesure.
+
+| Langue | F1 | Jeu | Schéma / format |
+| ------ | ---- | --- | --------------- |
+| fr | 88,7 % | `data/wikiner_fr.test.conll`, propre | schéma 1 / v4 |
+| en | 90,7 % | non vérifié, valeur héritée | schéma 1 / v3 |
+| es | 95,6 % | non vérifié, valeur héritée | schéma 1 / v3 |
+
+Les valeurs `en` et `es` datent d'avant ce contrôle. Leurs découpages ont été
+produits de la même façon, elles sont donc à recalculer sur des jeux vérifiés
+avant toute republication.
 
 Évaluer **toujours** avec les mêmes `-gazetteers` et `-clusters` qu'à
 l'entraînement ; `Recognizer.Warnings()` signale les écarts. Voir

@@ -85,9 +85,15 @@ Voir [`scripts/split_wikiner_lang.py`](../scripts/split_wikiner_lang.py)
 ## Étape 3 — Préparer les gazetteers (optionnel mais recommandé)
 
 Les gazetteers fournissent au modèle des listes de référence de prénoms et de
-patronymes. Les fichiers `data/eu_prenoms.txt` et `data/eu_patronymes.txt` sont
-déjà présents dans ce dépôt ; cette étape est nécessaire uniquement si vous
-souhaitez les régénérer depuis la source officielle.
+patronymes.
+
+`data/eu_prenoms.txt` et `data/eu_patronymes.txt` ne sont plus dans le dépôt.
+Les modèles publiés utilisent ceux que `modelstore` télécharge dans
+`~/.cache/go-anon/models` : `firstnames.txt` (48 517 entrées),
+`locations.txt` (32 687) et `organizations.txt` (111). Le dernier est trop
+maigre pour peser, et c'est une piste ouverte pour améliorer `ORG`.
+
+Cette étape sert à régénérer les fichiers EU depuis la source officielle.
 
 ### Source : portail OpenData de l'Union Européenne
 
@@ -192,9 +198,12 @@ Durée : ~5 min sur un corpus complet.
 
 ### 5b. Entraînement complet avec Brown clusters et gazetteers (recommandé)
 
-C'est la configuration qui produit les modèles de production :
+C'est la configuration qui produit les modèles de production. `$GAZ` désigne le
+cache de `modelstore`, où les gazetteers publiés sont téléchargés :
 
 ```bash
+GAZ=~/.cache/go-anon/models
+
 ./bin/train \
   -train      data/<LANG>/wikiner_<LANG>_full.train.wikiner \
   -dev        data/<LANG>/wikiner_<LANG>_full.dev.wikiner \
@@ -203,9 +212,10 @@ C'est la configuration qui produit les modèles de production :
   -workers    1 \
   -epochs     20 \
   -lr         0.1 \
+  -lr-decay   0.9 \
   -l2         0.01 \
   -clusters   data/<LANG>/brown_clusters_<LANG>.txt \
-  -gazetteers "firstnames:data/eu_prenoms.txt,lastnames:data/eu_patronymes.txt" \
+  -gazetteers "firstnames:$GAZ/firstnames.txt,locations:$GAZ/locations.txt" \
   -prune-threshold 0.001 \
   -output     models/model_<LANG>_pruned.crf.gz
 ```
@@ -213,7 +223,7 @@ C'est la configuration qui produit les modèles de production :
 **Variante FR.** Ajoutez le gazetteer des communes :
 
 ```bash
-  -gazetteers "firstnames:data/eu_prenoms.txt,lastnames:data/eu_patronymes.txt,locations:data/fr/fr_communes.txt"
+  -gazetteers "firstnames:$GAZ/firstnames.txt,locations:data/fr/fr_communes.txt"
 ```
 
 ### 5c. Entraînement avec word embeddings GloVe (expérimental)
@@ -230,7 +240,7 @@ C'est la configuration qui produit les modèles de production :
   -l2         0.01 \
   -clusters   data/<LANG>/brown_clusters_<LANG>.txt \
   -embeddings data/glove.6B.100d.txt \
-  -gazetteers "firstnames:data/eu_prenoms.txt,lastnames:data/eu_patronymes.txt" \
+  -gazetteers "firstnames:$GAZ/firstnames.txt,locations:$GAZ/locations.txt" \
   -prune-threshold 0.001 \
   -output     models/model_<LANG>_glove.crf.gz
 ```
@@ -272,7 +282,7 @@ C'est la configuration qui produit les modèles de production :
   -test       data/<LANG>/wikiner_<LANG>.test.conll \
   -format     conll \
   -clusters   data/<LANG>/brown_clusters_<LANG>.txt \
-  -gazetteers "firstnames:data/eu_prenoms.txt,lastnames:data/eu_patronymes.txt"
+  -gazetteers "firstnames:$GAZ/firstnames.txt,locations:$GAZ/locations.txt"
 ```
 
 > **Important** : passer à l'évaluation exactement les mêmes `-gazetteers` et
@@ -343,7 +353,7 @@ echo "Barack Obama was born in Hawaii and studied at Harvard University." \
 ```bash
 ./bin/server \
   -models     "fr:models/model_fr_pruned.crf.gz,en:models/model_en_pruned.crf.gz,es:models/model_es_pruned.crf.gz" \
-  -gazetteers "firstnames:data/eu_prenoms.txt,lastnames:data/eu_patronymes.txt" \
+  -gazetteers "firstnames:$GAZ/firstnames.txt,locations:$GAZ/locations.txt" \
   -port 8080
 ```
 
@@ -355,8 +365,8 @@ taille).
 
 ```
 data/
-├── eu_prenoms.txt                          # Gazetteer prénoms EU (fourni)
-├── eu_patronymes.txt                       # Gazetteer patronymes EU (fourni)
+├── eu_prenoms.txt                          # Gazetteer prénoms EU (à régénérer, § 3)
+├── eu_patronymes.txt                       # Gazetteer patronymes EU (à régénérer, § 3)
 ├── fr/
 │   ├── wikiner_fr_full.train.wikiner       # corpus train FR (~250k phrases)
 │   ├── wikiner_fr_full.dev.wikiner         # corpus dev FR
