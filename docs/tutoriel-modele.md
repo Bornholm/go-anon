@@ -320,10 +320,10 @@ corpus. `en` et `es` n'en disposent pas.
 
 > Les nouveaux entraînements produisent des modèles au **schéma de features 1**
 > (deux bugs corrigés : `word.len`, gazetteers multi-mots) et au **format v3**,
-> que `cmd/convert` réécrit ensuite en **v4** pour la publication
-> (poids groupés par feature) puis **v4** (format de flux : pic mémoire au chargement divisé par cinq, fichiers 40 % plus petits).
-> Ces deux évolutions sont enregistrées dans le modèle et propagées
-> automatiquement à l'inférence. Aucune option à passer.
+> qui groupe les poids par feature. `cmd/convert` les réécrit en **v4** avant
+> publication : le pic mémoire au chargement passe de 819 à 163 Mio sur le
+> modèle français, et le fichier perd 40 %. Le schéma et le format sont
+> enregistrés dans le modèle et propagés à l'inférence, sans option à passer.
 >
 > **Décroissance du pas.** `-lr-decay 0.9` remplace la patience élargie qui
 > servait à contourner le bruit du F1 de dev. À pas constant la courbe oscille
