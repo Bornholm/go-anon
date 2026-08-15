@@ -264,7 +264,7 @@ chiffres ci-dessous.
 
 | Langue | F1 | Jeu | Format |
 | ------ | ---- | --- | ------ |
-| fr | 88,6 % | `data/wikiner_fr.test.conll` | v4 |
+| fr | 89,1 % | `data/wikiner_fr.test.conll` | v4 |
 | en | 83,0 % | `data/prod/en_clean_test.conll` | v4 |
 | es | 88,6 % | `data/prod/es_clean_test.conll` | v4 |
 
