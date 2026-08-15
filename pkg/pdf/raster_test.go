@@ -285,7 +285,7 @@ func TestRenderMode_GraphicsState(t *testing.T) {
 			"q 0 Tr BT (c) Tj ET Q " + // rendu visible dans l'état empilé
 			"BT (d) Tj ET") // Q a restauré le mode 3
 
-	tokens := extractTextTokens(content, nil)
+	tokens := extractTextTokens(content, nil, nil)
 	if len(tokens) != 4 {
 		t.Fatalf("tokens = %d, attendu 4 : %+v", len(tokens), tokens)
 	}
@@ -308,7 +308,7 @@ func TestInlineImage_DoesNotSwallowText(t *testing.T) {
 		"BI /W 4 /H 1 /CS /G /BPC 8 ID (((( EI\n" +
 			"BT /F1 12 Tf 72 700 Td (TexteVisible) Tj ET")
 
-	tokens := extractTextTokens(content, nil)
+	tokens := extractTextTokens(content, nil, nil)
 	if len(tokens) != 1 || tokens[0].text != "TexteVisible" {
 		t.Fatalf("texte suivant une image en ligne perdu : %+v", tokens)
 	}

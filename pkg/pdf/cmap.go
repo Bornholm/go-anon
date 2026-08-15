@@ -217,3 +217,14 @@ func parseHexCode(s string) (uint32, bool) {
 	}
 	return v, true
 }
+
+// runeForCode retourne la rune associée à un code de glyphe. Sert à indexer les
+// largeurs du tableau /W, qui porte des CID là où le reste du walker manipule
+// du texte décodé.
+func (m *toUnicodeMap) runeForCode(code uint32) (rune, bool) {
+	if m == nil {
+		return 0, false
+	}
+	r, ok := m.glyphToRune[code]
+	return r, ok
+}

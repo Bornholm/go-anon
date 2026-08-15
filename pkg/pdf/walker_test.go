@@ -30,3 +30,21 @@ func TestEncodePDFString_PreserveWinAnsi(t *testing.T) {
 		t.Errorf("encodePDFString(\"Éric\") = %q", got)
 	}
 }
+
+func TestDecodeTJArray_EspacesImplicites(t *testing.T) {
+	// TeX encode l'espace inter-mots par un déplacement, sans émettre le
+	// caractère. Les ignorer collait les mots et rendait la ligne
+	// insegmentable pour le modèle.
+	got, _ := decodeTJArray([]byte("[(Free) -300 (Forfait) -280 (Mobile)]"), nil)
+	if got != "Free Forfait Mobile" {
+		t.Errorf("decodeTJArray = %q, want %q", got, "Free Forfait Mobile")
+	}
+}
+
+func TestDecodeTJArray_CrenageNeSeparePas(t *testing.T) {
+	// Un crénage de paire serrée ne doit pas produire d'espace.
+	got, _ := decodeTJArray([]byte("[(A) -80 (V) 20 (a)]"), nil)
+	if got != "AVa" {
+		t.Errorf("decodeTJArray = %q, want %q", got, "AVa")
+	}
+}

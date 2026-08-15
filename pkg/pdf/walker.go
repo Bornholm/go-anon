@@ -23,9 +23,10 @@ const yProximity = 3.0 // points: Y tolerance for grouping text on same line
 
 // fontInfo tracks the active font state within a text block.
 type fontInfo struct {
-	name string
-	size float64
-	cmap *toUnicodeMap // nil if not a CIDFont or no ToUnicode
+	name    string
+	size    float64
+	cmap    *toUnicodeMap // nil if not a CIDFont or no ToUnicode
+	metrics *fontMetrics  // largeurs déclarées ; nil si la police n'en publie pas
 }
 
 // textToken is one text-rendering operation in a content stream.
@@ -114,6 +115,7 @@ func NewWalkerFromFile(path string) (docprocessor.Walker, error) {
 		if err != nil {
 			cmaps = map[string]*toUnicodeMap{}
 		}
+		metrics := loadPageMetrics(ctx, pageNr, cmaps)
 
 		r, err := pdfcore.ExtractPageContent(ctx, pageNr)
 		if err != nil || r == nil {
@@ -124,7 +126,7 @@ func NewWalkerFromFile(path string) (docprocessor.Walker, error) {
 			continue
 		}
 
-		tokens := extractTextTokens(contentBytes, cmaps)
+		tokens := extractTextTokens(contentBytes, cmaps, metrics)
 
 		// À évaluer avant le filtrage des pages sans token : c'est précisément
 		// une page sans texte extractible qui est susceptible d'être un scan.
@@ -406,7 +408,7 @@ func loadPageCMaps(ctx *model.Context, pageNr int) (map[string]*toUnicodeMap, er
 
 // extractTextTokens parses a PDF content stream and returns all text-rendering
 // operations with their byte ranges and decoded text.
-func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap) []textToken {
+func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap, metrics map[string]*fontMetrics) []textToken {
 	var tokens []textToken
 
 	type matrix [6]float64
@@ -542,6 +544,7 @@ func extractTextTokens(content []byte, cmaps map[string]*toUnicodeMap) []textTok
 					fontName := strings.TrimPrefix(string(nameRaw), "/")
 					currentFont.name = fontName
 					currentFont.cmap = cmaps[fontName]
+					currentFont.metrics = metrics[fontName]
 					currentFont.size = parseFloatBytes(sizeRaw)
 				}
 			}
@@ -761,7 +764,10 @@ func needsSpace(prev, next textToken) bool {
 	if size <= 0 {
 		size = 10
 	}
-	advance := avgGlyphRatio * size * float64(utf8.RuneCountInString(prev.text))
+	advance, exact := prev.font.metrics.advance(prev.text, size)
+	if !exact {
+		advance = avgGlyphRatio * size * float64(utf8.RuneCountInString(prev.text))
+	}
 
 	return next.xPos-(prev.xPos+advance) > spaceGapRatio*size
 }
@@ -1044,7 +1050,16 @@ func decodeTJArray(raw []byte, cmap *toUnicodeMap) (string, bool) {
 			continue
 		}
 		if isNumericStart(content[i]) {
-			_, end := scanNumber(content, i)
+			num, end := scanNumber(content, i)
+			// Un nombre d'un tableau TJ déplace le texte de -n/1000 cadratin.
+			// TeX et consorts encodent ainsi leurs espaces inter-mots, sans
+			// jamais émettre le caractère : les ignorer collait « Free » et
+			// « Forfait Mobile » en un seul mot, et le modèle ne pouvait plus
+			// segmenter la ligne.
+			if v := parseFloatBytes(content[i:end]); v <= -tjSpaceThreshold {
+				sb.WriteByte(' ')
+			}
+			_ = num
 			i = end
 			continue
 		}
@@ -1052,6 +1067,15 @@ func decodeTJArray(raw []byte, cmap *toUnicodeMap) (string, bool) {
 	}
 	return sb.String(), isUTF16
 }
+
+// tjSpaceThreshold sépare un espace inter-mots d'un simple crénage, en
+// millièmes de cadratin.
+//
+// Une espace vaut 250 à 330 millièmes selon la police ; le crénage d'une paire
+// serrée dépasse rarement 100. Le seuil est placé sous la première valeur
+// plutôt qu'au-dessus de la seconde : une espace de trop se voit et se corrige,
+// deux mots recollés masquent une entité et ne se voient plus.
+const tjSpaceThreshold = 150
 
 // substituteWinAnsi choisit le remplaçant d'une rune absente de Windows-1252.
 //
