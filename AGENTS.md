@@ -246,30 +246,42 @@ nouveau `FeatureSchema` (sinon dégradation silencieuse des modèles existants).
 
 ## Performances de référence (WikiNER, matching strict)
 
-Trois des quatre jeux d'évaluation du dépôt partagent l'essentiel de leurs
-phrases avec le corpus d'entraînement. Un modèle évalué dessus se note lui-même
-sur ce qu'il a appris par cœur.
+Les jeux d'évaluation livrés avec le dépôt recoupent l'entraînement. La cause
+est dans le corpus : WikiNER contient 41 % de phrases dupliquées en anglais et
+44 % en espagnol, qu'un découpage aléatoire répartit des deux côtés.
 
-| Jeu | Phrases présentes dans `wikiner_fr_full.train` |
+| Jeu historique | Phrases partagées avec l'entraînement |
 | --- | ---: |
 | `data/wikiner_fr.dev.conll` | 97,9 % |
 | `data/fr/wikiner_fr.test.conll` | 91,8 % |
-| `data/wikiner_fr.test.conll` | 0,2 %, seul jeu utilisable |
-| `data/wikiner_fr_full.dev.wikiner` | 0,5 %, sert de dev |
+| `data/es/wikiner_es.test.conll` | 87,2 % |
+| `data/en/wikiner_en.test.conll` | 81,6 % |
+| `data/wikiner_fr.test.conll` | 0,2 %, propre par accident de calendrier |
 
-L'écart n'est pas anecdotique. Le même modèle obtient 95,0 % sur le jeu à
-91,8 % et 88,7 % sur le jeu propre. Vérifier avec `scripts/check_overlap.py`
-avant toute mesure.
+`scripts/split_wikiner_clean.py` déduplique puis découpe. Les jeux qu'il produit
+ne partagent aucune phrase avec l'entraînement, et ce sont eux qui donnent les
+chiffres ci-dessous.
 
-| Langue | F1 | Jeu | Schéma / format |
-| ------ | ---- | --- | --------------- |
-| fr | 88,7 % | `data/wikiner_fr.test.conll`, propre | schéma 1 / v4 |
-| en | 90,7 % | non vérifié, valeur héritée | schéma 1 / v3 |
-| es | 95,6 % | non vérifié, valeur héritée | schéma 1 / v3 |
+| Langue | F1 | Ancien F1 publié | Jeu | Format |
+| ------ | ---- | ---- | --- | ------ |
+| fr | 88,6 % | 93,6 % | `data/wikiner_fr.test.conll` | v4 |
+| en | 83,0 % | 90,7 % | `data/prod/en_clean_test.conll` | v4 |
+| es | 88,6 % | 95,6 % | `data/prod/es_clean_test.conll` | v4 |
 
-Les valeurs `en` et `es` datent d'avant ce contrôle. Leurs découpages ont été
-produits de la même façon, elles sont donc à recalculer sur des jeux vérifiés
-avant toute republication.
+Les anciens chiffres n'étaient pas faux par erreur de calcul, ils mesuraient
+autre chose. Le même modèle `es` obtient 88,6 % sur le jeu propre et 95,9 % sur
+l'ancien, le même modèle `en` 83,0 % contre 89,8 %. L'écart tient entre 6 et
+7 points selon la langue.
+
+Le modèle `fr` intègre en plus le corpus synthétique de `DATASET.md`, qui lui
+vaut 80,2 % sur documents administratifs contre 11,4 % sans. `en` et `es` n'en
+bénéficient pas encore.
+
+Vérifier tout nouveau jeu avant de publier un chiffre :
+
+```bash
+python scripts/check_overlap.py data/prod/en_clean_train.conll data/prod/en_clean_test.conll
+```
 
 Évaluer **toujours** avec les mêmes `-gazetteers` et `-clusters` qu'à
 l'entraînement ; `Recognizer.Warnings()` signale les écarts. Voir
