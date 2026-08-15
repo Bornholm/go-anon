@@ -2,7 +2,7 @@
 //
 // La bibliothèque standard n'est pas utilisée : son rendu ne restitue pas les
 // offsets des valeurs insérées, qui sont exactement ce dont le générateur a
-// besoin (DATASET.md § 6.2). Le parser produit un AST que le renderer parcourt
+// besoin. Le parser produit un AST que le renderer parcourt
 // en émettant des segments annotés.
 package template
 

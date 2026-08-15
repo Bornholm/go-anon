@@ -4,7 +4,7 @@
 // Le renderer ne produit jamais une chaîne directement : il produit une liste
 // de segments dont chacun porte son label. Le texte final et les offsets sont
 // calculés par concaténation. C'est ce qui rend le désalignement d'offsets
-// inexprimable plutôt que seulement testé (DATASET.md § 3.2).
+// inexprimable plutôt que seulement testé.
 package render
 
 import (

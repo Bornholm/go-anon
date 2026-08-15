@@ -102,7 +102,7 @@ func groupBy4(s string) string {
 	return strings.Join(parts, " ")
 }
 
-// --- Négatifs difficiles (DATASET.md § 7) ---
+// --- Négatifs difficiles ---
 
 // renderDecoy produit un contre-exemple non annoté. Le corpus en a besoin pour
 // que le modèle n'apprenne pas « majuscules = entité » ni « quatorze chiffres =

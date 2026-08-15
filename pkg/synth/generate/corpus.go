@@ -50,7 +50,7 @@ func LoadTemplates(dir, lang string) ([]*template.Template, error) {
 
 // Manifest accompagne un corpus généré. Sans lui, un écart de performance
 // entre deux entraînements est inexploitable : impossible de distinguer un
-// changement de modèle d'un changement de corpus (DATASET.md § 11.2).
+// changement de modèle d'un changement de corpus.
 type Manifest struct {
 	Generator     string            `json:"generator"`
 	GeneratedAt   string            `json:"generated_at"`

@@ -204,7 +204,7 @@ func (g *Generator) NewOrgIn(famille string) Org {
 //
 // Une liste plate de dénominations plafonne l'entropie du corpus et fait
 // mémoriser les organisations au modèle au lieu de lui faire apprendre leur
-// forme (DATASET.md § 16, lot 1). L'assemblage porte les quatre composants à
+// forme. L'assemblage porte les quatre composants à
 // plusieurs centaines de milliers de combinaisons.
 //
 // Les trois contraintes qui rendent le résultat lisible : le qualificatif

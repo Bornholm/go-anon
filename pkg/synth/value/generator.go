@@ -116,7 +116,7 @@ var joursFR = []string{"Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendr
 
 // dateFor mémorise une date par slot, avec un décalage tiré autour de la date
 // de référence du document. L'ordre obtenu est plausible sans être un invariant
-// vérifié (DATASET.md § 6.3).
+// vérifié.
 func (g *Generator) dateFor(slot string) time.Time {
 	if slot == "" {
 		return g.base.AddDate(0, 0, g.rng.Intn(60)-30)

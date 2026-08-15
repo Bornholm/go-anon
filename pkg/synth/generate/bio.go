@@ -11,8 +11,7 @@ import (
 
 // Tokenizer retourne le tokeniseur configuré comme à l'inférence pour une
 // langue. C'est le même package que le pipeline de production : toute
-// divergence introduirait un décalage systématique entre corpus et production
-// (DATASET.md § 9.1).
+// divergence introduirait un décalage systématique entre corpus et production.
 func Tokenizer(lang string) tokenizer.Tokenizer {
 	switch lang {
 	case "fr", "es":

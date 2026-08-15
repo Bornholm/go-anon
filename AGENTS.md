@@ -273,7 +273,7 @@ Les chiffres affichés avant août 2026 mesuraient autre chose. Le même modèle
 83,0 % contre 89,8 %. Six à sept points d'écart selon la langue, pour un modèle
 identique.
 
-Le modèle `fr` intègre en plus le corpus synthétique de `DATASET.md`, qui lui
+Le modèle `fr` intègre en plus le corpus synthétique de `pkg/synth`, qui lui
 vaut 80,2 % sur documents administratifs contre 11,4 % sans. `en` et `es` n'en
 bénéficient pas encore.
 

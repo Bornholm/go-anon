@@ -151,8 +151,7 @@ les vérifications textuelles passent au vert, mais **les pixels restent lisible
 
 L'OCR n'a pas un rappel parfait : sur un scan dégradé, penché ou de faible
 contraste, une donnée peut échapper à la reconnaissance et donc au caviardage.
-Les pages scannées restent signalées à ce titre. La trajectoire complète est
-décrite dans [`OCR.md`](../OCR.md).
+Les pages scannées restent signalées à ce titre.
 
 L'inventaire complet des surfaces par format (headers/footers, footnotes,
 tracked-changes…) et les critères de recette figurent dans

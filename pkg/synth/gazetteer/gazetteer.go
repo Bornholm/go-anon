@@ -1,7 +1,7 @@
 // Package gazetteer charge et tire des valeurs dans des listes pondérées.
 //
 // Le format est un TSV « valeur <TAB> poids <TAB> metadata(JSON) », choisi pour
-// rester lisible et diffable (DATASET.md § 5.2). Les poids bruts issus de
+// rester lisible et diffable. Les poids bruts issus de
 // sources statistiques sont très piqués : une poignée de valeurs écrase la
 // longue traîne. L'exposant d'aplatissement rend ce compromis réglable.
 package gazetteer
@@ -35,7 +35,7 @@ type Set struct {
 // Options pilote la mise en forme de la distribution au chargement.
 type Options struct {
 	// Alpha aplatit les poids : w' = w^Alpha. 1 conserve la distribution
-	// réelle, 0 la rend uniforme. Défaut 0.6 (DATASET.md § 5.3).
+	// réelle, 0 la rend uniforme. Défaut 0.6.
 	Alpha float64
 	// MinWeight écarte les valeurs sous ce poids brut, pour couper le bruit
 	// orthographique des fichiers sources.

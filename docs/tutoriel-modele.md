@@ -314,7 +314,8 @@ dupliquées en anglais et 44 % en espagnol : tout découpage aléatoire les
 répartit des deux côtés. Dédupliquer avant de découper ramène le recouvrement à
 zéro et coûte entre 6 et 7 points de F1 affiché.
 
-Le modèle `fr` inclut le corpus synthétique de `DATASET.md`. Il obtient 80,2 %
+Le modèle `fr` inclut le corpus synthétique produit par `cmd/synthcorpus`.
+Il obtient 80,2 %
 sur documents administratifs, contre 11,4 % pour le même entraînement sans ce
 corpus. `en` et `es` n'en disposent pas.
 

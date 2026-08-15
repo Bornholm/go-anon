@@ -35,7 +35,7 @@ func DefaultOptions() Options {
 //
 // La dérivation est hiérarchique : régénérer le document n ne demande pas de
 // rejouer les n−1 précédents, et ajouter des documents en fin de corpus ne
-// modifie pas les existants (DATASET.md § 11.1).
+// modifie pas les existants.
 func DocumentSeed(global uint64, typ, lang string, index int) uint64 {
 	h := fnv.New64a()
 	var buf [8]byte
@@ -151,7 +151,7 @@ func (w *walker) keep(name string) bool {
 //
 // L'altération est **locale au segment** : le texte change, mais l'offset du
 // segment est recalculé par la concaténation finale. C'est ce qui rend le
-// désalignement impossible plutôt que seulement testé (DATASET.md § 3.2, § 8.2).
+// désalignement impossible plutôt que seulement testé.
 func (w *walker) noise(s render.Segment, noisy bool) render.Segment {
 	if !noisy || s.Text == "" {
 		return s

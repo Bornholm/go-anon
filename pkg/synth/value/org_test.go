@@ -82,7 +82,7 @@ func TestNewOrgInRespecteLaFamille(t *testing.T) {
 
 // Le défaut de la liste plate était de plafonner l'entropie ORG : 16 valeurs
 // pour des milliers d'occurrences, donc de la mémorisation plutôt que de
-// l'apprentissage de forme (DATASET.md § 16). Ce test fixe un plancher.
+// l'apprentissage de forme. Ce test fixe un plancher.
 func TestOrgEntropie(t *testing.T) {
 	b := loadBundle(t)
 	g := New(rand.New(rand.NewSource(7)), b)

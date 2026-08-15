@@ -3,3 +3,8 @@
 /bin
 /.claude
 /dist
+
+# Plans de travail, hors dépôt
+/DATASET.md
+/TESTSET.md
+/OCR.md

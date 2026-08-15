@@ -21,7 +21,7 @@ de juger si le corpus couvre le terrain.
 ## Placeholders
 
 **La casse porte le sens** : un placeholder en majuscules produit une entité
-annotée, en minuscules un texte réaliste non annoté (`DATASET.md` § 2.2).
+annotée, en minuscules un texte réaliste non annoté.
 
 | Placeholder                  | Annoté | Produit                                     |
 | ---------------------------- | ------ | ------------------------------------------- |
@@ -142,8 +142,7 @@ plusieurs sections (même nom = même décision).
 
 ## Négatifs
 
-`{{decoy:kind}}` insère un contre-exemple sans annotation
-(`DATASET.md` § 7) :
+`{{decoy:kind}}` insère un contre-exemple sans annotation :
 
 | `kind=`       | Produit                                                     |
 | ------------- | ----------------------------------------------------------- |
@@ -177,7 +176,7 @@ modèle est tenté de voir un `PER`.
 | `long_time`  | `Samedi 07 Février 2026 à 18:34` | laboratoire        |
 
 Les dates d'un même document sont tirées dans un ordre plausible (échéance après
-émission), sans que ce soit un invariant vérifié : `DATASET.md` § 6.3.
+émission), sans que ce soit un invariant vérifié.
 
 ### `{{ref:slot|pattern=…}}`
 

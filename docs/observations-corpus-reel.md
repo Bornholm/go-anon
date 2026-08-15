@@ -146,9 +146,9 @@ Le crénage appliqué par le générateur de PDF produit un espacement intra-mot
 l'extraction restitue littéralement. **Aucun OCR n'est intervenu** : c'est un PDF
 natif, et le pipeline le subit déjà aujourd'hui.
 
-**Cette observation corrige la décision § 8 de `DATASET.md`.** Le plan écartait
-tout module de bruit au motif qu'une matrice de confusion OCR devinée est
-inutile. C'est toujours vrai pour l'OCR. Mais le bruit d'espacement intra-mot est
+**Cette observation renverse une décision de conception.** Le générateur
+écartait tout module de bruit au motif qu'une matrice de confusion OCR devinée
+est inutile. C'est toujours vrai pour l'OCR. Mais le bruit d'espacement intra-mot est
 d'une autre nature : il est présent dans les documents natifs, il est
 observable et mesurable directement sur le corpus d'origine, et il détruit toutes
 les features morphologiques de `pkg/features` (préfixes, suffixes, forme,
@@ -156,7 +156,7 @@ appartenance gazetteer). Un modèle qui ne l'a jamais vu ne détectera rien sur 
 passages.
 
 Le générateur doit donc produire ce bruit — appliqué segment par segment, où le
-recalcul d'offsets est gratuit (`DATASET.md` § 3.2).
+recalcul d'offsets est gratuit.
 
 ---
 
@@ -228,7 +228,7 @@ chaque page avec l'identité du patient** (`Enf(G) BERTRAND Mathis Né(e) BERTRA
 document — exactement ce que la `Session` cross-segments de `pkg/anonymizer` doit
 traiter de façon cohérente.
 
-À ajouter au lot 3 de `DATASET.md`, en remplacement ou en complément du bulletin
+À ajouter au corpus, en remplacement ou en complément du bulletin
 de paie.
 
 ---
