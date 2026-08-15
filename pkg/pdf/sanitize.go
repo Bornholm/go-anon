@@ -2,6 +2,9 @@ package pdf
 
 import (
 	"fmt"
+	"strings"
+
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 
 	"github.com/bornholm/go-anon/pkg/docprocessor"
 )
@@ -27,10 +30,11 @@ func (w *Walker) Sanitize(policy docprocessor.SanitizePolicy) (docprocessor.Sani
 		report.MetadataStripped = true
 	}
 
-	if n := w.countAnnotations(); n > 0 {
+	if n := w.countTextAnnotations(); n > 0 {
 		// Les annotations peuvent porter du texte (commentaires, valeurs de
 		// champ) que le pipeline n'anonymise pas.
-		report.Unprocessed = append(report.Unprocessed, "annotations PDF")
+		report.Unprocessed = append(report.Unprocessed, fmt.Sprintf(
+			"%d annotation(s) PDF porteuse(s) de texte", n))
 	}
 	if w.hasEmbeddedFiles() {
 		report.Unprocessed = append(report.Unprocessed, "pièces jointes PDF")
@@ -77,6 +81,91 @@ func (w *Walker) stripXMP() {
 		return
 	}
 	delete(cat, "Metadata")
+}
+
+// annotationTextKeys liste les entrées d'un dictionnaire d'annotation qui
+// peuvent contenir du texte saisi : commentaire, nom et valeur de champ de
+// formulaire, infobulle, variante enrichie.
+var annotationTextKeys = []string{"Contents", "T", "V", "TU", "RC"}
+
+// countTextAnnotations compte les annotations susceptibles de porter une donnée
+// personnelle.
+//
+// Compter toutes les annotations rendait l'alerte inutilisable : un PDF de
+// facture porte des /Link sur ses URL de contact, sans une ligne de texte
+// saisi. Signaler ces liens comme surface non traitée noyait les vraies
+// annotations à risque, et faisait échouer le mode strict sans motif.
+//
+// Une annotation compte si elle porte un champ texte non vide, ou une action
+// /URI — une adresse peut contenir un identifiant client ou un courriel.
+func (w *Walker) countTextAnnotations() int {
+	total := 0
+	for pageNr := 1; pageNr <= w.ctx.PageCount; pageNr++ {
+		d, _, _, err := w.ctx.PageDict(pageNr, false)
+		if err != nil || d == nil {
+			continue
+		}
+		obj, found := d.Find("Annots")
+		if !found || obj == nil {
+			continue
+		}
+		arr, err := w.ctx.DereferenceArray(obj)
+		if err != nil {
+			continue
+		}
+		for _, a := range arr {
+			if w.annotationCarriesText(a) {
+				total++
+			}
+		}
+	}
+	return total
+}
+
+// annotationCarriesText rapporte si une annotation porte du texte saisi ou une
+// URI. En cas de doute — dictionnaire illisible — elle compte : mieux vaut une
+// alerte de trop qu'une donnée passée sous silence.
+func (w *Walker) annotationCarriesText(a types.Object) bool {
+	ad, err := w.ctx.DereferenceDict(a)
+	if err != nil || ad == nil {
+		return true
+	}
+	for _, k := range annotationTextKeys {
+		v, ok := ad.Find(k)
+		if !ok {
+			continue
+		}
+		if s, err := w.ctx.DereferenceStringOrHexLiteral(v, 0, nil); err == nil && strings.TrimSpace(s) != "" {
+			return true
+		}
+	}
+	if action, ok := ad.Find("A"); ok {
+		if actionDict, err := w.ctx.DereferenceDict(action); err == nil && actionDict != nil {
+			if uri, ok := actionDict.Find("URI"); ok {
+				if s, err := w.ctx.DereferenceStringOrHexLiteral(uri, 0, nil); err == nil && uriCarriesData(s) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// uriCarriesData rapporte si une URI peut transporter une donnée personnelle.
+//
+// Une facture porte des liens vers le site de son émetteur : les signaler
+// revient à alerter sur chaque document, ce qui apprend à ignorer l'alerte. Une
+// adresse de courriel ou des paramètres de requête, en revanche, portent
+// couramment un identifiant client ou un jeton de session.
+func uriCarriesData(uri string) bool {
+	uri = strings.TrimSpace(uri)
+	if uri == "" {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(uri), "mailto:") {
+		return true
+	}
+	return strings.ContainsAny(uri, "?=@")
 }
 
 // countAnnotations somme les annotations présentes sur toutes les pages.

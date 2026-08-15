@@ -333,18 +333,28 @@ func main() {
 		log.Fatalf("vérification visuelle : %v", err)
 	}
 	if len(visualLeaks) > 0 {
+		// Compter par région ne dit pas quoi corriger. Le genre et le type de
+		// chaque fuite, eux, orientent : un regex-hit EMAIL page 3 se cherche
+		// autrement qu'une entité connue restée lisible. Le texte fuité n'est
+		// jamais journalisé — ce serait recopier la donnée qu'on protège.
 		byRegion := make(map[string]int, len(visualLeaks))
+		byKind := make(map[string]int, len(visualLeaks))
 		for _, leak := range visualLeaks {
 			byRegion[leak.Region]++
+			kind := leak.Kind.String()
+			if leak.Type != "" {
+				kind += "/" + string(leak.Type)
+			}
+			byKind[kind]++
 		}
 		if *strict {
 			os.Remove(*outputPath)
-			log.Fatalf("vérification visuelle : %d donnée(s) restée(s) lisible(s) %v — "+
-				"document détruit", len(visualLeaks), byRegion)
+			log.Fatalf("vérification visuelle : %d donnée(s) restée(s) lisible(s) "+
+				"%v %v — document détruit", len(visualLeaks), byRegion, byKind)
 		}
 		fmt.Fprintf(os.Stderr, "AVERTISSEMENT : vérification visuelle — %d donnée(s) "+
-			"restée(s) LISIBLE(s) dans le document produit %v ; "+
-			"utiliser -strict pour le refuser\n", len(visualLeaks), byRegion)
+			"restée(s) LISIBLE(s) dans le document produit %v %v ; "+
+			"utiliser -strict pour le refuser\n", len(visualLeaks), byRegion, byKind)
 	}
 
 	fmt.Printf("Document anonymisé : %s\n", *outputPath)

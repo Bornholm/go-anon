@@ -289,7 +289,10 @@ func (a *Anonymizer) replace(ent ner.Entity, index int, params *anonymizeParams)
 
 	switch a.config.Strategy {
 	case Redact:
-		return strings.Repeat("█", len(ent.Text)), nil
+		// Compter les runes, pas les octets : « Éric » fait 5 octets pour
+		// 4 caractères, et len() produirait un masque plus long que le nom
+		// qu'il remplace, ce qui renseigne sur la présence d'accents.
+		return strings.Repeat("█", utf8.RuneCountInString(ent.Text)), nil
 	case Hash:
 		return a.hashReplacement(ent, params)
 	default: // TagReplace, Consistent

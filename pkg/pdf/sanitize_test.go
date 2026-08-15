@@ -105,3 +105,24 @@ func TestGuarantee_PDFStripsInfoMetadata(t *testing.T) {
 		t.Errorf("le nom subsiste dans Info après sanitisation : %q", after)
 	}
 }
+
+func TestURICarriesData(t *testing.T) {
+	// Une facture porte des liens vers le site de son émetteur. Les signaler
+	// comme surface non traitée alerte sur chaque document et apprend à
+	// ignorer l'alerte.
+	cases := map[string]bool{
+		"http://mobile.free.fr":                       false,
+		"http://mobile.free.fr/contact.html":          false,
+		"https://example.org/aide":                    false,
+		"":                                            false,
+		"mailto:jean.dupont@example.org":              true,
+		"MAILTO:Jean@example.org":                     true,
+		"https://espace.example.org/?client=59842885": true,
+		"https://example.org/facture?id=2382811072":   true,
+	}
+	for uri, want := range cases {
+		if got := uriCarriesData(uri); got != want {
+			t.Errorf("uriCarriesData(%q) = %v, want %v", uri, got, want)
+		}
+	}
+}

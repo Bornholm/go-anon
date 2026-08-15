@@ -1053,6 +1053,24 @@ func decodeTJArray(raw []byte, cmap *toUnicodeMap) (string, bool) {
 	return sb.String(), isUTF16
 }
 
+// substituteWinAnsi choisit le remplaçant d'une rune absente de Windows-1252.
+//
+// Une chaîne PDF littérale est relue octet par octet selon l'encodage de la
+// police. Y écrire les octets UTF-8 d'un caractère absent de cet encodage ne le
+// restitue pas : le lecteur affiche un octet par caractère. « █ » (U+2588, soit
+// E2 96 88) ressortait ainsi en « â–ˆ », ce qui rendait illisibles les pages
+// caviardées.
+//
+// Les caractères de bloc servent au caviardage et doivent rester opaques : ils
+// deviennent des dièses. Le reste devient un point d'interrogation, qui signale
+// la perte sans prétendre l'avoir évitée.
+func substituteWinAnsi(r rune) byte {
+	if r >= 0x2580 && r <= 0x259F { // Block Elements
+		return '#'
+	}
+	return '?'
+}
+
 // win1252Extra maps Unicode code points that exist in Windows-1252 but not in Latin-1
 // (the range U+0080–U+009F is remapped to printable characters in Windows-1252).
 var win1252Extra = map[rune]byte{
@@ -1117,10 +1135,7 @@ func encodePDFString(s string, useUTF16 bool) []byte {
 			} else if r < 256 {
 				buf.WriteByte(byte(r))
 			} else {
-				// Caractère hors Windows-1252 : octal UTF-8
-				for _, b := range []byte(string(r)) {
-					fmt.Fprintf(&buf, `\%03o`, b)
-				}
+				buf.WriteByte(substituteWinAnsi(r))
 			}
 		}
 	}
