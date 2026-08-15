@@ -21,6 +21,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.25"
+          check-latest: true
 
       - name: Build
         run: go build -v ./...
@@ -39,6 +40,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.25"
+          check-latest: true
 
       - name: Test
         run: go test ./...
@@ -56,6 +58,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.25"
+          check-latest: true
 
       - name: Test (race detector)
         run: go test -race ./...
@@ -84,6 +87,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.25"
+          check-latest: true
 
       - name: Fuzz ${{ matrix.target }}
         run: go test ./pkg/anonymizer/ -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 120s
@@ -107,6 +111,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.25"
+          check-latest: true
 
       - name: govulncheck
         run: |
@@ -122,6 +127,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.25"
+          check-latest: true
 
       # S5 (permissions du MappingStore) et S7 (timeouts HTTP, limite de corps,
       # sémaphore de concurrence, ErrorLog silencieux) sont désormais livrés :
