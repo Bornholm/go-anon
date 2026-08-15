@@ -262,16 +262,16 @@ est dans le corpus : WikiNER contient 41 % de phrases dupliquées en anglais et
 ne partagent aucune phrase avec l'entraînement, et ce sont eux qui donnent les
 chiffres ci-dessous.
 
-| Langue | F1 | Ancien F1 publié | Jeu | Format |
-| ------ | ---- | ---- | --- | ------ |
-| fr | 88,6 % | 93,6 % | `data/wikiner_fr.test.conll` | v4 |
-| en | 83,0 % | 90,7 % | `data/prod/en_clean_test.conll` | v4 |
-| es | 88,6 % | 95,6 % | `data/prod/es_clean_test.conll` | v4 |
+| Langue | F1 | Jeu | Format |
+| ------ | ---- | --- | ------ |
+| fr | 88,6 % | `data/wikiner_fr.test.conll` | v4 |
+| en | 83,0 % | `data/prod/en_clean_test.conll` | v4 |
+| es | 88,6 % | `data/prod/es_clean_test.conll` | v4 |
 
-Les anciens chiffres n'étaient pas faux par erreur de calcul, ils mesuraient
-autre chose. Le même modèle `es` obtient 88,6 % sur le jeu propre et 95,9 % sur
-l'ancien, le même modèle `en` 83,0 % contre 89,8 %. L'écart tient entre 6 et
-7 points selon la langue.
+Les chiffres affichés avant août 2026 mesuraient autre chose. Le même modèle
+`es` obtient 88,6 % sur le jeu dédupliqué et 95,9 % sur l'ancien ; le même `en`,
+83,0 % contre 89,8 %. Six à sept points d'écart selon la langue, pour un modèle
+identique.
 
 Le modèle `fr` intègre en plus le corpus synthétique de `DATASET.md`, qui lui
 vaut 80,2 % sur documents administratifs contre 11,4 % sans. `en` et `es` n'en

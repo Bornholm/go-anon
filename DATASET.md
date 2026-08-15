@@ -12,8 +12,8 @@ ensuite)
 
 ### 1.1 Constat de départ
 
-Les modèles publiés (fr 93,6 / en 90,7 / es 95,6 F1) sont entraînés sur
-WikiNER : de la prose encyclopédique. Les documents que traite `anon-doc` —
+Les modèles publiés (fr 88,6 / en 83,0 / es 88,6 F1 sur jeux dédupliqués) sont
+entraînés sur WikiNER : de la prose encyclopédique. Les documents que traite `anon-doc` —
 factures, devis, bulletins de paie, emails — ont une structure, une densité
 d'entités et une ponctuation qui n'ont rien à voir. C'est l'écart de domaine
 que ce corpus vise à combler.
@@ -64,7 +64,7 @@ fabriquer artificiellement dégraderait ce que le modèle a déjà appris.
 
 **Décision — mapping plutôt que nouveau jeu de labels.** `PERSON→PER`,
 `ORGANISATION→ORG`, `ADDRESS→LOC`. Motifs : le corpus reste mélangeable à
-WikiNER (on part de 93,6 F1 au lieu de zéro), les modèles publiés restent
+WikiNER (on part de 88,6 F1 au lieu de zéro), les modèles publiés restent
 compatibles, et `anon-doc` ne régresse pas sur le texte courant. Un jeu de
 labels dédié imposerait un modèle « documents » distinct par langue, donc une
 matrice de publication doublée, sans bénéfice démontré.
@@ -674,7 +674,7 @@ massivement sur les en-têtes, les numéros et les libellés — exactement le
 comportement qui rend l'anonymisation inexploitable en production. Le corpus
 synthétique corrige d'abord cela.
 
-Les valeurs absolues sont sous la référence publiée de 93,6 % (12 époques au
+Les valeurs absolues sont sous la référence de production (12 époques au
 lieu de 20, gazetteers de la recette non chargés). Les deux bras en pâtissent à
 l'identique ; seul le delta est interprétable. Aucun de ces modèles n'est un
 candidat à la publication.

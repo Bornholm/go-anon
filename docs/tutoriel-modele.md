@@ -299,24 +299,36 @@ Flags d'évaluation liés à la configuration d'inférence :
 | `-clusters`   | —         | Fichier Brown clusters (doit correspondre à l'entraînement)                                      |
 | `-gazetteers` | —         | Gazetteers `nom:fichier.txt,...` (idem)                                                          |
 
-Performances de référence sur WikiNER (configuration 5b, splits seed 42,
-matching strict, inférence par défaut, mesures 2026-07) :
+Performances de référence sur WikiNER, matching strict, jeux dédupliqués
+(`scripts/split_wikiner_clean.py`), mesures 2026-08 :
 
 | Langue | F1 global | PER   | LOC   | ORG   | MISC  | Schéma / format |
 | ------ | --------- | ----- | ----- | ----- | ----- | --------------- |
-| `fr`   | 93.6%     | 96.7% | 93.1% | 91.7% | 89.9% | schéma 1 / v3   |
-| `en`   | 90.7%     | 94.1% | 89.0% | 90.8% | 87.8% | schéma 1 / v3   |
-| `es`   | 95.6%     | 97.5% | 94.9% | 93.7% | 95.3% | schéma 1 / v3   |
+| `fr`   | 88.6%     | 93.9% | 88.8% | 83.1% | 80.8% | schéma 1 / v4   |
+| `en`   | 83.0%     | 89.7% | 82.9% | 80.2% | 75.5% | schéma 1 / v4   |
+| `es`   | 88.6%     | 93.2% | 89.5% | 83.2% | 77.8% | schéma 1 / v4   |
+
+Les mesures antérieures à août 2026 portaient sur des jeux qui recoupaient
+l'entraînement de 81 % à 98 % selon la langue. WikiNER contient 41 % de phrases
+dupliquées en anglais et 44 % en espagnol : tout découpage aléatoire les
+répartit des deux côtés. Dédupliquer avant de découper ramène le recouvrement à
+zéro et coûte entre 6 et 7 points de F1 affiché.
+
+Le modèle `fr` inclut le corpus synthétique de `DATASET.md`. Il obtient 80,2 %
+sur documents administratifs, contre 11,4 % pour le même entraînement sans ce
+corpus. `en` et `es` n'en disposent pas.
 
 > Les nouveaux entraînements produisent des modèles au **schéma de features 1**
-> (deux bugs corrigés : `word.len`, gazetteers multi-mots) et au **format v3**
-> (poids groupés par feature, inférence ~×4,6, modèles ~30–50 % plus petits).
+> (deux bugs corrigés : `word.len`, gazetteers multi-mots) et au **format v3**,
+> que `cmd/convert` réécrit ensuite en **v4** pour la publication
+> (poids groupés par feature) puis **v4** (format de flux : pic mémoire au chargement divisé par cinq, fichiers 40 % plus petits).
 > Ces deux évolutions sont enregistrées dans le modèle et propagées
 > automatiquement à l'inférence. Aucune option à passer.
 >
-> **Note espagnol** : le F1 dev de l'espagnol est bruité ; utiliser une patience
-> d'early-stopping élargie (`-early-stop 8 -epochs 30`). Avec la valeur par
-> défaut (`-early-stop 5`), l'entraînement s'arrête sur un plateau et perd ~1 pt.
+> **Décroissance du pas.** `-lr-decay 0.9` remplace la patience élargie qui
+> servait à contourner le bruit du F1 de dev. À pas constant la courbe oscille
+> jusqu'à la dernière époque et l'arrêt anticipé fige un point arbitraire :
+> 88,8 % avec décroissance, 86,8 % sans, pour le même corpus français.
 
 ## Étape 7 — Réduire la taille du modèle (optionnel)
 
