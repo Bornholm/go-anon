@@ -239,6 +239,16 @@ nouveau `FeatureSchema` (sinon dégradation silencieuse des modèles existants).
 
 ## Performances de référence (WikiNER, matching strict)
 
+> ⚠️ **Ces chiffres sont mesurés sur des jeux contaminés et surestiment le
+> modèle.** `data/fr/wikiner_fr.test.conll` partage **91,8 %** de ses phrases
+> avec `wikiner_fr_full.train`, et `data/wikiner_fr.dev.conll` **97,9 %**.
+> Mesuré sur `data/wikiner_fr.test.conll`, propre à 0,2 %, un modèle entraîné
+> dans ces conditions obtient **88,7 %** au lieu de 95,0 % sur le jeu
+> contaminé — 6,3 points d'écart pour le même modèle. Les valeurs `en` et `es`
+> n'ont pas été revérifiées et sont vraisemblablement affectées de la même
+> façon. Refaire un découpage disjoint et documenté est un prérequis à la
+> prochaine publication.
+
 | Langue | F1    | Schéma / format |
 | ------ | ----- | --------------- |
 | fr     | 93,6 % | schéma 1 / v3   |
