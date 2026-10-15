@@ -220,36 +220,13 @@ func (p *Processor) ProcessWithReport(walker Walker, opts ...anonymizer.Anonymiz
 		i := index
 		index++
 		report.Segments = index
-
-		segOpts := allOpts
-		if found := extras[i]; len(found) > 0 {
-			segOpts = append(append([]anonymizer.AnonymizeOption{}, allOpts...),
-				anonymizer.WithAdditionalEntities(found))
-		}
-
-		result, err := p.anon.Anonymize(seg.Text, segOpts...)
+		out, err := p.anonymizeSegment(i, seg, extras[i], allOpts, report)
 		if err != nil {
-			var verr *anonymizer.VerificationError
-			if errors.As(err, &verr) {
-				return fmt.Errorf("segment %d : %w", i, err)
-			}
 			return err
 		}
-		if result.Verification != nil {
-			for _, leak := range result.Verification.Leaks {
-				report.Leaks = append(report.Leaks, SegmentLeak{Segment: i, Leak: leak})
-			}
-		}
-		for _, ent := range result.Entities {
-			report.countEntity(ent.Type)
-		}
-		if result.Text != seg.Text {
-			seg.Replace(result.Text)
-		}
-
 		if p.verifyDoc {
-			outputs = append(outputs, result.Text)
-			for _, replacement := range result.OriginalToPlaceholder {
+			outputs = append(outputs, out.Text)
+			for _, replacement := range out.OriginalToPlaceholder {
 				replacements = append(replacements, replacement)
 			}
 		}
@@ -287,6 +264,35 @@ func (p *Processor) ProcessWithReport(walker Walker, opts ...anonymizer.Anonymiz
 	}
 
 	return session, report, nil
+}
+
+// anonymizeSegment anonymise le segment de rang i, y réécrit le résultat et
+// en reporte les fuites et les entités dans report. extra porte les entités
+// trouvées par la détection multi-vues.
+func (p *Processor) anonymizeSegment(i int, seg Segment, extra []ner.Entity, opts []anonymizer.AnonymizeOption, report *Report) (*anonymizer.Result, error) {
+	if len(extra) > 0 {
+		opts = append(append([]anonymizer.AnonymizeOption{}, opts...), anonymizer.WithAdditionalEntities(extra))
+	}
+	result, err := p.anon.Anonymize(seg.Text, opts...)
+	if err != nil {
+		var verr *anonymizer.VerificationError
+		if errors.As(err, &verr) {
+			return nil, fmt.Errorf("segment %d : %w", i, err)
+		}
+		return nil, err
+	}
+	if result.Verification != nil {
+		for _, leak := range result.Verification.Leaks {
+			report.Leaks = append(report.Leaks, SegmentLeak{Segment: i, Leak: leak})
+		}
+	}
+	for _, ent := range result.Entities {
+		report.countEntity(ent.Type)
+	}
+	if result.Text != seg.Text {
+		seg.Replace(result.Text)
+	}
+	return result, nil
 }
 
 // verifyDocument recompose la sortie et y relance une passe de détection.
