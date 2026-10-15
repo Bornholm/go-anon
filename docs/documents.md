@@ -10,7 +10,7 @@ les surfaces cachées (métadonnées, commentaires, révisions).
 | ------- | ---------- | ---------------------------------------------------------------- |
 | DOCX    | `pkg/docx` | itération sur les paragraphes, réécriture des runs               |
 | ODT     | `pkg/odt`  | parsing XML en mémoire, réécriture in-place, resérialisation ZIP |
-| CSV/TSV | `pkg/csv`  | détection auto du séparateur, anonymisation cellule par cellule  |
+| CSV/TSV | `pkg/csv`  | au fil de l'eau, cellule par cellule ; séparateur, BOM et CRLF conservés |
 | PDF     | `pkg/pdf`  | lecture seule (pdfcpu), extraction texte avec offsets, redact    |
 
 ```bash
@@ -19,6 +19,51 @@ anon-doc -model auto -input rapport.docx -output rapport_anon.docx
 # Format tabulaire, stratégie de caviardage
 anon-doc -model auto -lang fr -strategy redact -input data.csv -output data_anon.csv
 ```
+
+## Fichiers volumineux : traitement au fil de l'eau
+
+Un `Walker` charge le document entier : il se parcourt plusieurs fois
+(échantillonnage de la langue, vues multiples, vérification) avant d'être écrit
+d'un bloc. Pour un CSV de plusieurs dizaines de mégaoctets, la mémoire suivrait
+la taille du fichier.
+
+Les CSV et TSV passent donc par un `docprocessor.StreamWalker` (`csv.Stream`),
+que `Processor.ProcessStream` traite **par lots** (64 ko de texte par défaut) :
+chaque lot est lu, anonymisé, vérifié puis écrit avant la lecture du suivant. La
+mémoire ne dépend plus de la taille du fichier, à la table de correspondance
+près, qui croît avec le nombre d'entités distinctes (`Session.SetMaxEntities`
+la borne).
+
+- **Une session pour tout le fichier.** La numérotation et la cohérence des
+  pseudonymes valent d'un lot à l'autre, comme avec un `Walker`.
+- **Contrôles à l'échelle du lot.** `-multi-view` et `-verify-document`
+  recomposent chaque lot, pas le fichier entier : une entité coupée entre deux
+  lots leur échappe. Pour un CSV, où les entités ne franchissent guère la
+  cellule, c'est sans conséquence pratique.
+- **En-tête.** La première ligne est conservée telle quelle quand elle nomme
+  les colonnes : cellules courtes, distinctes et non vides, et au moins une
+  colonne qui a des chiffres ou un « @ » dans la deuxième ligne mais pas dans la
+  première (`csv.LooksLikeHeader`). Sinon elle est anonymisée comme une ligne de
+  données : un doute ne laisse rien en clair.
+- **Échec.** Les lots déjà traités sont écrits : en mode `-strict`, une fuite
+  interrompt le traitement et `anon-doc` détruit la sortie partielle. Un
+  appelant de `ProcessStream` doit faire de même.
+- **Forme.** Le guillemetage peut changer : seules les cellules qui en ont
+  besoin sont guillemetées en sortie.
+
+```go
+in, _ := os.Open("clients.csv")
+out, _ := os.Create("clients_anon.csv")
+stream, _ := csv.NewStream(in, out) // csv.WithSeparator, WithBatchBytes, WithHeader
+session, report, err := docprocessor.New(anon).ProcessStream(stream, anonymizer.WithVerification())
+if err != nil {
+	os.Remove("clients_anon.csv") // sortie partielle
+}
+```
+
+`csv.Stream.WalkRows` donne aussi les lots ligne par ligne, avec l'en-tête
+(`Header`) et la progression (`BytesRead`) : de quoi donner à un modèle le nom
+de la colonne en contexte, ou afficher l'avancement.
 
 ## Compromis précision/rappel
 

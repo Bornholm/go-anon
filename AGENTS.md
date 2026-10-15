@@ -152,10 +152,10 @@ Points de configuration importants (cf. `pkg/ner` et `goanon.go`) :
 | `pkg/ner`          | Orchestration : `Recognizer`, décodage BIO→entités, évaluation F1, post-filtres, corrections BIO             |
 | `pkg/anonymizer`   | Remplacement des entités : stratégies (tag/redact/hash), `Session` cross-segments, passes de post-traitement, vérification fail-closed (`verify.go`) |
 | `pkg/anonymizer/mappingstore` | Store chiffré (AES-256-GCM) des tables de ré-identification : rétention, purge, effacement cryptographique |
-| `pkg/docprocessor` | Interface `Walker` + `Processor` — orchestration de l'anonymisation de documents format-agnostique ; interface `Sanitizer` + `Sanitize()` : purge des surfaces cachées (métadonnées, commentaires, révisions), fail-closed en mode strict |
+| `pkg/docprocessor` | Interface `Walker` + `Processor` — orchestration de l'anonymisation de documents format-agnostique ; `StreamWalker` + `ProcessStream` pour les formats traités au fil de l'eau, par lots (CSV) ; interface `Sanitizer` + `Sanitize()` : purge des surfaces cachées (métadonnées, commentaires, révisions), fail-closed en mode strict |
 | `pkg/docx`         | `Walker` DOCX : itération sur les paragraphes, réécriture des runs ; `Sanitizer` (docProps purgés, commentaires supprimés, révisions détectées) |
 | `pkg/odt`          | `Walker` ODT : parsing XML en mémoire, réécriture in-place, resérialisation ZIP ; `Sanitizer` (meta.xml purgé, annotations et tracked-changes retirées) |
-| `pkg/csv`          | `Walker` CSV/TSV : détection auto du séparateur, anonymisation cellule par cellule ; `Sanitizer` no-op (pas de surface cachée) |
+| `pkg/csv`          | `Stream` CSV/TSV (`docprocessor.StreamWalker`) : lecture et écriture au fil de l'eau par lots, séparateur/BOM/CRLF conservés, en-tête détecté (`LooksLikeHeader`) ; `Walker` historique (fichier chargé en entier) ; `Sanitizer` no-op (pas de surface cachée) |
 | `pkg/pdf`          | `Walker` PDF (lecture seule via pdfcpu) : extraction texte avec offsets, redact dans le flux de contenu ; `Sanitizer` (Info + XMP purgés, annotations/pièces jointes signalées) |
 | `pkg/corpus`       | Lecture CoNLL et WikiNER, normalisation BIO, conversion BIO↔BIOES                                            |
 | `pkg/tokenizer`    | `UnicodeTokenizer` — offsets byte-précis, options FR/ES (apostrophe) et EN (trait d'union)                   |

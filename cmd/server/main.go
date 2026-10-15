@@ -38,9 +38,22 @@ type walkerFactory func(path string) (docprocessor.Walker, error)
 var walkerFactories = map[string]walkerFactory{
 	".docx": pkgdocx.NewWalkerFromFile,
 	".odt":  pkgodt.NewWalkerFromFile,
-	".csv":  pkgcsv.NewWalkerFromFile,
-	".tsv":  pkgcsv.NewWalkerFromFile,
 	".pdf":  pkgpdf.NewWalkerFromFile,
+}
+
+// streamFactory prépare le traitement au fil de l'eau d'un document, lu dans r
+// et écrit dans w.
+type streamFactory func(r io.Reader, w io.Writer) (docprocessor.StreamWalker, error)
+
+// Formats traités au fil de l'eau : la mémoire ne dépend pas de la taille du
+// fichier, qui n'est lu qu'une fois.
+var streamFactories = map[string]streamFactory{
+	".csv": func(r io.Reader, w io.Writer) (docprocessor.StreamWalker, error) {
+		return pkgcsv.NewStream(r, w)
+	},
+	".tsv": func(r io.Reader, w io.Writer) (docprocessor.StreamWalker, error) {
+		return pkgcsv.NewStream(r, w, pkgcsv.WithSeparator('\t'))
+	},
 }
 
 var docMimeTypes = map[string]string{
@@ -507,8 +520,11 @@ func (s *Server) handleLanguages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDocFormats(w http.ResponseWriter, r *http.Request) {
-	formats := make([]string, 0, len(walkerFactories))
+	formats := make([]string, 0, len(walkerFactories)+len(streamFactories))
 	for ext := range walkerFactories {
+		formats = append(formats, ext)
+	}
+	for ext := range streamFactories {
 		formats = append(formats, ext)
 	}
 	sort.Strings(formats)
@@ -543,7 +559,8 @@ func (s *Server) handlePseudonymizeDoc(w http.ResponseWriter, r *http.Request) {
 
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	factory, ok := walkerFactories[ext]
-	if !ok {
+	openStream, streamed := streamFactories[ext]
+	if !ok && !streamed {
 		http.Error(w, fmt.Sprintf("format %q not supported", ext), http.StatusBadRequest)
 		return
 	}
@@ -584,12 +601,17 @@ func (s *Server) handlePseudonymizeDoc(w http.ResponseWriter, r *http.Request) {
 	// Détection automatique de la langue si non spécifiée (ou "auto") : on
 	// échantillonne le texte du document via un walker de lecture seule.
 	if lang == "" || lang == "auto" {
-		sampleWalker, err := factory(tmpIn.Name())
-		if err != nil {
-			http.Error(w, "error reading file", http.StatusInternalServerError)
-			return
+		var sample string
+		if streamed {
+			sample, err = sampleStream(openStream, tmpIn.Name())
+		} else {
+			var sampleWalker docprocessor.Walker
+			if sampleWalker, err = factory(tmpIn.Name()); err != nil {
+				http.Error(w, "error reading file", http.StatusInternalServerError)
+				return
+			}
+			sample, err = docprocessor.SampleText(sampleWalker, 4000)
 		}
-		sample, err := docprocessor.SampleText(sampleWalker, 4000)
 		if err != nil {
 			id := requestIDFrom(r)
 			http.Error(w, "error sampling document (ref "+id+")", http.StatusInternalServerError)
@@ -674,61 +696,68 @@ func (s *Server) handlePseudonymizeDoc(w http.ResponseWriter, r *http.Request) {
 	anon := goanon.NewAnonymizer(rec, cfg)
 	proc := docprocessor.New(anon)
 
-	walker, err := factory(tmpIn.Name())
-	if err != nil {
-		id := requestIDFrom(r)
-		http.Error(w, "internal error (ref "+id+")", http.StatusInternalServerError)
-		log.Printf("anonymize-doc req=%s: ouverture document: %v", id, err)
-		return
-	}
-
-	session, docReport, err := proc.ProcessWithReport(walker, anonOpts...)
-	if err != nil {
-		var verr *goanon.VerificationError
-		if errors.As(err, &verr) {
-			// Mode strict : le document de sortie n'est jamais écrit.
-			http.Error(w, "anonymisation refusée : vérification de la sortie en échec", http.StatusUnprocessableEntity)
-			log.Printf("anonymize-doc: refus strict, %d fuite(s) %v", len(verr.Report.Leaks), verr.Report.CountByKind())
+	if streamed {
+		if !s.anonymizeStream(w, r, proc, openStream, tmpIn.Name(), tmpOutName, anonOpts, lang, ext) {
 			return
 		}
-		http.Error(w, "erreur anonymisation", http.StatusInternalServerError)
-		log.Printf("anonymize-doc: échec : %v", err)
-		return
-	}
-	log.Printf("pseudonymize-doc: lang=%s format=%s entities=%d", lang, ext, docReport.TotalEntities())
-
-	// Sanitisation des surfaces cachées (métadonnées, commentaires, révisions)
-	// avant écriture. En mode strict, une surface non traitée refuse le document.
-	sanPolicy := docprocessor.DefaultSanitizePolicy()
-	sanPolicy.Strict = s.strict
-	sanReport, err := docprocessor.Sanitize(walker, sanPolicy)
-	if err != nil {
-		id := requestIDFrom(r)
-		var unproc *docprocessor.ErrUnsanitizedSurface
-		if errors.As(err, &unproc) || errors.Is(err, docprocessor.ErrNoSanitizeGuarantee) {
-			http.Error(w, "anonymisation refusée : surfaces non sanitisées", http.StatusUnprocessableEntity)
-			log.Printf("anonymize-doc req=%s: refus strict sanitisation : %v", id, err)
+	} else {
+		walker, err := factory(tmpIn.Name())
+		if err != nil {
+			id := requestIDFrom(r)
+			http.Error(w, "internal error (ref "+id+")", http.StatusInternalServerError)
+			log.Printf("anonymize-doc req=%s: ouverture document: %v", id, err)
 			return
 		}
-		http.Error(w, "internal error (ref "+id+")", http.StatusInternalServerError)
-		log.Printf("anonymize-doc req=%s: sanitisation : %v", id, err)
-		return
-	}
-	log.Printf("anonymize-doc: sanitize meta=%v comments=%d revisions=%d unprocessed=%d",
-		sanReport.MetadataStripped, sanReport.CommentsFound, sanReport.RevisionsFound, len(sanReport.Unprocessed))
-	// Hygiène mémoire (S8) : la session n'est plus utile après sanitisation.
-	defer session.Close()
 
-	saver, ok := walker.(interface{ SaveTo(string) error })
-	if !ok {
-		http.Error(w, "format non sauvegardable", http.StatusInternalServerError)
-		return
-	}
-	if err := saver.SaveTo(tmpOutName); err != nil {
-		id := requestIDFrom(r)
-		http.Error(w, "internal error (ref "+id+")", http.StatusInternalServerError)
-		log.Printf("anonymize-doc req=%s: sauvegarde: %v", id, err)
-		return
+		session, docReport, err := proc.ProcessWithReport(walker, anonOpts...)
+		if err != nil {
+			var verr *goanon.VerificationError
+			if errors.As(err, &verr) {
+				// Mode strict : le document de sortie n'est jamais écrit.
+				http.Error(w, "anonymisation refusée : vérification de la sortie en échec", http.StatusUnprocessableEntity)
+				log.Printf("anonymize-doc: refus strict, %d fuite(s) %v", len(verr.Report.Leaks), verr.Report.CountByKind())
+				return
+			}
+			http.Error(w, "erreur anonymisation", http.StatusInternalServerError)
+			log.Printf("anonymize-doc: échec : %v", err)
+			return
+		}
+		log.Printf("pseudonymize-doc: lang=%s format=%s entities=%d", lang, ext, docReport.TotalEntities())
+
+		// Sanitisation des surfaces cachées (métadonnées, commentaires, révisions)
+		// avant écriture. En mode strict, une surface non traitée refuse le document.
+		sanPolicy := docprocessor.DefaultSanitizePolicy()
+		sanPolicy.Strict = s.strict
+		sanReport, err := docprocessor.Sanitize(walker, sanPolicy)
+		if err != nil {
+			id := requestIDFrom(r)
+			var unproc *docprocessor.ErrUnsanitizedSurface
+			if errors.As(err, &unproc) || errors.Is(err, docprocessor.ErrNoSanitizeGuarantee) {
+				http.Error(w, "anonymisation refusée : surfaces non sanitisées", http.StatusUnprocessableEntity)
+				log.Printf("anonymize-doc req=%s: refus strict sanitisation : %v", id, err)
+				return
+			}
+			http.Error(w, "internal error (ref "+id+")", http.StatusInternalServerError)
+			log.Printf("anonymize-doc req=%s: sanitisation : %v", id, err)
+			return
+		}
+		log.Printf("anonymize-doc: sanitize meta=%v comments=%d revisions=%d unprocessed=%d",
+			sanReport.MetadataStripped, sanReport.CommentsFound, sanReport.RevisionsFound, len(sanReport.Unprocessed))
+		// Hygiène mémoire (S8) : la session n'est plus utile après sanitisation.
+		defer session.Close()
+
+		saver, ok := walker.(interface{ SaveTo(string) error })
+		if !ok {
+			http.Error(w, "format non sauvegardable", http.StatusInternalServerError)
+			return
+		}
+		if err := saver.SaveTo(tmpOutName); err != nil {
+			id := requestIDFrom(r)
+			http.Error(w, "internal error (ref "+id+")", http.StatusInternalServerError)
+			log.Printf("anonymize-doc req=%s: sauvegarde: %v", id, err)
+			return
+		}
+
 	}
 
 	outFile, err := os.Open(tmpOutName)
@@ -746,6 +775,65 @@ func (s *Server) handlePseudonymizeDoc(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+outFilename+`"`)
 	io.Copy(w, outFile)
+}
+
+// sampleStream lit le début d'un document traité au fil de l'eau, pour en
+// détecter la langue.
+func sampleStream(open streamFactory, path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	walker, err := open(f, io.Discard)
+	if err != nil {
+		return "", err
+	}
+	return docprocessor.SampleStream(walker, 4000)
+}
+
+// anonymizeStream anonymise au fil de l'eau le document de inPath vers outPath.
+// En cas d'échec, la réponse d'erreur est écrite et false retourné ; la sortie
+// partielle est détruite avec les fichiers temporaires de la requête.
+func (s *Server) anonymizeStream(w http.ResponseWriter, r *http.Request, proc *docprocessor.Processor, open streamFactory, inPath, outPath string, opts []goanon.AnonymizeOption, lang, ext string) bool {
+	internal := func(what string, err error) bool {
+		id := requestIDFrom(r)
+		http.Error(w, "internal error (ref "+id+")", http.StatusInternalServerError)
+		log.Printf("anonymize-doc req=%s: %s: %v", id, what, err)
+		return false
+	}
+	in, err := os.Open(inPath)
+	if err != nil {
+		return internal("ouverture document", err)
+	}
+	defer in.Close()
+	out, err := os.OpenFile(outPath, os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return internal("création sortie", err)
+	}
+	walker, err := open(in, out)
+	if err != nil {
+		out.Close()
+		return internal("ouverture document", err)
+	}
+	session, report, err := proc.ProcessStream(walker, opts...)
+	defer session.Close()
+	if cerr := out.Close(); err == nil && cerr != nil {
+		return internal("écriture sortie", cerr)
+	}
+	if err != nil {
+		var verr *goanon.VerificationError
+		if errors.As(err, &verr) {
+			http.Error(w, "anonymisation refusée : vérification de la sortie en échec", http.StatusUnprocessableEntity)
+			log.Printf("anonymize-doc: refus strict, %d fuite(s) %v", len(verr.Report.Leaks), verr.Report.CountByKind())
+			return false
+		}
+		http.Error(w, "erreur anonymisation", http.StatusInternalServerError)
+		log.Printf("anonymize-doc: échec : %v", err)
+		return false
+	}
+	log.Printf("pseudonymize-doc: lang=%s format=%s entities=%d stream=true", lang, ext, report.TotalEntities())
+	return true
 }
 
 func loadModelsFromPairs(srv *Server, modelsFlag, cacheDir string, refresh, offline bool) {

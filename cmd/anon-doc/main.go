@@ -1,7 +1,8 @@
 // Commande anon-doc — anonymisation de documents bureautiques (DOCX, ...).
 //
 // Détecte le format à partir de l'extension du fichier d'entrée et instancie
-// le Walker approprié. Un flag -format permet de forcer le format.
+// le Walker approprié. Un flag -format permet de forcer le format. Les fichiers
+// CSV et TSV sont traités au fil de l'eau, quelle que soit leur taille.
 //
 // Usage :
 //
@@ -14,6 +15,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -42,9 +44,22 @@ type walkerFactory func(path string) (docprocessor.Walker, error)
 var walkerFactories = map[string]walkerFactory{
 	".docx": pkgdocx.NewWalkerFromFile,
 	".odt":  pkgodt.NewWalkerFromFile,
-	".csv":  pkgcsv.NewWalkerFromFile,
-	".tsv":  pkgcsv.NewWalkerFromFile,
 	".pdf":  pkgpdf.NewWalkerFromFile,
+}
+
+// streamFactory prépare le traitement au fil de l'eau d'un document, lu dans r
+// et écrit dans w.
+type streamFactory func(r io.Reader, w io.Writer) (docprocessor.StreamWalker, error)
+
+// Formats traités au fil de l'eau : la mémoire ne dépend pas de la taille du
+// fichier, qui n'est lu qu'une fois.
+var streamFactories = map[string]streamFactory{
+	".csv": func(r io.Reader, w io.Writer) (docprocessor.StreamWalker, error) {
+		return pkgcsv.NewStream(r, w)
+	},
+	".tsv": func(r io.Reader, w io.Writer) (docprocessor.StreamWalker, error) {
+		return pkgcsv.NewStream(r, w, pkgcsv.WithSeparator('\t'))
+	},
 }
 
 func main() {
@@ -107,7 +122,8 @@ func main() {
 	}
 
 	factory, ok := walkerFactories[ext]
-	if !ok {
+	openStream, streamed := streamFactories[ext]
+	if !ok && !streamed {
 		fmt.Fprintf(os.Stderr, "erreur : format %q non supporté (formats disponibles : %s)\n", ext, supportedFormats())
 		os.Exit(1)
 	}
@@ -115,11 +131,17 @@ func main() {
 	// --- Détection automatique de la langue ---
 	lang := *langCode
 	if lang == "auto" {
-		sampleWalker, err := factory(*inputPath)
-		if err != nil {
-			log.Fatalf("ouverture %q : %v", *inputPath, err)
+		var sample string
+		var err error
+		if streamed {
+			sample, err = sampleStream(openStream, *inputPath)
+		} else {
+			var sampleWalker docprocessor.Walker
+			if sampleWalker, err = factory(*inputPath); err != nil {
+				log.Fatalf("ouverture %q : %v", *inputPath, err)
+			}
+			sample, err = docprocessor.SampleText(sampleWalker, 4000)
 		}
-		sample, err := docprocessor.SampleText(sampleWalker, 4000)
 		if err != nil {
 			log.Fatalf("échantillonnage du document : %v", err)
 		}
@@ -280,91 +302,99 @@ func main() {
 	}
 	proc := docprocessor.New(anon, procOpts...)
 
-	// --- Walker ---
-	walker, err := factory(*inputPath)
-	if err != nil {
-		log.Fatalf("ouverture %q : %v", *inputPath, err)
-	}
-
-	// --- Reconnaissance optique ---
-	// Doit précéder le traitement : le texte reconnu alimente le rapport des
-	// portions que le pipeline sait lire sans pouvoir les réécrire.
-	ocrLanguage := *ocrLang
-	if ocrLanguage == "" {
-		ocrLanguage = lang
-	}
-	if err := runOCR(walker, *ocrMode, ocrLanguage, *ocrDPI, *ocrMinConf); err != nil {
-		log.Fatalf("OCR : %v", err)
-	}
-
-	session, report, err := proc.ProcessWithReport(walker, anonOpts...)
-	if err != nil {
-		// En mode strict, l'échec doit précéder toute écriture : le document de
-		// sortie n'est jamais créé, pas même partiellement anonymisé.
-		log.Fatalf("anonymisation : %v", err)
-	}
-	reportLeaks(report)
-
-	// --- Sanitisation des surfaces cachées (métadonnées, commentaires, révisions) ---
-	// Doit précéder SaveTo : en mode strict, une surface non traitée interrompt
-	// avant toute écriture, comme la vérification.
-	//
-	// En mode strict, le contrôle des surfaces est effectué même si -sanitize=false :
-	// sans cela, un PDF scanné passerait sans le moindre signalement alors que
-	// l'utilisateur a explicitement demandé le fail-closed. -sanitize ne pilote
-	// plus alors que la purge des métadonnées.
-	if *sanitize || *strict {
-		policy := docprocessor.DefaultSanitizePolicy()
-		policy.Strict = *strict
-		policy.StripMetadata = *sanitize
-		sanReport, err := docprocessor.Sanitize(walker, policy)
-		if err != nil {
-			log.Fatalf("sanitisation : %v", err)
-		}
-		reportSanitize(sanReport)
-	}
-
-	// --- Sauvegarde du document ---
-	if saver, ok := walker.(interface{ SaveTo(string) error }); ok {
-		if err := saver.SaveTo(*outputPath); err != nil {
-			log.Fatalf("sauvegarde %q : %v", *outputPath, err)
-		}
+	var session *anonymizer.Session
+	var report *docprocessor.Report
+	if streamed {
+		session, report = processStream(proc, openStream, *inputPath, *outputPath, anonOpts)
+		reportLeaks(report)
 	} else {
-		log.Fatalf("le walker ne supporte pas SaveTo — implémentation manquante pour ce format")
-	}
+		// --- Walker ---
+		walker, err := factory(*inputPath)
+		if err != nil {
+			log.Fatalf("ouverture %q : %v", *inputPath, err)
+		}
 
-	// --- Vérification visuelle du document produit ---
-	// Nécessairement après l'écriture : c'est le fichier produit qui est relu,
-	// rendu puis océrisé. Le fail-closed prend donc ici la forme d'une
-	// destruction — un document dont on sait qu'il expose une donnée
-	// personnelle ne doit pas subsister sur le disque.
-	visualLeaks, err := proc.VerifyOutput(walker, *outputPath, session)
-	if err != nil {
-		log.Fatalf("vérification visuelle : %v", err)
-	}
-	if len(visualLeaks) > 0 {
-		// Compter par région ne dit pas quoi corriger. Le genre et le type de
-		// chaque fuite, eux, orientent : un regex-hit EMAIL page 3 se cherche
-		// autrement qu'une entité connue restée lisible. Le texte fuité n'est
-		// jamais journalisé — ce serait recopier la donnée qu'on protège.
-		byRegion := make(map[string]int, len(visualLeaks))
-		byKind := make(map[string]int, len(visualLeaks))
-		for _, leak := range visualLeaks {
-			byRegion[leak.Region]++
-			kind := leak.Kind.String()
-			if leak.Type != "" {
-				kind += "/" + string(leak.Type)
+		// --- Reconnaissance optique ---
+		// Doit précéder le traitement : le texte reconnu alimente le rapport des
+		// portions que le pipeline sait lire sans pouvoir les réécrire.
+		ocrLanguage := *ocrLang
+		if ocrLanguage == "" {
+			ocrLanguage = lang
+		}
+		if err := runOCR(walker, *ocrMode, ocrLanguage, *ocrDPI, *ocrMinConf); err != nil {
+			log.Fatalf("OCR : %v", err)
+		}
+
+		session, report, err = proc.ProcessWithReport(walker, anonOpts...)
+		if err != nil {
+			// En mode strict, l'échec doit précéder toute écriture : le document de
+			// sortie n'est jamais créé, pas même partiellement anonymisé.
+			log.Fatalf("anonymisation : %v", err)
+		}
+		reportLeaks(report)
+
+		// --- Sanitisation des surfaces cachées (métadonnées, commentaires, révisions) ---
+		// Doit précéder SaveTo : en mode strict, une surface non traitée interrompt
+		// avant toute écriture, comme la vérification.
+		//
+		// En mode strict, le contrôle des surfaces est effectué même si -sanitize=false :
+		// sans cela, un PDF scanné passerait sans le moindre signalement alors que
+		// l'utilisateur a explicitement demandé le fail-closed. -sanitize ne pilote
+		// plus alors que la purge des métadonnées.
+		if *sanitize || *strict {
+			policy := docprocessor.DefaultSanitizePolicy()
+			policy.Strict = *strict
+			policy.StripMetadata = *sanitize
+			sanReport, err := docprocessor.Sanitize(walker, policy)
+			if err != nil {
+				log.Fatalf("sanitisation : %v", err)
 			}
-			byKind[kind]++
+			reportSanitize(sanReport)
 		}
-		if *strict {
-			os.Remove(*outputPath)
-			log.Fatalf("vérification visuelle : %d donnée(s) restée(s) lisible(s) "+
-				"%v %v — document détruit", len(visualLeaks), byRegion, byKind)
+
+		// --- Sauvegarde du document ---
+		if saver, ok := walker.(interface{ SaveTo(string) error }); ok {
+			if err := saver.SaveTo(*outputPath); err != nil {
+				log.Fatalf("sauvegarde %q : %v", *outputPath, err)
+			}
+		} else {
+			log.Fatalf("le walker ne supporte pas SaveTo — implémentation manquante pour ce format")
 		}
-		fmt.Fprintf(os.Stderr, "AVERTISSEMENT : vérification visuelle — %d donnée(s) "+
-			"restée(s) LISIBLE(s) dans le document produit %v %v ; "+
-			"utiliser -strict pour le refuser\n", len(visualLeaks), byRegion, byKind)
+
+		// --- Vérification visuelle du document produit ---
+		// Nécessairement après l'écriture : c'est le fichier produit qui est relu,
+		// rendu puis océrisé. Le fail-closed prend donc ici la forme d'une
+		// destruction — un document dont on sait qu'il expose une donnée
+		// personnelle ne doit pas subsister sur le disque.
+		visualLeaks, err := proc.VerifyOutput(walker, *outputPath, session)
+		if err != nil {
+			log.Fatalf("vérification visuelle : %v", err)
+		}
+		if len(visualLeaks) > 0 {
+			// Compter par région ne dit pas quoi corriger. Le genre et le type de
+			// chaque fuite, eux, orientent : un regex-hit EMAIL page 3 se cherche
+			// autrement qu'une entité connue restée lisible. Le texte fuité n'est
+			// jamais journalisé — ce serait recopier la donnée qu'on protège.
+			byRegion := make(map[string]int, len(visualLeaks))
+			byKind := make(map[string]int, len(visualLeaks))
+			for _, leak := range visualLeaks {
+				byRegion[leak.Region]++
+				kind := leak.Kind.String()
+				if leak.Type != "" {
+					kind += "/" + string(leak.Type)
+				}
+				byKind[kind]++
+			}
+			if *strict {
+				os.Remove(*outputPath)
+				log.Fatalf("vérification visuelle : %d donnée(s) restée(s) lisible(s) "+
+					"%v %v — document détruit", len(visualLeaks), byRegion, byKind)
+			}
+			fmt.Fprintf(os.Stderr, "AVERTISSEMENT : vérification visuelle — %d donnée(s) "+
+				"restée(s) LISIBLE(s) dans le document produit %v %v ; "+
+				"utiliser -strict pour le refuser\n", len(visualLeaks), byRegion, byKind)
+		}
+
 	}
 
 	fmt.Printf("Document anonymisé : %s\n", *outputPath)
@@ -565,7 +595,59 @@ func supportedFormats() string {
 	for ext := range walkerFactories {
 		exts = append(exts, ext)
 	}
+	for ext := range streamFactories {
+		exts = append(exts, ext)
+	}
+	sort.Strings(exts)
 	return strings.Join(exts, ", ")
+}
+
+// sampleStream lit le début d'un document traité au fil de l'eau, pour en
+// détecter la langue.
+func sampleStream(open streamFactory, path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	walker, err := open(f, io.Discard)
+	if err != nil {
+		return "", err
+	}
+	return docprocessor.SampleStream(walker, 4000)
+}
+
+// processStream anonymise un document au fil de l'eau, de inputPath vers
+// outputPath. Une erreur détruit la sortie : partielle, elle contiendrait des
+// lignes écrites avant la fuite qui a interrompu le traitement, et rien
+// au-delà.
+func processStream(proc *docprocessor.Processor, open streamFactory, inputPath, outputPath string, opts []anonymizer.AnonymizeOption) (*anonymizer.Session, *docprocessor.Report) {
+	in, err := os.Open(inputPath)
+	if err != nil {
+		log.Fatalf("ouverture %q : %v", inputPath, err)
+	}
+	defer in.Close()
+	out, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		log.Fatalf("création %q : %v", outputPath, err)
+	}
+	fail := func(format string, args ...any) {
+		out.Close()
+		os.Remove(outputPath)
+		log.Fatalf(format, args...)
+	}
+	walker, err := open(in, out)
+	if err != nil {
+		fail("ouverture %q : %v", inputPath, err)
+	}
+	session, report, err := proc.ProcessStream(walker, opts...)
+	if err != nil {
+		fail("anonymisation : %v — document de sortie détruit", err)
+	}
+	if err := out.Close(); err != nil {
+		fail("écriture %q : %v", outputPath, err)
+	}
+	return session, report
 }
 
 func resolveAutoMode(modelFlag string) (lang string, auto bool) {
