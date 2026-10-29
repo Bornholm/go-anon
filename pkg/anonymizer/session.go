@@ -23,6 +23,8 @@ type anonymizeParams struct {
 
 	hashKey      HashKey
 	hashScope    string
+	indexKey     HashKey
+	indexKeySet  bool
 	insecureHash bool
 
 	verify         bool
@@ -209,6 +211,42 @@ func WithExposeSecrets(expose bool) AnonymizeOption {
 func WithHashKey(k HashKey) AnonymizeOption {
 	return func(p *anonymizeParams) {
 		p.hashKey = k
+	}
+}
+
+// WithIndexKey dérive l'index des placeholders des stratégies TagReplace et
+// Consistent de l'entité elle-même, par HMAC-SHA-256 de son type et de sa forme
+// normalisée, au lieu de les numéroter dans l'ordre d'apparition.
+//
+// Une même entité reçoit alors le même index d'un appel à l'autre, quel que
+// soit l'ordre des autres entités, sans qu'aucune correspondance ne survive à
+// l'appel : un placeholder recopié d'un texte anonymisé plus tôt ne désigne
+// plus, par un hasard de numérotation, une autre entité du texte courant. Hors
+// session, seule une collision d'index le permettrait encore : une chance sur
+// un million environ par entité du même type dans le texte courant.
+// Le placeholder entier n'est stable que si son nonce l'est : sans session, le
+// nonce est tiré à chaque appel. Une session restaurée à chaque appel par
+// NewSessionFromState avec le même nonce, sans correspondance, suffit.
+// Une collision fait exception : deux entités d'un type qui tombent sur le même
+// index se le départagent, la seconde prenant le suivant libre, et son
+// placeholder dépend alors des entités présentes. Porter une Session quand la
+// stabilité de chaque placeholder doit être garantie. Voir keyedReplacement.
+//
+// Une même clé donne le même index à une entité dans tous les textes qu'elle
+// anonymise : l'index la relie d'un texte à l'autre. Pour compartimenter, par
+// client ou par dossier, dériver une clé par compartiment.
+//
+// La clé est indispensable : sans elle, l'index d'un placeholder se vérifierait
+// contre un dictionnaire de noms. Avec TagReplace ou Consistent, une clé vide
+// ou trop courte fait échouer Anonymize en ErrHashKeyTooShort, même si aucune
+// entité ne s'en sert. Charger la clé comme celle de WithHashKey.
+//
+// L'option est ignorée hors des stratégies TagReplace et Consistent, et pour
+// les types confiés à un remplaçant personnalisé, libre d'ignorer l'index.
+func WithIndexKey(k HashKey) AnonymizeOption {
+	return func(p *anonymizeParams) {
+		p.indexKey = k
+		p.indexKeySet = true
 	}
 }
 

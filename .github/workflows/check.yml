@@ -20,7 +20,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           check-latest: true
 
       - name: Build
@@ -39,7 +39,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           check-latest: true
 
       - name: Test
@@ -57,7 +57,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           check-latest: true
 
       - name: Test (race detector)
@@ -86,7 +86,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           check-latest: true
 
       - name: Fuzz ${{ matrix.target }}
@@ -110,7 +110,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           check-latest: true
 
       - name: govulncheck
@@ -126,7 +126,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
           check-latest: true
 
       # S5 (permissions du MappingStore) et S7 (timeouts HTTP, limite de corps,

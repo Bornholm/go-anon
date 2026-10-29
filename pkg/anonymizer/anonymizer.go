@@ -125,6 +125,11 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 	for _, opt := range opts {
 		opt(params)
 	}
+	if params.indexKeySet && a.indexedStrategy() {
+		if err := params.indexKey.Validate(); err != nil {
+			return nil, err
+		}
+	}
 
 	var (
 		counters        map[ner.EntityType]int
@@ -213,8 +218,11 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 			}
 		}
 		if replacement == "" {
-			counters[ent.Type]++
-			replacement, err = a.replace(ent, counters[ent.Type], params)
+			if a.keyedIndexes(ent, params) {
+				replacement, err = a.keyedReplacement(ent, params, result.Mapping)
+			} else {
+				replacement, err = a.sequentialReplacement(ent, counters, params, result.Mapping)
+			}
 			if err != nil {
 				return nil, err
 			}
