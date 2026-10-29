@@ -23,6 +23,7 @@ type anonymizeParams struct {
 
 	hashKey      HashKey
 	hashScope    string
+	indexKey     HashKey
 	insecureHash bool
 
 	verify         bool
@@ -209,6 +210,24 @@ func WithExposeSecrets(expose bool) AnonymizeOption {
 func WithHashKey(k HashKey) AnonymizeOption {
 	return func(p *anonymizeParams) {
 		p.hashKey = k
+	}
+}
+
+// WithIndexKey dérive l'index des placeholders des stratégies TagReplace et
+// Consistent de l'entité elle-même, par HMAC-SHA-256 de son type et de sa forme
+// normalisée, au lieu de les numéroter dans l'ordre d'apparition.
+//
+// Une même entité reçoit alors le même placeholder d'un appel à l'autre, quel
+// que soit l'ordre des autres entités, sans qu'aucune session ne survive à
+// l'appel : un placeholder recopié d'un texte anonymisé plus tôt ne peut plus
+// désigner, par un hasard de numérotation, une autre entité du texte courant.
+// Voir keyedReplacement pour les collisions.
+//
+// La clé est indispensable : sans elle, l'index d'un placeholder se vérifierait
+// contre un dictionnaire de noms. Charger la clé comme celle de WithHashKey.
+func WithIndexKey(k HashKey) AnonymizeOption {
+	return func(p *anonymizeParams) {
+		p.indexKey = k
 	}
 }
 

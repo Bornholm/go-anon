@@ -118,6 +118,7 @@ var WithEscapeCollisions = anonymizer.WithEscapeCollisions
 var WithExposeSecrets = anonymizer.WithExposeSecrets
 var WithHashKey = anonymizer.WithHashKey
 var WithHashScope = anonymizer.WithHashScope
+var WithIndexKey = anonymizer.WithIndexKey
 var WithInsecureHash = anonymizer.WithInsecureHash
 var WithVerification = anonymizer.WithVerification
 var WithStrictVerification = anonymizer.WithStrictVerification

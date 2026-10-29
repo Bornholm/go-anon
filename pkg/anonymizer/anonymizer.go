@@ -176,8 +176,12 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 			}
 		}
 		if replacement == "" {
-			counters[ent.Type]++
-			replacement, err = a.replace(ent, counters[ent.Type], params)
+			if a.keyedIndexes(ent, params) {
+				replacement, err = a.keyedReplacement(ent, params, result.Mapping)
+			} else {
+				counters[ent.Type]++
+				replacement, err = a.replace(ent, counters[ent.Type], params)
+			}
 			if err != nil {
 				return nil, err
 			}
