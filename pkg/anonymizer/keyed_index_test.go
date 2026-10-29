@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/bornholm/go-anon/pkg/ner"
 )
@@ -200,5 +201,40 @@ func TestWithIndexKey_LeavesTheHashStrategyAlone(t *testing.T) {
 	}
 	if plain.Text != keyed.Text {
 		t.Errorf("le placeholder hash change avec une clé d'index : %q, attendu %q", keyed.Text, plain.Text)
+	}
+}
+
+func TestWithoutIndexKey_AReplacementWithoutIndexIsNotSkipped(t *testing.T) {
+	configs := map[string]Config{
+		"redact": {Strategy: Redact},
+		"remplaçant constant": {Strategy: TagReplace, CustomReplacers: map[ner.EntityType]ReplacerFunc{
+			ner.TypePER: func(ner.Entity, int) string { return "[QUELQU'UN]" },
+		}},
+	}
+	for name, cfg := range configs {
+		t.Run(name, func(t *testing.T) {
+			rec, text := persons("Jean", "Paul")
+			sess := NewSession()
+			done := make(chan error, 1)
+			go func() {
+				_, err := New(rec, cfg).Anonymize(text, WithSession(sess))
+				done <- err
+			}()
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("Anonymize ne rend pas la main : deux entités au même remplacement, sans index à sauter")
+			}
+		})
+	}
+}
+
+func TestWithIndexKey_IsNotValidatedByAStrategyWithoutIndex(t *testing.T) {
+	rec, text := persons("Jean Dupont")
+	if _, err := New(rec, Config{Strategy: Redact}).Anonymize(text, WithIndexKey(nil)); err != nil {
+		t.Errorf("err = %v, attendu aucune erreur : Redact ne se sert pas de la clé d'index", err)
 	}
 }

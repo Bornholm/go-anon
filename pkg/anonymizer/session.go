@@ -232,8 +232,9 @@ func WithHashKey(k HashKey) AnonymizeOption {
 // client ou par dossier, dériver une clé par compartiment.
 //
 // La clé est indispensable : sans elle, l'index d'un placeholder se vérifierait
-// contre un dictionnaire de noms. Une clé vide ou trop courte fait échouer
-// Anonymize en ErrHashKeyTooShort. Charger la clé comme celle de WithHashKey.
+// contre un dictionnaire de noms. Avec TagReplace ou Consistent, une clé vide
+// ou trop courte fait échouer Anonymize en ErrHashKeyTooShort, même si aucune
+// entité ne s'en sert. Charger la clé comme celle de WithHashKey.
 //
 // L'option est ignorée hors des stratégies TagReplace et Consistent, et pour
 // les types confiés à un remplaçant personnalisé, libre d'ignorer l'index.

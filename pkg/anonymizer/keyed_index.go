@@ -20,17 +20,25 @@ const maxKeyedIndex = 999_999
 // (SetMaxEntities).
 var ErrIndexSpaceFull = errors.New("anonymizer: plus aucun index de placeholder libre")
 
-// keyedIndexes indique si l'index du placeholder de ent est dérivé de l'entité
-// (WithIndexKey) : seulement pour les stratégies dont le placeholder porte un
-// index, et hors remplaçant personnalisé, libre d'ignorer l'index.
-func (a *Anonymizer) keyedIndexes(ent ner.Entity, params *anonymizeParams) bool {
-	if !params.indexKeySet {
-		return false
-	}
+// indexedStrategy indique si les placeholders de la stratégie portent un
+// index : seuls ceux-là ont un index à dériver ou à sauter.
+func (a *Anonymizer) indexedStrategy() bool {
+	return a.config.Strategy == TagReplace || a.config.Strategy == Consistent
+}
+
+// indexedPlaceholder indique si le placeholder de ent porte son index : pas
+// pour un remplaçant personnalisé, libre de l'ignorer.
+func (a *Anonymizer) indexedPlaceholder(ent ner.Entity) bool {
 	if _, custom := a.config.CustomReplacers[ent.Type]; custom {
 		return false
 	}
-	return a.config.Strategy == TagReplace || a.config.Strategy == Consistent
+	return a.indexedStrategy()
+}
+
+// keyedIndexes indique si l'index du placeholder de ent est dérivé de l'entité
+// (WithIndexKey).
+func (a *Anonymizer) keyedIndexes(ent ner.Entity, params *anonymizeParams) bool {
+	return params.indexKeySet && a.indexedPlaceholder(ent)
 }
 
 // keyedReplacement construit le placeholder de ent à l'index dérivé de
@@ -64,10 +72,17 @@ func (a *Anonymizer) keyedReplacement(ent ner.Entity, params *anonymizeParams, m
 //
 // Les compteurs d'une session ne voient pas les index dérivés : quand des
 // appels avec et sans WithIndexKey partagent une session, un index séquentiel
-// peut être déjà pris par un placeholder dérivé, et il est alors sauté.
+// peut être déjà pris par un placeholder dérivé, et il est alors sauté. Un
+// remplacement qui ne porte pas l'index (Redact, Hash, remplaçant
+// personnalisé) n'a rien à sauter : passer à l'index suivant ne le changerait
+// pas.
 func (a *Anonymizer) sequentialReplacement(ent ner.Entity, counters map[ner.EntityType]int, params *anonymizeParams, mapping map[string]string) (string, error) {
+	if !a.indexedPlaceholder(ent) {
+		counters[ent.Type]++
+		return a.replace(ent, counters[ent.Type], params)
+	}
 	normalized := normalizeForFuzzy(ent.Text)
-	for {
+	for range maxKeyedIndex {
 		counters[ent.Type]++
 		replacement, err := a.replace(ent, counters[ent.Type], params)
 		if err != nil {
@@ -77,6 +92,7 @@ func (a *Anonymizer) sequentialReplacement(ent ner.Entity, counters map[ner.Enti
 			return replacement, nil
 		}
 	}
+	return "", ErrIndexSpaceFull
 }
 
 // placeholderTaken indique si replacement désigne déjà, dans cet appel ou dans

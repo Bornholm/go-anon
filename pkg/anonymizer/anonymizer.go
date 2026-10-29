@@ -94,7 +94,7 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 	for _, opt := range opts {
 		opt(params)
 	}
-	if params.indexKeySet {
+	if params.indexKeySet && a.indexedStrategy() {
 		if err := params.indexKey.Validate(); err != nil {
 			return nil, err
 		}
