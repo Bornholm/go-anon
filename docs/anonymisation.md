@@ -37,10 +37,14 @@ par HMAC-SHA-256 de son type et de sa forme normalisée, entre 1 et 999 999. Une
 même entité garde alors son placeholder d'un appel à l'autre sans qu'aucune
 session ne soit conservée, et un placeholder recopié d'un texte anonymisé plus
 tôt ne peut plus désigner, par un hasard de numérotation, une autre entité du
-texte courant. Deux entités qui tombent sur le même index le départagent en
-prenant le suivant libre. La clé suit les règles de celle de la stratégie
-`hash` : sans elle, un index se vérifierait contre un dictionnaire de noms.
-L'option ne vaut que pour les stratégies `tag` et `consistent`.
+texte courant. Deux entités qui tombent sur le même index le départagent, la
+seconde prenant le suivant libre : son placeholder dépend alors des entités
+présentes, et seule une session le garantit d'un appel à l'autre. La clé suit
+les règles de celle de la stratégie `hash` : sans elle, un index se vérifierait
+contre un dictionnaire de noms, et une clé vide ou trop courte fait échouer
+l'appel. Une même clé relie une entité d'un texte à l'autre par son index :
+dériver une clé par client ou par dossier pour compartimenter. L'option ne vaut
+que pour les stratégies `tag` et `consistent`, hors remplaçants personnalisés.
 
 L'ancien format `[TYPE_N]` reste accessible via `WithLegacyPlaceholders()`.
 Attention, c'est un changement incompatible : les consommateurs qui parsent

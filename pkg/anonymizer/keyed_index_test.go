@@ -81,27 +81,91 @@ func TestWithIndexKey_IndexesStayWithinSixDigits(t *testing.T) {
 	}
 }
 
-func TestWithIndexKey_ACollisionTakesTheNextFreeIndex(t *testing.T) {
-	anon := New(&mockRecognizer{}, Config{Strategy: TagReplace})
-	params := &anonymizeParams{nonce: "abc123", indexKey: testIndexKey}
-	ent := ner.Entity{Text: "Jean Dupont", Type: ner.TypePER}
-	index := keyedIndex(testIndexKey, ner.TypePER, "jean dupont")
+// jeanIndex est l'index de « jean dupont » sous testIndexKey, codé en dur pour
+// que les tests ne recalculent pas l'attendu avec la formule testée.
+const jeanIndex = 83643
 
-	taken := params.tagPlaceholder("PERSON", index)
-	got, err := anon.keyedReplacement(ent, params, map[string]string{taken: "Marie Martin"})
+func TestWithIndexKey_ACollisionTakesTheNextFreeIndex(t *testing.T) {
+	if got := keyedIndex(testIndexKey, ner.TypePER, "jean dupont"); got != jeanIndex {
+		t.Fatalf("keyedIndex = %d, attendu %d", got, jeanIndex)
+	}
+
+	anon := New(&mockRecognizer{}, Config{Strategy: TagReplace})
+	params := &anonymizeParams{nonce: "abc123", indexKey: testIndexKey, indexKeySet: true}
+	ent := ner.Entity{Text: "Jean Dupont", Type: ner.TypePER}
+
+	got, err := anon.keyedReplacement(ent, params, map[string]string{"⟦PERSON_83643_abc123⟧": "Marie Martin"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := params.tagPlaceholder("PERSON", index%maxKeyedIndex+1); got != want {
+	if want := "⟦PERSON_83644_abc123⟧"; got != want {
 		t.Errorf("placeholder = %q, attendu %q, l'index suivant", got, want)
 	}
 
-	got, err = anon.keyedReplacement(ent, params, map[string]string{taken: "JEAN DUPONT"})
+	got, err = anon.keyedReplacement(ent, params, map[string]string{"⟦PERSON_83643_abc123⟧": "JEAN DUPONT"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != taken {
-		t.Errorf("placeholder = %q, attendu %q : l'index désigne déjà la même entité", got, taken)
+	if want := "⟦PERSON_83643_abc123⟧"; got != want {
+		t.Errorf("placeholder = %q, attendu %q : l'index désigne déjà la même entité", got, want)
+	}
+}
+
+func TestWithIndexKey_AnIndexTakenInTheSessionGoesToTheNextOne(t *testing.T) {
+	sess, err := NewSessionFromState(SessionState{
+		Version: SessionStateVersion,
+		Nonce:   "abc123",
+		Mapping: map[string]string{"⟦PERSON_83643_abc123⟧": "Marie Martin"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, text := persons("Jean Dupont")
+	anon := New(rec, Config{Strategy: TagReplace})
+
+	for call := 1; call <= 2; call++ {
+		res, err := anon.Anonymize(text, WithSession(sess), WithIndexKey(testIndexKey))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := res.OriginalToPlaceholder["Jean Dupont"], "⟦PERSON_83644_abc123⟧"; got != want {
+			t.Errorf("appel %d : Jean Dupont = %q, attendu %q, l'index de Marie Martin étant pris dans la session", call, got, want)
+		}
+	}
+	if owner := sess.Mapping["⟦PERSON_83643_abc123⟧"]; owner != "Marie Martin" {
+		t.Errorf("le placeholder de Marie Martin désigne maintenant %q", owner)
+	}
+}
+
+func TestWithoutIndexKey_SkipsAnIndexTakenInTheSession(t *testing.T) {
+	sess, err := NewSessionFromState(SessionState{
+		Version: SessionStateVersion,
+		Nonce:   "abc123",
+		Mapping: map[string]string{"⟦PERSON_1_abc123⟧": "Jean Dupont"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, text := persons("Marie Martin")
+	res, err := New(rec, Config{Strategy: TagReplace}).Anonymize(text, WithSession(sess))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := res.OriginalToPlaceholder["Marie Martin"], "⟦PERSON_2_abc123⟧"; got != want {
+		t.Errorf("Marie Martin = %q, attendu %q, PERSON_1 désignant déjà Jean Dupont dans la session", got, want)
+	}
+	if owner := sess.Mapping["⟦PERSON_1_abc123⟧"]; owner != "Jean Dupont" {
+		t.Errorf("PERSON_1 désigne maintenant %q", owner)
+	}
+}
+
+func TestWithIndexKey_AnEmptyKeyFails(t *testing.T) {
+	for _, text := range []string{"", "Jean Dupont"} {
+		rec, _ := persons()
+		_, err := New(rec, Config{Strategy: TagReplace}).Anonymize(text, WithIndexKey(nil))
+		if !errors.Is(err, ErrHashKeyTooShort) {
+			t.Errorf("texte %q : err = %v, attendu ErrHashKeyTooShort plutôt que la numérotation séquentielle", text, err)
+		}
 	}
 }
 

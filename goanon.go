@@ -160,6 +160,7 @@ var (
 	ErrVerificationFailed   = anonymizer.ErrVerificationFailed
 	ErrSessionClosed        = anonymizer.ErrSessionClosed
 	ErrSessionFull          = anonymizer.ErrSessionFull
+	ErrIndexSpaceFull       = anonymizer.ErrIndexSpaceFull
 )
 
 // — Constructeurs —
