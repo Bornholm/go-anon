@@ -34,10 +34,12 @@ source. Si le texte source en contient un malgré tout, `Anonymize` retourne
 Par défaut, `N` suit l'ordre d'apparition : la première personne d'un texte
 est `PERSON_1`. Avec `WithIndexKey(clé)`, `N` est dérivé de l'entité elle-même,
 par HMAC-SHA-256 de son type et de sa forme normalisée, entre 1 et 999 999. Une
-même entité garde alors son placeholder d'un appel à l'autre sans qu'aucune
-session ne soit conservée, et un placeholder recopié d'un texte anonymisé plus
-tôt ne peut plus désigner, par un hasard de numérotation, une autre entité du
-texte courant. Deux entités qui tombent sur le même index le départagent, la
+même entité garde alors son index d'un appel à l'autre sans qu'aucune
+correspondance ne soit conservée, et un placeholder recopié d'un texte anonymisé
+plus tôt ne peut plus désigner, par un hasard de numérotation, une autre entité
+du texte courant. Le placeholder entier n'est stable que si son nonce l'est :
+sans session, il est tiré à chaque appel ; une session restaurée à chaque appel
+par `NewSessionFromState` avec le même nonce, sans correspondance, suffit. Deux entités qui tombent sur le même index le départagent, la
 seconde prenant le suivant libre : son placeholder dépend alors des entités
 présentes, et seule une session le garantit d'un appel à l'autre. La clé suit
 les règles de celle de la stratégie `hash` : sans elle, un index se vérifierait

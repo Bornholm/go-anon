@@ -238,3 +238,28 @@ func TestWithIndexKey_IsNotValidatedByAStrategyWithoutIndex(t *testing.T) {
 		t.Errorf("err = %v, attendu aucune erreur : Redact ne se sert pas de la clé d'index", err)
 	}
 }
+
+func TestWithIndexKey_WithoutSessionOnlyTheIndexIsStable(t *testing.T) {
+	pattern := regexp.MustCompile(`^⟦PERSON_([0-9]+)_([0-9a-f]+)⟧$`)
+	rec, text := persons("Jean Dupont")
+	anon := New(rec, Config{Strategy: TagReplace})
+
+	var indexes, nonces []string
+	for range 2 {
+		res, err := anon.Anonymize(text, WithIndexKey(testIndexKey))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := pattern.FindStringSubmatch(res.OriginalToPlaceholder["Jean Dupont"])
+		if m == nil {
+			t.Fatalf("placeholder inattendu : %q", res.OriginalToPlaceholder["Jean Dupont"])
+		}
+		indexes, nonces = append(indexes, m[1]), append(nonces, m[2])
+	}
+	if want := strconv.Itoa(jeanIndex); indexes[0] != want || indexes[1] != want {
+		t.Errorf("index = %v, attendu %s aux deux appels", indexes, want)
+	}
+	if nonces[0] == nonces[1] {
+		t.Errorf("nonce %q identique aux deux appels, attendu un nonce tiré par appel sans session", nonces[0])
+	}
+}
