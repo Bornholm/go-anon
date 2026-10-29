@@ -220,8 +220,10 @@ func WithHashKey(k HashKey) AnonymizeOption {
 //
 // Une même entité reçoit alors le même index d'un appel à l'autre, quel que
 // soit l'ordre des autres entités, sans qu'aucune correspondance ne survive à
-// l'appel : un placeholder recopié d'un texte anonymisé plus tôt ne peut plus
-// désigner, par un hasard de numérotation, une autre entité du texte courant.
+// l'appel : un placeholder recopié d'un texte anonymisé plus tôt ne désigne
+// plus, par un hasard de numérotation, une autre entité du texte courant. Hors
+// session, seule une collision d'index le permettrait encore : une chance sur
+// un million environ par entité du même type dans le texte courant.
 // Le placeholder entier n'est stable que si son nonce l'est : sans session, le
 // nonce est tiré à chaque appel. Une session restaurée à chaque appel par
 // NewSessionFromState avec le même nonce, sans correspondance, suffit.
