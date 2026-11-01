@@ -78,6 +78,7 @@ type Config = anonymizer.Config
 type ReplacerFunc = anonymizer.ReplacerFunc
 type Result = anonymizer.Result
 type Recognizer = anonymizer.Recognizer
+type ContextRecognizer = anonymizer.ContextRecognizer
 type AnonymizePass = anonymizer.AnonymizePass
 type AnonymizeOption = anonymizer.AnonymizeOption
 type Session = anonymizer.Session
@@ -120,6 +121,7 @@ var IsSecretType = ner.IsSecretType
 
 var NewSession = anonymizer.NewSession
 var WithSession = anonymizer.WithSession
+var WithContext = anonymizer.WithContext
 var WithLegacyPlaceholders = anonymizer.WithLegacyPlaceholders
 var WithEscapeCollisions = anonymizer.WithEscapeCollisions
 var WithExposeSecrets = anonymizer.WithExposeSecrets

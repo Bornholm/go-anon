@@ -1,6 +1,7 @@
 package anonymizer
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -80,6 +81,15 @@ type Recognizer interface {
 	Recognize(text string) ([]ner.Entity, error)
 }
 
+// ContextRecognizer est un Recognizer qui reçoit le contexte de l'appel : un
+// recognizer lent (modèle à inférence coûteuse, file d'attente partagée) peut
+// alors s'arrêter quand l'appelant abandonne, ou borner son attente.
+// L'Anonymizer l'appelle à la place de Recognize quand il l'implémente.
+type ContextRecognizer interface {
+	Recognizer
+	RecognizeContext(ctx context.Context, text string) ([]ner.Entity, error)
+}
+
 // Anonymizer anonymise les entités nommées dans un texte.
 type Anonymizer struct {
 	recognizer Recognizer
@@ -117,6 +127,24 @@ func New(recognizer Recognizer, config Config) *Anonymizer {
 // sortie déjà anonymisée — notamment la vérification au niveau document, qui
 // recompose le texte pour retrouver les entités coupées par la segmentation.
 func (a *Anonymizer) Detect(text string) ([]ner.Entity, error) {
+	return a.DetectContext(context.Background(), text)
+}
+
+// DetectContext est Detect avec le contexte de l'appel, transmis au
+// recognizer s'il implémente ContextRecognizer. Un contexte déjà terminé
+// renvoie son erreur sans appeler le recognizer.
+func (a *Anonymizer) DetectContext(ctx context.Context, text string) ([]ner.Entity, error) {
+	return a.recognize(ctx, text)
+}
+
+// recognize appelle le recognizer avec ctx quand il l'accepte.
+func (a *Anonymizer) recognize(ctx context.Context, text string) ([]ner.Entity, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r, ok := a.recognizer.(ContextRecognizer); ok {
+		return r.RecognizeContext(ctx, text)
+	}
 	return a.recognizer.Recognize(text)
 }
 
@@ -169,7 +197,11 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 		return nil, err
 	}
 
-	entities, err := a.recognizer.Recognize(text)
+	ctx := params.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	entities, err := a.recognize(ctx, text)
 	if err != nil {
 		return nil, fmt.Errorf("recognition failed: %w", err)
 	}
