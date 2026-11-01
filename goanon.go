@@ -6,7 +6,7 @@
 //	f, _ := os.Open("model.crf.gz")
 //	m, err := goanon.LoadModel(f)
 //	r, err := goanon.NewRecognizer(m, goanon.WithLanguage("fr"))
-//	entities, err := r.Recognize("Jean Dupont habite à Paris.")
+//	entities, err := r.Recognize(ctx, "Jean Dupont habite à Paris.")
 //
 // Le Recognizer applique par défaut la configuration d'inférence validée sur
 // WikiNER : ponctuation conservée dans les séquences CRF et découpage aux
@@ -16,10 +16,13 @@
 // écart entre la configuration du modèle et celle de l'inférence (gazetteers
 // ou Brown clusters manquants, langue différente).
 //
+// Chaque traitement (reconnaissance, anonymisation, documents, OCR,
+// entraînement) prend un context.Context et s'arrête quand il est annulé.
+//
 // Anonymisation :
 //
 //	anon := goanon.NewAnonymizer(r, goanon.Config{Strategy: goanon.TagReplace})
-//	result, err := anon.Anonymize("Jean Dupont habite à Paris.")
+//	result, err := anon.Anonymize(ctx, "Jean Dupont habite à Paris.")
 //	// result.Text == "[PERSON_1] habite à [LOCATION_1]."
 package goanon
 
@@ -78,7 +81,6 @@ type Config = anonymizer.Config
 type ReplacerFunc = anonymizer.ReplacerFunc
 type Result = anonymizer.Result
 type Recognizer = anonymizer.Recognizer
-type ContextRecognizer = anonymizer.ContextRecognizer
 type AnonymizePass = anonymizer.AnonymizePass
 type AnonymizeOption = anonymizer.AnonymizeOption
 type Session = anonymizer.Session
@@ -121,7 +123,6 @@ var IsSecretType = ner.IsSecretType
 
 var NewSession = anonymizer.NewSession
 var WithSession = anonymizer.WithSession
-var WithContext = anonymizer.WithContext
 var WithLegacyPlaceholders = anonymizer.WithLegacyPlaceholders
 var WithEscapeCollisions = anonymizer.WithEscapeCollisions
 var WithExposeSecrets = anonymizer.WithExposeSecrets

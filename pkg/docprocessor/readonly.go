@@ -1,6 +1,7 @@
 package docprocessor
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bornholm/go-anon/pkg/anonymizer"
@@ -56,7 +57,7 @@ type RegionLeak struct {
 // de détection est négligeable devant celui de l'OCR qui l'a produit, et un
 // document dont on sait qu'il contient un nom illisible par le pipeline ne doit
 // jamais être déclaré conforme.
-func (p *Processor) scanReadOnlyRegions(walker Walker, report *Report) ([]RegionLeak, error) {
+func (p *Processor) scanReadOnlyRegions(ctx context.Context, walker Walker, report *Report) ([]RegionLeak, error) {
 	rw, ok := walker.(ReadOnlyTextWalker)
 	if !ok {
 		return nil, nil
@@ -69,7 +70,7 @@ func (p *Processor) scanReadOnlyRegions(walker Walker, report *Report) ([]Region
 		if region.Text == "" {
 			continue
 		}
-		entities, err := p.anon.Detect(region.Text)
+		entities, err := p.anon.Detect(ctx, region.Text)
 		if err != nil {
 			return nil, fmt.Errorf("analyse de %s : %w", region.Label, err)
 		}

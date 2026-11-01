@@ -1,6 +1,7 @@
 package ner
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -34,7 +35,7 @@ func TestRecognizer_EmptyText(t *testing.T) {
 	}
 	rec.crf = newTestCRF()
 
-	entities, err := rec.Recognize("")
+	entities, err := rec.Recognize(context.Background(), "")
 	if err != nil {
 		t.Fatalf("Recognize error: %v", err)
 	}
@@ -50,7 +51,7 @@ func TestRecognizer_NoEntities(t *testing.T) {
 	}
 	rec.crf = newTestCRF()
 
-	entities, err := rec.Recognize("The weather is nice today.")
+	entities, err := rec.Recognize(context.Background(), "The weather is nice today.")
 	if err != nil {
 		t.Fatalf("Recognize error: %v", err)
 	}
@@ -67,7 +68,7 @@ func TestRecognizer_WithPersonEntity(t *testing.T) {
 		crf:       newTestCRF(),
 	}
 
-	entities, err := rec.Recognize("John lives in Paris.")
+	entities, err := rec.Recognize(context.Background(), "John lives in Paris.")
 	if err != nil {
 		t.Fatalf("Recognize error: %v", err)
 	}
@@ -99,7 +100,7 @@ func TestRecognizer_ConfidenceScore(t *testing.T) {
 		crf:       newTestCRF(),
 	}
 
-	entities, err := rec.Recognize("John Doe works at Acme.")
+	entities, err := rec.Recognize(context.Background(), "John Doe works at Acme.")
 	if err != nil {
 		t.Fatalf("Recognize error: %v", err)
 	}
@@ -120,7 +121,7 @@ func TestRecognizer_OffsetsPreserved(t *testing.T) {
 	}
 
 	text := "John lives in Paris."
-	entities, err := rec.Recognize(text)
+	entities, err := rec.Recognize(context.Background(), text)
 	if err != nil {
 		t.Fatalf("Recognize error: %v", err)
 	}
@@ -168,7 +169,7 @@ func TestRecognizer_ConcurrentNoContamination(t *testing.T) {
 			marker := fmt.Sprintf("MARKER-%d", id)
 			text := "contact " + marker + " maintenant."
 			for i := 0; i < iterations; i++ {
-				entities, err := rec.Recognize(text)
+				entities, err := rec.Recognize(context.Background(), text)
 				if err != nil {
 					errCh <- fmt.Sprintf("worker %d: %v", id, err)
 					return
@@ -223,7 +224,7 @@ func TestRecognizer_PunctuationTokens_NoCrashValidOffsets(t *testing.T) {
 	}
 
 	text := "Jean Dupont, directeur de Renault, habite à Paris."
-	entities, err := rec.Recognize(text)
+	entities, err := rec.Recognize(context.Background(), text)
 	if err != nil {
 		t.Fatalf("Recognize: %v", err)
 	}

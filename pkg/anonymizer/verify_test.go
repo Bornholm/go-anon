@@ -1,6 +1,7 @@
 package anonymizer
 
 import (
+	"context"
 	"errors"
 	"sort"
 	"strings"
@@ -32,7 +33,7 @@ func TestGuarantee_StrictVerificationProducesNoOutput(t *testing.T) {
 		Passes:   []AnonymizePass{leakyPass("Jean Dupont")},
 	})
 
-	res, err := anon.Anonymize("Jean Dupont habite ici.", WithStrictVerification())
+	res, err := anon.Anonymize(context.Background(), "Jean Dupont habite ici.", WithStrictVerification())
 	if err == nil {
 		t.Fatalf("attendu une erreur, obtenu %q", res.Text)
 	}
@@ -68,7 +69,7 @@ func TestVerify_ReportModeKeepsOutputAndOffsets(t *testing.T) {
 	})
 
 	const text = "Bonjour Jean Dupont."
-	res, err := anon.Anonymize(text, WithVerification())
+	res, err := anon.Anonymize(context.Background(), text, WithVerification())
 	if err != nil {
 		t.Fatalf("mode rapport : erreur inattendue %v", err)
 	}
@@ -156,7 +157,7 @@ func TestVerify_NoFalsePositiveOnCleanOutput(t *testing.T) {
 			rec := &mockRecognizer{entities: locate(t, tc.text, tc.surfaces)}
 			anon := New(rec, Config{Strategy: tc.strategy, ConsistentMap: true})
 
-			res, err := anon.Anonymize(tc.text, WithStrictVerification(), WithHashKey(testHashKey))
+			res, err := anon.Anonymize(context.Background(), tc.text, WithStrictVerification(), WithHashKey(testHashKey))
 			if err != nil {
 				t.Fatalf("faux positif du mode strict : %v", err)
 			}
@@ -181,7 +182,7 @@ func TestVerify_CustomReplacerNotFlagged(t *testing.T) {
 		},
 	})
 
-	res, err := anon.Anonymize("Jean Dupont habite ici.", WithStrictVerification())
+	res, err := anon.Anonymize(context.Background(), "Jean Dupont habite ici.", WithStrictVerification())
 	if err != nil {
 		t.Fatalf("le pseudonyme généré ne doit pas déclencher le mode strict : %v", err)
 	}
@@ -202,7 +203,7 @@ func TestVerify_HashDigestNotFlaggedAsIdentifier(t *testing.T) {
 	// Plusieurs clés : au moins l'une produira des digests riches en chiffres.
 	for _, suffix := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
 		key := HashKey(strings.Repeat(suffix, MinHashKeyLen))
-		res, err := anon.Anonymize("Dupont est là.", WithStrictVerification(), WithHashKey(key))
+		res, err := anon.Anonymize(context.Background(), "Dupont est là.", WithStrictVerification(), WithHashKey(key))
 		if err != nil {
 			t.Fatalf("clé %q : %v", suffix, err)
 		}
@@ -220,7 +221,7 @@ func TestVerify_SecretRedactionSatisfiesStrictMode(t *testing.T) {
 	rec := &mockRecognizer{entities: entities}
 	anon := New(rec, Config{Strategy: TagReplace})
 
-	res, err := anon.Anonymize(text, WithStrictVerification())
+	res, err := anon.Anonymize(context.Background(), text, WithStrictVerification())
 	if err != nil {
 		t.Fatalf("le caviardage d'un secret doit satisfaire le mode strict : %v", err)
 	}
@@ -245,7 +246,7 @@ func TestGuarantee_StrictModeCatchesUnreplacedSecret(t *testing.T) {
 		}},
 	})
 
-	if _, err := anon.Anonymize(text, WithStrictVerification()); err == nil {
+	if _, err := anon.Anonymize(context.Background(), text, WithStrictVerification()); err == nil {
 		t.Fatal("un jeton GitHub en clair doit faire échouer le mode strict")
 	}
 }
@@ -278,7 +279,7 @@ func TestVerify_ResidualPlaceholderInSource(t *testing.T) {
 	// WithEscapeCollisions neutralise les délimiteurs plutôt que d'échouer ; la
 	// vérification doit tout de même signaler l'anomalie de la source.
 	src := "Paris et un ⟦PERSON_1_abcdef⟧ suspect."
-	res, err := anon.Anonymize(src, WithVerification(), WithEscapeCollisions())
+	res, err := anon.Anonymize(context.Background(), src, WithVerification(), WithEscapeCollisions())
 	if err != nil {
 		t.Fatalf("Anonymize : %v", err)
 	}
@@ -301,13 +302,13 @@ func TestVerify_WithVerifyPatternsNarrowsScan(t *testing.T) {
 
 	const text = "Écrire à jean@example.com."
 
-	if _, err := anon.Anonymize(text, WithStrictVerification()); err == nil {
+	if _, err := anon.Anonymize(context.Background(), text, WithStrictVerification()); err == nil {
 		t.Fatal("un e-mail en clair doit faire échouer le mode strict par défaut")
 	}
 
 	// Restreindre les patterns aux seuls secrets rend le mode strict tolérant
 	// aux identifiants que le pipeline n'a délibérément pas cherchés.
-	if _, err := anon.Anonymize(text, WithStrictVerification(),
+	if _, err := anon.Anonymize(context.Background(), text, WithStrictVerification(),
 		WithVerifyPatterns(ner.SecretPatterns()...)); err != nil {
 		t.Fatalf("patterns restreints : %v", err)
 	}

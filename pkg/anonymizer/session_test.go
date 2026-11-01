@@ -1,6 +1,7 @@
 package anonymizer
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -17,13 +18,13 @@ func TestGuarantee_SessionCloseRejectsReuse(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace})
 
 	sess := NewSession()
-	if _, err := anon.Anonymize("John Doe works here.", WithSession(sess)); err != nil {
+	if _, err := anon.Anonymize(context.Background(), "John Doe works here.", WithSession(sess)); err != nil {
 		t.Fatalf("première anonymisation : %v", err)
 	}
 
 	sess.Close()
 
-	_, err := anon.Anonymize("John Doe again.", WithSession(sess))
+	_, err := anon.Anonymize(context.Background(), "John Doe again.", WithSession(sess))
 	if !errors.Is(err, ErrSessionClosed) {
 		t.Fatalf("attendu ErrSessionClosed après Close(), got %v", err)
 	}
@@ -48,7 +49,7 @@ func TestSessionMaxEntities_CapsGrowth(t *testing.T) {
 	sess := NewSession()
 	sess.SetMaxEntities(2)
 
-	_, err := anon.Anonymize("Alice et Bob et Carol sont là.", WithSession(sess))
+	_, err := anon.Anonymize(context.Background(), "Alice et Bob et Carol sont là.", WithSession(sess))
 	if !errors.Is(err, ErrSessionFull) {
 		t.Fatalf("attendu ErrSessionFull au-delà du plafond, got %v", err)
 	}
@@ -73,7 +74,7 @@ func TestSession_RetainedTextsAreCloned(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace})
 
 	sess := NewSession()
-	if _, err := anon.Anonymize(source, WithSession(sess)); err != nil {
+	if _, err := anon.Anonymize(context.Background(), source, WithSession(sess)); err != nil {
 		t.Fatalf("Anonymize : %v", err)
 	}
 

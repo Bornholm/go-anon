@@ -1,6 +1,7 @@
 package anonymizer
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -127,7 +128,7 @@ func TestReconcile_OutputIsDisjoint(t *testing.T) {
 func TestWithAdditionalEntities_EndToEnd(t *testing.T) {
 	anon := New(noopRecognizer{}, Config{Strategy: TagReplace})
 
-	res, err := anon.Anonymize("contacter Dupont demain",
+	res, err := anon.Anonymize(context.Background(), "contacter Dupont demain",
 		WithAdditionalEntities([]ner.Entity{{Type: ner.TypePER, Start: 10, End: 16}}))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
@@ -143,4 +144,4 @@ func TestWithAdditionalEntities_EndToEnd(t *testing.T) {
 // noopRecognizer ne détecte rien : isole l'effet de WithAdditionalEntities.
 type noopRecognizer struct{}
 
-func (noopRecognizer) Recognize(string) ([]ner.Entity, error) { return nil, nil }
+func (noopRecognizer) Recognize(context.Context, string) ([]ner.Entity, error) { return nil, nil }

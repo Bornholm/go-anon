@@ -1,7 +1,6 @@
 package anonymizer
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -14,10 +13,6 @@ type AnonymizeOption func(*anonymizeParams)
 
 type anonymizeParams struct {
 	session *Session
-
-	// ctx est transmis au recognizer qui implémente ContextRecognizer ; nil
-	// vaut context.Background().
-	ctx context.Context
 
 	// nonce du format de placeholder, dérivé de la session ou tiré par appel.
 	nonce string
@@ -177,15 +172,6 @@ func NewSessionFromState(st SessionState) (*Session, error) {
 func WithSession(s *Session) AnonymizeOption {
 	return func(p *anonymizeParams) {
 		p.session = s
-	}
-}
-
-// WithContext transmet ctx au recognizer quand il implémente
-// ContextRecognizer : il peut alors s'arrêter quand l'appelant abandonne. Un
-// contexte déjà terminé fait échouer Anonymize avant la reconnaissance.
-func WithContext(ctx context.Context) AnonymizeOption {
-	return func(p *anonymizeParams) {
-		p.ctx = ctx
 	}
 }
 

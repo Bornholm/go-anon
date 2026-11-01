@@ -126,12 +126,12 @@ une fuite.
 
 ```go
 // Observation : rapport attaché au résultat, rien n'est bloqué.
-res, _ := anon.Anonymize(texte, goanon.WithVerification())
+res, _ := anon.Anonymize(ctx, texte, goanon.WithVerification())
 res.Verification.OK()      // false s'il reste quelque chose
 res.Verification.Leaks     // offsets et types, jamais le texte fuité
 
 // Fail-closed : une seule fuite suffit à refuser de produire une sortie.
-res, err := anon.Anonymize(texte, goanon.WithStrictVerification())
+res, err := anon.Anonymize(ctx, texte, goanon.WithStrictVerification())
 ```
 
 En ligne de commande, `-strict` sur `anon-doc`, `demo` et `server` :

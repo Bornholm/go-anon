@@ -2,6 +2,7 @@ package model_test
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
@@ -19,7 +20,7 @@ func trainedCRF(t *testing.T) *model.CRF {
 		},
 		Extractor: &features.FeatureExtractor{WindowSize: 1},
 	}
-	crf, err := tr.Train(toyCorpus(), nil)
+	crf, err := tr.Train(context.Background(), toyCorpus(), nil)
 	if err != nil {
 		t.Fatalf("Train: %v", err)
 	}

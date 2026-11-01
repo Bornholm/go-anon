@@ -1,6 +1,7 @@
 package docprocessor
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"unicode"
@@ -65,7 +66,7 @@ func collectTexts(walker Walker) ([]string, error) {
 // Coût : environ quatre passes de détection sur l'ensemble du document — une par
 // paire (chaque segment apparaît dans deux paires), une par bloc, plus une sur
 // le tout.
-func (p *Processor) detectViews(walker Walker, texts []string) (map[int][]ner.Entity, error) {
+func (p *Processor) detectViews(ctx context.Context, walker Walker, texts []string) (map[int][]ner.Entity, error) {
 	extras := make(map[int][]ner.Entity)
 
 	addView := func(indices []int) error {
@@ -75,7 +76,7 @@ func (p *Processor) detectViews(walker Walker, texts []string) (map[int][]ner.En
 			return nil
 		}
 		joined, bounds := joinSegments(texts, indices)
-		entities, err := p.anon.Detect(joined)
+		entities, err := p.anon.Detect(ctx, joined)
 		if err != nil {
 			return fmt.Errorf("détection multi-vues : %w", err)
 		}

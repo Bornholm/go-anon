@@ -1,6 +1,7 @@
 package docprocessor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,6 +13,14 @@ import (
 // errSampleDone est une sentinelle interne utilisée pour interrompre un Walk
 // une fois assez de texte accumulé.
 var errSampleDone = errors.New("docprocessor: sample done")
+
+// Saver est un Walker qui sait écrire le document qu'il parcourt, avec les
+// remplacements appliqués. ctx annule une écriture longue (le rendu des pages
+// caviardées d'un PDF) ; une écriture annulée ne laisse pas de document
+// exploitable.
+type Saver interface {
+	SaveTo(ctx context.Context, outputPath string) error
+}
 
 // SampleText parcourt le walker et accumule le texte des segments (séparés par
 // un saut de ligne) jusqu'à atteindre maxChars caractères, puis s'arrête.
@@ -182,8 +191,12 @@ func (r *Report) OK() bool {
 // Process parcourt les segments via walker, anonymise chacun avec une session partagée,
 // et appelle Segment.Replace pour chaque segment dont le texte a changé.
 // Les opts additionnelles sont ajoutées après WithSession (qui est toujours injecté).
-func (p *Processor) Process(walker Walker, opts ...anonymizer.AnonymizeOption) (*anonymizer.Session, error) {
-	session, _, err := p.ProcessWithReport(walker, opts...)
+//
+// ctx est transmis à chaque appel du recognizer : un parcours annulé s'arrête
+// au segment suivant et renvoie l'erreur du contexte. Comme pour une fuite en
+// mode strict, l'appelant ne doit alors pas écrire de document de sortie.
+func (p *Processor) Process(ctx context.Context, walker Walker, opts ...anonymizer.AnonymizeOption) (*anonymizer.Session, error) {
+	session, _, err := p.ProcessWithReport(ctx, walker, opts...)
 	return session, err
 }
 
@@ -193,7 +206,7 @@ func (p *Processor) Process(walker Walker, opts ...anonymizer.AnonymizeOption) (
 // En mode strict (WithStrictVerification), la première fuite interrompt le
 // parcours et retourne une erreur : l'appelant ne doit alors pas écrire de
 // document de sortie, sous peine de produire un fichier partiellement anonymisé.
-func (p *Processor) ProcessWithReport(walker Walker, opts ...anonymizer.AnonymizeOption) (*anonymizer.Session, *Report, error) {
+func (p *Processor) ProcessWithReport(ctx context.Context, walker Walker, opts ...anonymizer.AnonymizeOption) (*anonymizer.Session, *Report, error) {
 	session := anonymizer.NewSession()
 	allOpts := append([]anonymizer.AnonymizeOption{anonymizer.WithSession(session)}, opts...)
 
@@ -205,7 +218,7 @@ func (p *Processor) ProcessWithReport(walker Walker, opts ...anonymizer.Anonymiz
 		if err != nil {
 			return session, nil, err
 		}
-		extras, err = p.detectViews(walker, texts)
+		extras, err = p.detectViews(ctx, walker, texts)
 		if err != nil {
 			return session, nil, err
 		}
@@ -220,7 +233,7 @@ func (p *Processor) ProcessWithReport(walker Walker, opts ...anonymizer.Anonymiz
 		i := index
 		index++
 		report.Segments = index
-		out, err := p.anonymizeSegment(i, seg, extras[i], allOpts, report)
+		out, err := p.anonymizeSegment(ctx, i, seg, extras[i], allOpts, report)
 		if err != nil {
 			return err
 		}
@@ -237,7 +250,7 @@ func (p *Processor) ProcessWithReport(walker Walker, opts ...anonymizer.Anonymiz
 	}
 
 	if p.verifyDoc {
-		leaks, err := p.verifyDocument(outputs, replacements)
+		leaks, err := p.verifyDocument(ctx, outputs, replacements)
 		if err != nil {
 			return session, report, err
 		}
@@ -252,7 +265,7 @@ func (p *Processor) ProcessWithReport(walker Walker, opts ...anonymizer.Anonymiz
 	// Systématique : ne dépend d'aucune option, seulement de ce que le walker
 	// expose. Une entité qu'on sait présente et qu'on ne sait pas retirer doit
 	// être signalée quelle que soit la configuration.
-	regionLeaks, err := p.scanReadOnlyRegions(walker, report)
+	regionLeaks, err := p.scanReadOnlyRegions(ctx, walker, report)
 	if err != nil {
 		return session, report, err
 	}
@@ -269,11 +282,11 @@ func (p *Processor) ProcessWithReport(walker Walker, opts ...anonymizer.Anonymiz
 // anonymizeSegment anonymise le segment de rang i, y réécrit le résultat et
 // en reporte les fuites et les entités dans report. extra porte les entités
 // trouvées par la détection multi-vues.
-func (p *Processor) anonymizeSegment(i int, seg Segment, extra []ner.Entity, opts []anonymizer.AnonymizeOption, report *Report) (*anonymizer.Result, error) {
+func (p *Processor) anonymizeSegment(ctx context.Context, i int, seg Segment, extra []ner.Entity, opts []anonymizer.AnonymizeOption, report *Report) (*anonymizer.Result, error) {
 	if len(extra) > 0 {
 		opts = append(append([]anonymizer.AnonymizeOption{}, opts...), anonymizer.WithAdditionalEntities(extra))
 	}
-	result, err := p.anon.Anonymize(seg.Text, opts...)
+	result, err := p.anon.Anonymize(ctx, seg.Text, opts...)
 	if err != nil {
 		var verr *anonymizer.VerificationError
 		if errors.As(err, &verr) {
@@ -306,7 +319,7 @@ func (p *Processor) anonymizeSegment(i int, seg Segment, extra []ner.Entity, opt
 // Contrepartie assumée : deux segments voisins mais sans rapport (deux cellules,
 // deux colonnes) deviennent adjacents et peuvent produire un faux positif. Pour
 // un contrôle dont la sortie est « regarde ici », c'est le bon sens d'erreur.
-func (p *Processor) verifyDocument(outputs, replacements []string) ([]DocumentLeak, error) {
+func (p *Processor) verifyDocument(ctx context.Context, outputs, replacements []string) ([]DocumentLeak, error) {
 	if len(outputs) == 0 {
 		return nil, nil
 	}
@@ -320,7 +333,7 @@ func (p *Processor) verifyDocument(outputs, replacements []string) ([]DocumentLe
 	}
 	joined := strings.Join(outputs, sep)
 
-	entities, err := p.anon.Detect(joined)
+	entities, err := p.anon.Detect(ctx, joined)
 	if err != nil {
 		return nil, fmt.Errorf("vérification document : %w", err)
 	}

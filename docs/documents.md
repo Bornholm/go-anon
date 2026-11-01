@@ -55,7 +55,7 @@ la borne).
 in, _ := os.Open("clients.csv")
 out, _ := os.Create("clients_anon.csv")
 stream, _ := csv.NewStream(in, out) // csv.WithSeparator, WithBatchBytes, WithHeader
-session, report, err := docprocessor.New(anon).ProcessStream(stream, anonymizer.WithVerification())
+session, report, err := docprocessor.New(anon).ProcessStream(ctx, stream, anonymizer.WithVerification())
 if err != nil {
 	os.Remove("clients_anon.csv") // sortie partielle
 }

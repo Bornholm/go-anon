@@ -412,7 +412,7 @@ func (s *Server) handlePseudonymize(w http.ResponseWriter, r *http.Request) {
 
 	anon := goanon.NewAnonymizer(rec, cfg)
 	anonStart := time.Now()
-	result, err := anon.Anonymize(req.Text, anonOpts...)
+	result, err := anon.Anonymize(r.Context(), req.Text, anonOpts...)
 	if err != nil {
 		var verr *goanon.VerificationError
 		if errors.As(err, &verr) {
@@ -709,7 +709,7 @@ func (s *Server) handlePseudonymizeDoc(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		session, docReport, err := proc.ProcessWithReport(walker, anonOpts...)
+		session, docReport, err := proc.ProcessWithReport(r.Context(), walker, anonOpts...)
 		if err != nil {
 			var verr *goanon.VerificationError
 			if errors.As(err, &verr) {
@@ -746,12 +746,12 @@ func (s *Server) handlePseudonymizeDoc(w http.ResponseWriter, r *http.Request) {
 		// Hygiène mémoire (S8) : la session n'est plus utile après sanitisation.
 		defer session.Close()
 
-		saver, ok := walker.(interface{ SaveTo(string) error })
+		saver, ok := walker.(docprocessor.Saver)
 		if !ok {
 			http.Error(w, "format non sauvegardable", http.StatusInternalServerError)
 			return
 		}
-		if err := saver.SaveTo(tmpOutName); err != nil {
+		if err := saver.SaveTo(r.Context(), tmpOutName); err != nil {
 			id := requestIDFrom(r)
 			http.Error(w, "internal error (ref "+id+")", http.StatusInternalServerError)
 			log.Printf("anonymize-doc req=%s: sauvegarde: %v", id, err)
@@ -816,7 +816,7 @@ func (s *Server) anonymizeStream(w http.ResponseWriter, r *http.Request, proc *d
 		out.Close()
 		return internal("ouverture document", err)
 	}
-	session, report, err := proc.ProcessStream(walker, opts...)
+	session, report, err := proc.ProcessStream(r.Context(), walker, opts...)
 	defer session.Close()
 	if cerr := out.Close(); err == nil && cerr != nil {
 		return internal("écriture sortie", cerr)

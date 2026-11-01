@@ -1,6 +1,7 @@
 package docprocessor
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -35,7 +36,7 @@ func TestProcessStream_RanksAcrossBatches(t *testing.T) {
 		Passes: []anonymizer.AnonymizePass{func(original string, r *anonymizer.Result) string { return original }},
 	})
 	w := &batchWalker{batches: [][]string{{"rien", "à jean@example.com"}, {"rien", "à jean@example.com"}}}
-	_, report, err := New(anon).ProcessStream(w, anonymizer.WithVerification())
+	_, report, err := New(anon).ProcessStream(context.Background(), w, anonymizer.WithVerification())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,7 @@ func TestProcessStream_RanksAcrossBatches(t *testing.T) {
 func TestProcessStream_ConsistentAcrossBatches(t *testing.T) {
 	anon := anonymizer.New(emailRecognizer{}, anonymizer.Config{Strategy: anonymizer.TagReplace, ConsistentMap: true})
 	w := &batchWalker{batches: [][]string{{"jean@example.com"}, {"jean@example.com"}}}
-	session, _, err := New(anon).ProcessStream(w)
+	session, _, err := New(anon).ProcessStream(context.Background(), w)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestProcessStream_StrictStopsAtTheBatch(t *testing.T) {
 		Passes:   []anonymizer.AnonymizePass{func(original string, r *anonymizer.Result) string { return original }},
 	})
 	w := &batchWalker{batches: [][]string{{"rien"}, {"à jean@example.com"}, {"rien"}}}
-	_, _, err := New(anon).ProcessStream(w, anonymizer.WithStrictVerification())
+	_, _, err := New(anon).ProcessStream(context.Background(), w, anonymizer.WithStrictVerification())
 	var verr *anonymizer.VerificationError
 	if !errors.As(err, &verr) || len(w.written) != 1 {
 		t.Errorf("err %v, lots écrits %d", err, len(w.written))

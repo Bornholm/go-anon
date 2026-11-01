@@ -1,6 +1,8 @@
 package pdf
 
 import (
+	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/draw"
@@ -17,15 +19,20 @@ import (
 type stubRasterizer struct {
 	rendered []int // pages rendues, dans l'ordre
 	err      error
+	// cancel, s'il est donné, est appelé après le premier rendu.
+	cancel context.CancelFunc
 }
 
 func (s *stubRasterizer) Name() string     { return "stub" }
 func (s *stubRasterizer) Available() error { return nil }
-func (s *stubRasterizer) Render(_ string, pageNr, _ int) (image.Image, error) {
+func (s *stubRasterizer) Render(_ context.Context, _ string, pageNr, _ int) (image.Image, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
 	s.rendered = append(s.rendered, pageNr)
+	if s.cancel != nil {
+		s.cancel()
+	}
 	return image.NewGray(image.Rect(0, 0, 10, 10)), nil
 }
 
@@ -36,7 +43,7 @@ type stubEngine struct {
 
 func (s *stubEngine) Name() string     { return "stub" }
 func (s *stubEngine) Available() error { return s.unavailable }
-func (s *stubEngine) Recognize(image.Image, string) ([]ocr.Word, error) {
+func (s *stubEngine) Recognize(context.Context, image.Image, string) ([]ocr.Word, error) {
 	return s.words, nil
 }
 
@@ -65,7 +72,7 @@ func TestRunOCR_CoversEveryPage(t *testing.T) {
 	opts, ras := stubOCROptions([]ocr.Word{
 		{Text: "Jean", BBox: ocr.Rect{X: 0, Y: 0, W: 40, H: 10}, Confidence: 0.9, Line: 0},
 	})
-	if err := w.RunOCR(opts); err != nil {
+	if err := w.RunOCR(context.Background(), opts); err != nil {
 		t.Fatalf("RunOCR: %v", err)
 	}
 
@@ -85,7 +92,7 @@ func TestRunOCR_FailsWhenEngineUnavailable(t *testing.T) {
 	wr, _ := NewWalkerFromFile(path)
 	w := wr.(*Walker)
 
-	err := w.RunOCR(OCROptions{
+	err := w.RunOCR(context.Background(), OCROptions{
 		Engine:     &stubEngine{unavailable: errStub},
 		Rasterizer: &stubRasterizer{},
 	})
@@ -99,10 +106,10 @@ func TestRunOCR_RequiresEngineAndRasterizer(t *testing.T) {
 	wr, _ := NewWalkerFromFile(path)
 	w := wr.(*Walker)
 
-	if err := w.RunOCR(OCROptions{Rasterizer: &stubRasterizer{}}); err == nil {
+	if err := w.RunOCR(context.Background(), OCROptions{Rasterizer: &stubRasterizer{}}); err == nil {
 		t.Error("un OCR sans moteur devrait échouer")
 	}
-	if err := w.RunOCR(OCROptions{Engine: &stubEngine{}}); err == nil {
+	if err := w.RunOCR(context.Background(), OCROptions{Engine: &stubEngine{}}); err == nil {
 		t.Error("un OCR sans rastériseur devrait échouer")
 	}
 }
@@ -121,7 +128,7 @@ func TestReadOnlyText(t *testing.T) {
 		{Text: "Jean", BBox: ocr.Rect{X: 0, Y: 0, W: 40, H: 10}, Line: 0},
 		{Text: "Dupont", BBox: ocr.Rect{X: 50, Y: 0, W: 60, H: 10}, Line: 0},
 	})
-	if err := w.RunOCR(opts); err != nil {
+	if err := w.RunOCR(context.Background(), opts); err != nil {
 		t.Fatalf("RunOCR: %v", err)
 	}
 
@@ -183,7 +190,7 @@ func TestRunOCR_RealPipeline(t *testing.T) {
 	}
 	w := wr.(*Walker)
 
-	if err := w.RunOCR(OCROptions{
+	if err := w.RunOCR(context.Background(), OCROptions{
 		Engine: engine, Rasterizer: ras, Lang: "fr", DPI: 200,
 	}); err != nil {
 		t.Fatalf("RunOCR: %v", err)
@@ -301,7 +308,7 @@ func TestRedaction_RemovesPixels(t *testing.T) {
 		t.Fatalf("NewWalkerFromFile: %v", err)
 	}
 	w := wr.(*Walker)
-	if err := w.RunOCR(ocrOpts); err != nil {
+	if err := w.RunOCR(context.Background(), ocrOpts); err != nil {
 		t.Fatalf("RunOCR: %v", err)
 	}
 
@@ -320,7 +327,7 @@ func TestRedaction_RemovesPixels(t *testing.T) {
 	}
 
 	out := filepath.Join(t.TempDir(), "out.pdf")
-	if err := w.SaveTo(out); err != nil {
+	if err := w.SaveTo(context.Background(), out); err != nil {
 		t.Fatalf("SaveTo: %v", err)
 	}
 
@@ -341,7 +348,7 @@ func TestRedaction_RemovesPixels(t *testing.T) {
 	// toujours, donc inutile. Cf. ocr.PSMSparse.
 	verifyOpts := ocrOpts
 	verifyOpts.Engine = ocr.NewTesseractExecSparse()
-	if err := w2.RunOCR(verifyOpts); err != nil {
+	if err := w2.RunOCR(context.Background(), verifyOpts); err != nil {
 		t.Fatalf("ré-OCR: %v", err)
 	}
 	var produced string
@@ -397,7 +404,7 @@ func TestVisualText_SeesWhatARedactionMissed(t *testing.T) {
 		t.Fatalf("NewWalkerFromFile: %v", err)
 	}
 	w := wr.(*Walker)
-	if err := w.RunOCR(opts); err != nil {
+	if err := w.RunOCR(context.Background(), opts); err != nil {
 		t.Fatalf("RunOCR: %v", err)
 	}
 
@@ -413,11 +420,11 @@ func TestVisualText_SeesWhatARedactionMissed(t *testing.T) {
 	}
 
 	out := filepath.Join(t.TempDir(), "out.pdf")
-	if err := w.SaveTo(out); err != nil {
+	if err := w.SaveTo(context.Background(), out); err != nil {
 		t.Fatalf("SaveTo: %v", err)
 	}
 
-	visual, err := w.VisualText(out)
+	visual, err := w.VisualText(context.Background(), out)
 	if err != nil {
 		t.Fatalf("VisualText: %v", err)
 	}
@@ -445,12 +452,37 @@ func TestVisualText_DisabledWithoutEngine(t *testing.T) {
 	w := wr.(*Walker)
 
 	opts, _ := stubOCROptions(nil)
-	if err := w.RunOCR(opts); err != nil {
+	if err := w.RunOCR(context.Background(), opts); err != nil {
 		t.Fatalf("RunOCR: %v", err)
 	}
 
-	regions, err := w.VisualText(path)
+	regions, err := w.VisualText(context.Background(), path)
 	if err != nil || regions != nil {
 		t.Errorf("regions=%+v err=%v", regions, err)
+	}
+}
+
+// TestRunOCR_Cancelled : une océrisation annulée s'arrête à la page suivante,
+// même avec un moteur qui ignore le contexte.
+func TestRunOCR_Cancelled(t *testing.T) {
+	path := buildPDF(t, pageObjects([]string{
+		drawImage(0, 0, pageW, pageH),
+		drawImage(0, 0, pageW, pageH),
+	}))
+	wr, err := NewWalkerFromFile(path)
+	if err != nil {
+		t.Fatalf("NewWalkerFromFile: %v", err)
+	}
+	w := wr.(*Walker)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	opts, ras := stubOCROptions(nil)
+	ras.cancel = cancel
+	if err := w.RunOCR(ctx, opts); !errors.Is(err, context.Canceled) {
+		t.Fatalf("RunOCR = %v, want context.Canceled", err)
+	}
+	if len(ras.rendered) != 1 {
+		t.Errorf("pages rendues = %v, attendu la première seulement", ras.rendered)
 	}
 }

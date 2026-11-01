@@ -2,6 +2,7 @@ package pdf
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -97,7 +98,7 @@ func TestGuarantee_PDFStripsInfoMetadata(t *testing.T) {
 	}
 
 	out := filepath.Join(t.TempDir(), "out.pdf")
-	if err := w.SaveTo(out); err != nil {
+	if err := w.SaveTo(context.Background(), out); err != nil {
 		t.Fatalf("SaveTo: %v", err)
 	}
 
@@ -111,12 +112,12 @@ func TestURICarriesData(t *testing.T) {
 	// comme surface non traitée alerte sur chaque document et apprend à
 	// ignorer l'alerte.
 	cases := map[string]bool{
-		"http://mobile.free.fr":                       false,
-		"http://mobile.free.fr/contact.html":          false,
-		"https://example.org/aide":                    false,
-		"":                                            false,
-		"mailto:jean.dupont@example.org":              true,
-		"MAILTO:Jean@example.org":                     true,
+		"http://mobile.free.fr":              false,
+		"http://mobile.free.fr/contact.html": false,
+		"https://example.org/aide":           false,
+		"":                                   false,
+		"mailto:jean.dupont@example.org":     true,
+		"MAILTO:Jean@example.org":            true,
 		"https://espace.example.org/?client=59842885": true,
 		"https://example.org/facture?id=2382811072":   true,
 	}

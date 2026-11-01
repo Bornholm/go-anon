@@ -1,6 +1,7 @@
 package ner
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -10,7 +11,7 @@ import (
 // RecognizerEvalInterface définit l'interface pour l'évaluation.
 // Permite l'injection de mock pour les tests.
 type RecognizerEvalInterface interface {
-	Recognize(text string) ([]Entity, error)
+	Recognize(ctx context.Context, text string) ([]Entity, error)
 }
 
 // Metrics contient les métriques d'évaluation standard du NER.
@@ -49,11 +50,14 @@ func fBeta(precision, recall, beta float64) float64 {
 // puis calcule Precision, Recall et F1.
 //
 // Matching strict : type ET span (Start, End) doivent correspondre exactement.
-func Evaluate(rec RecognizerEvalInterface, testSet []corpus.Sentence) *Metrics {
+//
+// ctx est transmis au recognizer ; un appel annulé s'arrête à la phrase
+// suivante et renvoie l'erreur du contexte.
+func Evaluate(ctx context.Context, rec RecognizerEvalInterface, testSet []corpus.Sentence) (*Metrics, error) {
 	if len(testSet) == 0 {
 		return &Metrics{
 			PerType: make(map[EntityType]*Metrics),
-		}
+		}, nil
 	}
 
 	var totalGold, totalPred, totalMatch int
@@ -63,7 +67,10 @@ func Evaluate(rec RecognizerEvalInterface, testSet []corpus.Sentence) *Metrics {
 		goldEntities := sentenceToEntities(sent)
 		text := reconstructText(sent)
 
-		predictedEntities, err := rec.Recognize(text)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		predictedEntities, err := rec.Recognize(ctx, text)
 		if err != nil {
 			continue
 		}
@@ -115,7 +122,7 @@ func Evaluate(rec RecognizerEvalInterface, testSet []corpus.Sentence) *Metrics {
 		perTypeMetrics[et] = m
 	}
 
-	return metrics
+	return metrics, nil
 }
 
 // strictMatching retourne true si gold et pred sont identiques:

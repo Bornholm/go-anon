@@ -1,6 +1,7 @@
 package pdf
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"path/filepath"
@@ -45,7 +46,7 @@ func buildSearchablePDF(t *testing.T, ras Rasterizer) string {
 	src := buildSizedPDF(t, scanW, scanH,
 		fmt.Sprintf("BT /F1 30 Tf 15 35 Td (%s %s) Tj ET\n", fixtureKeep, fixtureName))
 
-	img, err := ras.Render(src, 1, scanDPI)
+	img, err := ras.Render(context.Background(), src, 1, scanDPI)
 	if err != nil {
 		t.Fatalf("rendu du fixture : %v", err)
 	}
@@ -102,7 +103,7 @@ func buildImagePDF(t *testing.T, w, h float64, img image.Image, content string) 
 // nameRecognizer ne reconnaît que fixtureName, où qu'il apparaisse.
 type nameRecognizer struct{}
 
-func (nameRecognizer) Recognize(text string) ([]ner.Entity, error) {
+func (nameRecognizer) Recognize(_ context.Context, text string) ([]ner.Entity, error) {
 	var entities []ner.Entity
 	for pos := 0; ; {
 		idx := strings.Index(text[pos:], fixtureName)
@@ -157,7 +158,7 @@ func TestIntegration_SearchablePDF(t *testing.T) {
 		DPI:          scanDPI,
 		VerifyEngine: ocr.NewTesseractExecSparse(),
 	}
-	if err := w.RunOCR(ocrOpts); err != nil {
+	if err := w.RunOCR(context.Background(), ocrOpts); err != nil {
 		t.Fatalf("RunOCR: %v", err)
 	}
 	regions := w.ReadOnlyText()
@@ -172,7 +173,7 @@ func TestIntegration_SearchablePDF(t *testing.T) {
 	})
 	proc := docprocessor.New(anon, docprocessor.WithMultiViewDetection())
 
-	session, report, err := proc.ProcessWithReport(w)
+	session, report, err := proc.ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -190,12 +191,12 @@ func TestIntegration_SearchablePDF(t *testing.T) {
 	}
 
 	out := filepath.Join(t.TempDir(), "out.pdf")
-	if err := w.SaveTo(out); err != nil {
+	if err := w.SaveTo(context.Background(), out); err != nil {
 		t.Fatalf("SaveTo: %v", err)
 	}
 
 	// Phase 6′ — vérification visuelle : plus rien de lisible dans la sortie.
-	leaks, err := proc.VerifyOutput(w, out, session)
+	leaks, err := proc.VerifyOutput(context.Background(), w, out, session)
 	if err != nil {
 		t.Fatalf("VerifyOutput : %v", err)
 	}
@@ -231,7 +232,7 @@ func assertNameGone(t *testing.T, path string, ocrOpts OCROptions) {
 		t.Errorf("le nom reste extractible : %q", extracted.String())
 	}
 
-	if err := w.RunOCR(ocrOpts); err != nil {
+	if err := w.RunOCR(context.Background(), ocrOpts); err != nil {
 		t.Fatalf("ré-OCR : %v", err)
 	}
 	var visible strings.Builder

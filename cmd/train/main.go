@@ -8,10 +8,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"runtime"
 
 	"github.com/bornholm/go-anon/cmd/internal/cmdutil"
@@ -46,6 +48,10 @@ func main() {
 	pruneThreshold := flag.Float64("prune-threshold", 0.0, "seuil d'élagage des poids avant sauvegarde (0=désactivé, ex: 0.001)")
 
 	flag.Parse()
+
+	// Ctrl-C annule le traitement en cours.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
 	if *trainPath == "" {
 		fmt.Fprintln(os.Stderr, "erreur : -train est obligatoire")
@@ -151,7 +157,7 @@ func main() {
 	log.Printf("démarrage entraînement : %d époques, lr=%.4f, lr-decay=%.4f, l2=%.4f, workers=%d",
 		*epochs, *lr, *lrDecay, *l2, *workers)
 
-	crf, err := trainer.Train(trainSents, devSents)
+	crf, err := trainer.Train(ctx, trainSents, devSents)
 	if err != nil {
 		log.Fatalf("entraînement : %v", err)
 	}

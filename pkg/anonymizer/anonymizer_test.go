@@ -1,6 +1,7 @@
 package anonymizer
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -13,7 +14,7 @@ type mockRecognizer struct {
 	entities []ner.Entity
 }
 
-func (m *mockRecognizer) Recognize(text string) ([]ner.Entity, error) {
+func (m *mockRecognizer) Recognize(_ context.Context, text string) ([]ner.Entity, error) {
 	return m.entities, nil
 }
 
@@ -34,7 +35,7 @@ func TestAnonymize_TagReplace(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace})
 
 	sess := NewSession()
-	result, err := anon.Anonymize("John Doe works at Acme.", WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), "John Doe works at Acme.", WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
@@ -57,7 +58,7 @@ func TestAnonymize_Redact(t *testing.T) {
 	rec := &mockRecognizer{entities: entities}
 	anon := New(rec, Config{Strategy: Redact})
 
-	result, err := anon.Anonymize("John lives here.")
+	result, err := anon.Anonymize(context.Background(), "John lives here.")
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
@@ -78,7 +79,7 @@ func TestAnonymize_RedactLengthIndependentOfEntity(t *testing.T) {
 		}}, Config{Strategy: Redact})
 
 		for range 50 {
-			result, err := anon.Anonymize(text)
+			result, err := anon.Anonymize(context.Background(), text)
 			if err != nil {
 				t.Fatalf("Anonymize: %v", err)
 			}
@@ -105,7 +106,7 @@ func TestAnonymize_RedactNoMapping(t *testing.T) {
 	}}, Config{Strategy: Redact, ConsistentMap: true})
 
 	sess := NewSession()
-	result, err := anon.Anonymize(original, WithSession(sess), WithVerification())
+	result, err := anon.Anonymize(context.Background(), original, WithSession(sess), WithVerification())
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -139,7 +140,7 @@ func TestAnonymize_RedactKeepsCustomReplacers(t *testing.T) {
 		},
 	})
 
-	result, err := anon.Anonymize(original)
+	result, err := anon.Anonymize(context.Background(), original)
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -166,7 +167,7 @@ func TestAnonymize_RedactBlocksAreDrawnPerOccurrence(t *testing.T) {
 
 	differs := false
 	for range 100 {
-		result, err := anon.Anonymize(original)
+		result, err := anon.Anonymize(context.Background(), original)
 		if err != nil {
 			t.Fatalf("Anonymize: %v", err)
 		}
@@ -191,7 +192,7 @@ func TestAnonymize_RedactConstantLength(t *testing.T) {
 	}}, Config{Strategy: Redact, RedactMinRunes: 6, RedactMaxRunes: 6})
 
 	for range 10 {
-		result, err := anon.Anonymize("John lives here.")
+		result, err := anon.Anonymize(context.Background(), "John lives here.")
 		if err != nil {
 			t.Fatalf("Anonymize: %v", err)
 		}
@@ -210,7 +211,7 @@ func TestAnonymize_RedactRangeCoversBounds(t *testing.T) {
 
 	seen := make(map[int]bool)
 	for range 500 {
-		result, err := anon.Anonymize("John.")
+		result, err := anon.Anonymize(context.Background(), "John.")
 		if err != nil {
 			t.Fatalf("Anonymize: %v", err)
 		}
@@ -236,7 +237,7 @@ func TestAnonymize_RedactInvalidRange(t *testing.T) {
 			{Text: "John", Type: ner.TypePER, Start: 0, End: 4, Confidence: 1.0},
 		}}, Config{Strategy: Redact, RedactMinRunes: tc.min, RedactMaxRunes: tc.max})
 
-		if _, err := anon.Anonymize("John lives here."); !errors.Is(err, ErrInvalidRedactRange) {
+		if _, err := anon.Anonymize(context.Background(), "John lives here."); !errors.Is(err, ErrInvalidRedactRange) {
 			t.Errorf("bornes [%d, %d] : got %v, want ErrInvalidRedactRange", tc.min, tc.max, err)
 		}
 	}
@@ -250,7 +251,7 @@ func TestAnonymize_Hash(t *testing.T) {
 	rec := &mockRecognizer{entities: entities}
 	anon := New(rec, Config{Strategy: Hash})
 
-	result, err := anon.Anonymize("Alice is here.", WithHashKey(testHashKey))
+	result, err := anon.Anonymize(context.Background(), "Alice is here.", WithHashKey(testHashKey))
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
@@ -278,7 +279,7 @@ func TestAnonymize_ConsistentMap_Fuzzy(t *testing.T) {
 	anon := New(rec, Config{Strategy: Consistent, ConsistentMap: true})
 
 	sess := NewSession()
-	result, err := anon.Anonymize("John Doe works with JOHN DOE.", WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), "John Doe works with JOHN DOE.", WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
@@ -307,7 +308,7 @@ func TestAnonymize_ConsistentMap_Exact(t *testing.T) {
 	rec := &mockRecognizer{entities: entities}
 	anon := New(rec, Config{Strategy: Consistent, ConsistentMap: true})
 
-	result, err := anon.Anonymize("John Doe and Jane Smith are here.")
+	result, err := anon.Anonymize(context.Background(), "John Doe and Jane Smith are here.")
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
@@ -337,7 +338,7 @@ func TestAnonymize_FilterByType(t *testing.T) {
 	})
 
 	sess := NewSession()
-	result, err := anon.Anonymize("John Doe lives in Paris.", WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), "John Doe lives in Paris.", WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
@@ -371,7 +372,7 @@ func TestAnonymize_CustomReplacer(t *testing.T) {
 		},
 	})
 
-	result, err := anon.Anonymize("John Doe is here.")
+	result, err := anon.Anonymize(context.Background(), "John Doe is here.")
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
@@ -389,7 +390,7 @@ func TestAnonymize_EmptyText(t *testing.T) {
 	rec := &mockRecognizer{entities: nil}
 	anon := New(rec, Config{Strategy: TagReplace})
 
-	result, err := anon.Anonymize("")
+	result, err := anon.Anonymize(context.Background(), "")
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
@@ -455,7 +456,7 @@ func TestAnonymize_MultipleEntities(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace})
 
 	sess := NewSession()
-	result, err := anon.Anonymize("John Doe lives in Paris and works at Acme.", WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), "John Doe lives in Paris and works at Acme.", WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
@@ -485,7 +486,7 @@ func TestAnonymize_BidirectionalMapping(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace})
 
 	sess := NewSession()
-	result, err := anon.Anonymize("John Doe is here.", WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), "John Doe is here.", WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize error: %v", err)
 	}
@@ -537,7 +538,7 @@ func TestEnsureConsistency_CatchesMissedEntities(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
 	sess := NewSession()
-	result, err := anon.Anonymize(original, WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -558,7 +559,7 @@ func TestEnsureConsistency_TypeMismatch(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
 	sess := NewSession()
-	result, err := anon.Anonymize(original, WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -586,7 +587,7 @@ func TestEnsureConsistency_AlreadyCorrect(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
 	sess := NewSession()
-	result, err := anon.Anonymize(original, WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -641,7 +642,7 @@ func assertRoundTrip(t *testing.T, original string, entities []ner.Entity, cfg C
 	rec := &mockRecognizer{entities: entities}
 	anon := New(rec, cfg)
 
-	result, err := anon.Anonymize(original)
+	result, err := anon.Anonymize(context.Background(), original)
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -691,7 +692,7 @@ func TestPostProcess_CompletesSurnameAfterPer(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
 
 	sess := NewSession()
-	result, err := anon.Anonymize(original, WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -709,7 +710,7 @@ func TestPostProcess_NoSurname_NoChange(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
 
 	sess := NewSession()
-	result, err := anon.Anonymize(original, WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -727,7 +728,7 @@ func TestPostProcess_AdjacentSurnameWithSpace(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
 
 	sess := NewSession()
-	result, err := anon.Anonymize(original, WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -745,7 +746,7 @@ func TestPostProcess_AccentedAdjacentSurname(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass(), SurnameCompletionPass()}})
 
 	sess := NewSession()
-	result, err := anon.Anonymize(original, WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -768,7 +769,7 @@ func TestAnonymize_SharedSurname_DoesNotConflict(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true, Passes: []AnonymizePass{ConsistencyPass()}})
 
 	sess := NewSession()
-	result, err := anon.Anonymize("Marie Dupont\n\nPierre Dupont", WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), "Marie Dupont\n\nPierre Dupont", WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}

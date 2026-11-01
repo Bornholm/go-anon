@@ -9,10 +9,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
 
 	"github.com/bornholm/go-anon/cmd/internal/cmdutil"
@@ -35,6 +37,10 @@ func main() {
 	preset := flag.String("preset", "", `preset de post-traitement : "balanced" ou "high-recall" (vide = aucun) ; mesure le couple précision/rappel du preset`)
 
 	flag.Parse()
+
+	// Ctrl-C annule le traitement en cours.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
 	if *testPath == "" {
 		fmt.Fprintln(os.Stderr, "erreur : -test est obligatoire")
@@ -129,7 +135,11 @@ func main() {
 
 	// --- Évaluation ---
 	log.Println("évaluation en cours...")
-	metrics := ner.Evaluate(rec, testSents)
+	metrics, err := ner.Evaluate(ctx, rec, testSents)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Évaluation interrompue : %v\n", err)
+		os.Exit(1)
+	}
 
 	// --- Affichage ---
 	fmt.Printf("\nÉvaluation sur %s (%d phrases)\n\n", *testPath, len(testSents))

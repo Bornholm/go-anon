@@ -1,6 +1,7 @@
 package anonymizer
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -49,7 +50,7 @@ func TestGuarantee_SecretsNeverEnterMapping(t *testing.T) {
 				ConsistentMap: true,
 			})
 
-			result, err := anon.Anonymize(original, tc.opts...)
+			result, err := anon.Anonymize(context.Background(), original, tc.opts...)
 			if err != nil {
 				t.Fatalf("Anonymize: %v", err)
 			}
@@ -95,7 +96,7 @@ func TestSecrets_NotExposedInResultEntities(t *testing.T) {
 	entities := []ner.Entity{spanEntity(original, fakeGitHubToken, ner.TypeAPIKey)}
 	anon := New(&mockRecognizer{entities: entities}, Config{Strategy: TagReplace})
 
-	result, err := anon.Anonymize(original)
+	result, err := anon.Anonymize(context.Background(), original)
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -103,7 +104,7 @@ func TestSecrets_NotExposedInResultEntities(t *testing.T) {
 		t.Error("la forme de surface du secret est exposée dans Result.Entities")
 	}
 
-	exposed, err := anon.Anonymize(original, WithExposeSecrets(true))
+	exposed, err := anon.Anonymize(context.Background(), original, WithExposeSecrets(true))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -124,7 +125,7 @@ func TestSecrets_NoStablePseudonym(t *testing.T) {
 	}
 	anon := New(&mockRecognizer{entities: entities}, Config{Strategy: Hash})
 
-	result, err := anon.Anonymize(original, WithHashKey(testHashKey))
+	result, err := anon.Anonymize(context.Background(), original, WithHashKey(testHashKey))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -147,7 +148,7 @@ func TestConsistencyPass_SecretDoesNotBlankText(t *testing.T) {
 		Passes:        []AnonymizePass{ConsistencyPass()},
 	})
 
-	result, err := anon.Anonymize(original)
+	result, err := anon.Anonymize(context.Background(), original)
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -201,7 +202,7 @@ func TestHash_FailsClosedWithoutKey(t *testing.T) {
 	entities := []ner.Entity{spanEntity(original, "Alice", ner.TypePER)}
 	anon := New(&mockRecognizer{entities: entities}, Config{Strategy: Hash})
 
-	result, err := anon.Anonymize(original)
+	result, err := anon.Anonymize(context.Background(), original)
 	if !errors.Is(err, ErrHashKeyRequired) {
 		t.Fatalf("attendu ErrHashKeyRequired, obtenu %v", err)
 	}
@@ -210,7 +211,7 @@ func TestHash_FailsClosedWithoutKey(t *testing.T) {
 	}
 
 	// L'opt-in explicite reste possible pour les démonstrations.
-	insecure, err := anon.Anonymize(original, WithInsecureHash())
+	insecure, err := anon.Anonymize(context.Background(), original, WithInsecureHash())
 	if err != nil {
 		t.Fatalf("WithInsecureHash: %v", err)
 	}
@@ -225,7 +226,7 @@ func TestHash_RejectsShortKey(t *testing.T) {
 	entities := []ner.Entity{spanEntity(original, "Alice", ner.TypePER)}
 	anon := New(&mockRecognizer{entities: entities}, Config{Strategy: Hash})
 
-	if _, err := anon.Anonymize(original, WithHashKey(HashKey("trop court"))); !errors.Is(err, ErrHashKeyTooShort) {
+	if _, err := anon.Anonymize(context.Background(), original, WithHashKey(HashKey("trop court"))); !errors.Is(err, ErrHashKeyTooShort) {
 		t.Fatalf("attendu ErrHashKeyTooShort, obtenu %v", err)
 	}
 }
@@ -237,7 +238,7 @@ func TestHash_NotReversibleWithoutMapping(t *testing.T) {
 	entities := []ner.Entity{spanEntity(original, "Alice", ner.TypePER)}
 	anon := New(&mockRecognizer{entities: entities}, Config{Strategy: Hash})
 
-	result, err := anon.Anonymize(original, WithHashKey(testHashKey))
+	result, err := anon.Anonymize(context.Background(), original, WithHashKey(testHashKey))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -281,11 +282,11 @@ func TestGuarantee_PlaceholderCollisionDetected(t *testing.T) {
 	entities := []ner.Entity{spanEntity(original, "Jean Dupont", ner.TypePER)}
 	anon := New(&mockRecognizer{entities: entities}, Config{Strategy: TagReplace})
 
-	if _, err := anon.Anonymize(original); !errors.Is(err, ErrPlaceholderCollision) {
+	if _, err := anon.Anonymize(context.Background(), original); !errors.Is(err, ErrPlaceholderCollision) {
 		t.Fatalf("attendu ErrPlaceholderCollision, obtenu %v", err)
 	}
 
-	escaped, err := anon.Anonymize(original, WithEscapeCollisions())
+	escaped, err := anon.Anonymize(context.Background(), original, WithEscapeCollisions())
 	if err != nil {
 		t.Fatalf("WithEscapeCollisions: %v", err)
 	}
@@ -330,7 +331,7 @@ func TestDeanonymize_IncompleteMapping(t *testing.T) {
 	anon := New(&mockRecognizer{entities: entities}, Config{Strategy: TagReplace})
 
 	sess := NewSession()
-	result, err := anon.Anonymize(original, WithSession(sess))
+	result, err := anon.Anonymize(context.Background(), original, WithSession(sess))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -415,7 +416,7 @@ func TestRoundTrip_Property(t *testing.T) {
 				ConsistentMap: true,
 			})
 
-			result, err := anon.Anonymize(tc.text)
+			result, err := anon.Anonymize(context.Background(), tc.text)
 			if err != nil {
 				t.Fatalf("Anonymize: %v", err)
 			}
@@ -438,11 +439,11 @@ func TestPlaceholder_NonceIsolatesSessions(t *testing.T) {
 	entities := []ner.Entity{spanEntity(original, "Jean Dupont", ner.TypePER)}
 	anon := New(&mockRecognizer{entities: entities}, Config{Strategy: TagReplace})
 
-	a, err := anon.Anonymize(original, WithSession(NewSession()))
+	a, err := anon.Anonymize(context.Background(), original, WithSession(NewSession()))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
-	b, err := anon.Anonymize(original, WithSession(NewSession()))
+	b, err := anon.Anonymize(context.Background(), original, WithSession(NewSession()))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -457,7 +458,7 @@ func TestPlaceholder_LegacyFormat(t *testing.T) {
 	entities := []ner.Entity{spanEntity(original, "Jean Dupont", ner.TypePER)}
 	anon := New(&mockRecognizer{entities: entities}, Config{Strategy: TagReplace})
 
-	result, err := anon.Anonymize(original, WithLegacyPlaceholders())
+	result, err := anon.Anonymize(context.Background(), original, WithLegacyPlaceholders())
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -474,7 +475,7 @@ func TestErrors_CarryOffsetsNotContent(t *testing.T) {
 	entities := []ner.Entity{spanEntity(original, fakeGitHubToken, ner.TypeAPIKey)}
 	anon := New(&mockRecognizer{entities: entities}, Config{Strategy: TagReplace})
 
-	_, err := anon.Anonymize(original)
+	_, err := anon.Anonymize(context.Background(), original)
 	if err == nil {
 		t.Fatal("collision attendue")
 	}

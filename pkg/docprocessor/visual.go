@@ -1,6 +1,7 @@
 package docprocessor
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bornholm/go-anon/pkg/anonymizer"
@@ -25,7 +26,7 @@ type VisualVerifier interface {
 	Walker
 	// VisualText relit le fichier path et rend son texte visible, une région
 	// par unité de localisation (page).
-	VisualText(path string) ([]ReadOnlyRegion, error)
+	VisualText(ctx context.Context, path string) ([]ReadOnlyRegion, error)
 }
 
 // VisualLeak signale une donnée restée lisible dans le document produit.
@@ -53,13 +54,13 @@ type VisualLeak struct {
 // Les deux excluent les zones écrites par l'anonymiseur : relire une sortie
 // revient à relire ses propres placeholders, et « ⟦PERSONNE_1_…⟧ » se laisse
 // volontiers prendre pour un nom propre.
-func (p *Processor) VerifyOutput(walker Walker, path string, session *anonymizer.Session) ([]VisualLeak, error) {
+func (p *Processor) VerifyOutput(ctx context.Context, walker Walker, path string, session *anonymizer.Session) ([]VisualLeak, error) {
 	vv, ok := walker.(VisualVerifier)
 	if !ok {
 		return nil, nil
 	}
 
-	regions, err := vv.VisualText(path)
+	regions, err := vv.VisualText(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("relecture visuelle : %w", err)
 	}
@@ -92,7 +93,7 @@ func (p *Processor) VerifyOutput(walker Walker, path string, session *anonymizer
 		}
 
 		// Contrôle 2 — détection fraîche.
-		entities, err := p.anon.Detect(region.Text)
+		entities, err := p.anon.Detect(ctx, region.Text)
 		if err != nil {
 			return nil, fmt.Errorf("relecture de %s : %w", region.Label, err)
 		}

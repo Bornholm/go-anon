@@ -13,10 +13,12 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"sort"
 	"strings"
 
@@ -55,6 +57,10 @@ func main() {
 	Exemple : -skip-type LOC -skip-type ORG`)
 
 	flag.Parse()
+
+	// Ctrl-C annule le traitement en cours.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
 	if *modelPath == "" {
 		fmt.Fprintln(os.Stderr, "erreur : -model est obligatoire")
@@ -169,15 +175,15 @@ func main() {
 		} else {
 			anonOpts = append(anonOpts, goanon.WithVerification())
 		}
-		runAnonymize(rec, input, *strategy, skipTypes, anonOpts)
+		runAnonymize(ctx, rec, input, *strategy, skipTypes, anonOpts)
 	} else {
-		runRecognize(rec, input)
+		runRecognize(ctx, rec, input)
 	}
 }
 
 // runRecognize affiche les entités détectées dans le texte.
-func runRecognize(rec goanon.Recognizer, text string) {
-	entities, err := rec.Recognize(text)
+func runRecognize(ctx context.Context, rec goanon.Recognizer, text string) {
+	entities, err := rec.Recognize(ctx, text)
 	if err != nil {
 		log.Fatalf("reconnaissance : %v", err)
 	}
@@ -200,7 +206,7 @@ func runRecognize(rec goanon.Recognizer, text string) {
 var allEntityTypes = []goanon.EntityType{goanon.TypePER, goanon.TypeLOC, goanon.TypeORG, goanon.TypeMISC}
 
 // runAnonymize affiche le texte après anonymisation.
-func runAnonymize(rec goanon.Recognizer, text, strategyName string, skipTypes entityTypeFlag, anonOpts []goanon.AnonymizeOption) {
+func runAnonymize(ctx context.Context, rec goanon.Recognizer, text, strategyName string, skipTypes entityTypeFlag, anonOpts []goanon.AnonymizeOption) {
 	strat := parseStrategy(strategyName)
 
 	cfg := goanon.Config{
@@ -222,7 +228,7 @@ func runAnonymize(rec goanon.Recognizer, text, strategyName string, skipTypes en
 
 	anon := goanon.NewAnonymizer(rec, cfg)
 
-	result, err := anon.Anonymize(text, anonOpts...)
+	result, err := anon.Anonymize(ctx, text, anonOpts...)
 	if err != nil {
 		log.Fatalf("anonymisation : %v", err)
 	}

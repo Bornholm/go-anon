@@ -33,7 +33,7 @@ func newTestSession(t *testing.T) *anonymizer.Session {
 	anon := anonymizer.New(rec, anonymizer.Config{Strategy: anonymizer.TagReplace, ConsistentMap: true})
 
 	session := anonymizer.NewSession()
-	if _, err := anon.Anonymize(surnameProbe+" habite à Paris.", anonymizer.WithSession(session)); err != nil {
+	if _, err := anon.Anonymize(context.Background(), surnameProbe+" habite à Paris.", anonymizer.WithSession(session)); err != nil {
 		t.Fatalf("préparation de la session : %v", err)
 	}
 	if len(session.Mapping) == 0 {
@@ -44,7 +44,9 @@ func newTestSession(t *testing.T) *anonymizer.Session {
 
 type fixedRecognizer struct{ entities []ner.Entity }
 
-func (r *fixedRecognizer) Recognize(string) ([]ner.Entity, error) { return r.entities, nil }
+func (r *fixedRecognizer) Recognize(context.Context, string) ([]ner.Entity, error) {
+	return r.entities, nil
+}
 
 func TestFileStore_RoundTrip(t *testing.T) {
 	store, err := NewFileStore(t.TempDir(), testKey)

@@ -1,6 +1,7 @@
 package docprocessor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -34,7 +35,7 @@ func (w *sliceWalker) Walk(fn func(Segment) error) error {
 // l'orchestration sans charger de modèle CRF.
 type emailRecognizer struct{}
 
-func (emailRecognizer) Recognize(text string) ([]ner.Entity, error) {
+func (emailRecognizer) Recognize(_ context.Context, text string) ([]ner.Entity, error) {
 	return ner.RegexEntityFilter(ner.BuiltinRegexPatterns)(text, nil), nil
 }
 
@@ -48,7 +49,7 @@ func TestProcessWithReport_AggregatesLeaksPerSegment(t *testing.T) {
 	})
 
 	w := &sliceWalker{segments: []string{"rien à signaler", "écrire à jean@example.com"}}
-	_, report, err := New(anon).ProcessWithReport(w, anonymizer.WithVerification())
+	_, report, err := New(anon).ProcessWithReport(context.Background(), w, anonymizer.WithVerification())
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -76,7 +77,7 @@ func TestProcessWithReport_StrictStopsBeforeWriting(t *testing.T) {
 	})
 
 	w := &sliceWalker{segments: []string{"écrire à jean@example.com", "second segment"}}
-	_, _, err := New(anon).ProcessWithReport(w, anonymizer.WithStrictVerification())
+	_, _, err := New(anon).ProcessWithReport(context.Background(), w, anonymizer.WithStrictVerification())
 	if err == nil {
 		t.Fatal("le mode strict aurait dû échouer")
 	}
@@ -128,7 +129,7 @@ func TestSampleTextStopsEarly(t *testing.T) {
 // segmentation : chaque moitié, seule dans son segment, ne ressemble à rien.
 type fullNameRecognizer struct{}
 
-func (fullNameRecognizer) Recognize(text string) ([]ner.Entity, error) {
+func (fullNameRecognizer) Recognize(_ context.Context, text string) ([]ner.Entity, error) {
 	const name = "Jean Dupont"
 	var entities []ner.Entity
 	for pos := 0; ; {
@@ -152,7 +153,7 @@ type upperCaseRecognizer struct{}
 
 var upperRe = regexp.MustCompile(`[A-Z]{4,}`)
 
-func (upperCaseRecognizer) Recognize(text string) ([]ner.Entity, error) {
+func (upperCaseRecognizer) Recognize(_ context.Context, text string) ([]ner.Entity, error) {
 	var entities []ner.Entity
 	for _, loc := range upperRe.FindAllStringIndex(text, -1) {
 		entities = append(entities, ner.Entity{
@@ -182,7 +183,7 @@ func TestDocumentVerification_SeesWhatSegmentsCannot(t *testing.T) {
 	// Sans vérification document : le rapport est vide et le document serait
 	// déclaré conforme. C'est exactement la faille que la phase mesure.
 	w := &sliceWalker{segments: splitNameSegments()}
-	_, report, err := New(anon).ProcessWithReport(w, anonymizer.WithVerification())
+	_, report, err := New(anon).ProcessWithReport(context.Background(), w, anonymizer.WithVerification())
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -194,7 +195,7 @@ func TestDocumentVerification_SeesWhatSegmentsCannot(t *testing.T) {
 	// segments.
 	w = &sliceWalker{segments: splitNameSegments()}
 	_, report, err = New(anon, WithDocumentVerification()).
-		ProcessWithReport(w, anonymizer.WithVerification())
+		ProcessWithReport(context.Background(), w, anonymizer.WithVerification())
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -222,7 +223,7 @@ func TestDocumentVerification_SeesWhatSegmentsCannot(t *testing.T) {
 func TestDocumentVerification_StrictFails(t *testing.T) {
 	w := &sliceWalker{segments: splitNameSegments()}
 	_, _, err := New(tagAnonymizer(fullNameRecognizer{}), WithStrictDocumentVerification()).
-		ProcessWithReport(w)
+		ProcessWithReport(context.Background(), w)
 	if err == nil {
 		t.Fatal("le mode strict aurait dû échouer")
 	}
@@ -236,7 +237,7 @@ func TestDocumentVerification_StrictFails(t *testing.T) {
 func TestDocumentVerification_NoFalsePositiveOnCleanDocument(t *testing.T) {
 	w := &sliceWalker{segments: []string{"Jean Dupont habite ici", "rien à signaler"}}
 	_, report, err := New(tagAnonymizer(fullNameRecognizer{}), WithDocumentVerification()).
-		ProcessWithReport(w)
+		ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -255,7 +256,7 @@ func TestDocumentVerification_NoFalsePositiveOnCleanDocument(t *testing.T) {
 func TestDocumentVerification_IgnoresOwnReplacements(t *testing.T) {
 	w := &sliceWalker{segments: []string{"contacter ALPHABET ici", "puis BRAVOTEAM"}}
 	_, report, err := New(tagAnonymizer(upperCaseRecognizer{}), WithDocumentVerification()).
-		ProcessWithReport(w)
+		ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -301,7 +302,7 @@ func TestMultiView_AnonymizesCrossSegmentEntity(t *testing.T) {
 
 	// Prémisse : sans multi-vues, rien n'est remplacé du tout.
 	w := &sliceWalker{segments: splitNameSegments()}
-	if _, _, err := New(anon).ProcessWithReport(w); err != nil {
+	if _, _, err := New(anon).ProcessWithReport(context.Background(), w); err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
 	if len(w.replaced) != 0 {
@@ -310,7 +311,7 @@ func TestMultiView_AnonymizesCrossSegmentEntity(t *testing.T) {
 
 	// Avec multi-vues : les deux moitiés sont anonymisées.
 	w = &sliceWalker{segments: splitNameSegments()}
-	if _, _, err := New(anon, WithMultiViewDetection()).ProcessWithReport(w); err != nil {
+	if _, _, err := New(anon, WithMultiViewDetection()).ProcessWithReport(context.Background(), w); err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
 	if len(w.replaced) != 2 {
@@ -330,7 +331,7 @@ func TestMultiView_ClosesTheLeakSeenByDocumentVerification(t *testing.T) {
 
 	w := &sliceWalker{segments: splitNameSegments()}
 	_, report, err := New(anon, WithMultiViewDetection(), WithDocumentVerification()).
-		ProcessWithReport(w)
+		ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -346,13 +347,13 @@ func TestMultiView_StrictAcceptsWhatItRepairs(t *testing.T) {
 	anon := tagAnonymizer(fullNameRecognizer{})
 
 	w := &sliceWalker{segments: splitNameSegments()}
-	if _, _, err := New(anon, WithStrictDocumentVerification()).ProcessWithReport(w); err == nil {
+	if _, _, err := New(anon, WithStrictDocumentVerification()).ProcessWithReport(context.Background(), w); err == nil {
 		t.Fatal("prémisse invalide : le strict aurait dû refuser le document non réparé")
 	}
 
 	w = &sliceWalker{segments: splitNameSegments()}
 	if _, _, err := New(anon, WithMultiViewDetection(), WithStrictDocumentVerification()).
-		ProcessWithReport(w); err != nil {
+		ProcessWithReport(context.Background(), w); err != nil {
 		t.Errorf("le document réparé devrait passer le strict : %v", err)
 	}
 }
@@ -362,7 +363,7 @@ func TestMultiView_StrictAcceptsWhatItRepairs(t *testing.T) {
 func TestMultiView_NoRegressionOnUncutEntity(t *testing.T) {
 	w := &sliceWalker{segments: []string{"Jean Dupont habite ici", "rien à signaler"}}
 	_, _, err := New(tagAnonymizer(fullNameRecognizer{}), WithMultiViewDetection()).
-		ProcessWithReport(w)
+		ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -383,7 +384,7 @@ func TestMultiView_NoRegressionOnUncutEntity(t *testing.T) {
 func TestMultiView_DetectionRunsOnSourceText(t *testing.T) {
 	w := &sliceWalker{segments: splitNameSegments()}
 	if _, _, err := New(tagAnonymizer(fullNameRecognizer{}), WithMultiViewDetection()).
-		ProcessWithReport(w); err != nil {
+		ProcessWithReport(context.Background(), w); err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
 	// Trois parcours attendus : collecte, puis anonymisation (2 segments chacun).
@@ -452,7 +453,7 @@ type spyRecognizer struct {
 	seen []string
 }
 
-func (s *spyRecognizer) Recognize(text string) ([]ner.Entity, error) {
+func (s *spyRecognizer) Recognize(_ context.Context, text string) ([]ner.Entity, error) {
 	s.seen = append(s.seen, text)
 	return nil, nil
 }
@@ -477,7 +478,7 @@ func TestMultiView_UsesBlockView(t *testing.T) {
 		blocks:      [][]int{{0, 1, 2}},
 	}
 
-	if _, _, err := New(tagAnonymizer(spy), WithMultiViewDetection()).ProcessWithReport(w); err != nil {
+	if _, _, err := New(tagAnonymizer(spy), WithMultiViewDetection()).ProcessWithReport(context.Background(), w); err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
 
@@ -492,7 +493,7 @@ func TestMultiView_IgnoresBlocksWhenUnsupported(t *testing.T) {
 	spy := &spyRecognizer{}
 	w := &sliceWalker{segments: []string{"une", "deux", "trois"}}
 
-	if _, _, err := New(tagAnonymizer(spy), WithMultiViewDetection()).ProcessWithReport(w); err != nil {
+	if _, _, err := New(tagAnonymizer(spy), WithMultiViewDetection()).ProcessWithReport(context.Background(), w); err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
 
@@ -563,7 +564,7 @@ func TestMultiView_AnonymizesHyphenatedName(t *testing.T) {
 	// forme n'existe dans aucune vue.
 	w := &sliceWalker{segments: []string{"reçu par Du-", "pont hier"}}
 	_, _, err := New(tagAnonymizer(surnameRecognizer{}), WithMultiViewDetection()).
-		ProcessWithReport(w)
+		ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -580,7 +581,7 @@ func TestMultiView_AnonymizesHyphenatedName(t *testing.T) {
 // surnameRecognizer ne reconnaît que « Dupont », jamais ses fragments.
 type surnameRecognizer struct{}
 
-func (surnameRecognizer) Recognize(text string) ([]ner.Entity, error) {
+func (surnameRecognizer) Recognize(_ context.Context, text string) ([]ner.Entity, error) {
 	const name = "Dupont"
 	var entities []ner.Entity
 	for pos := 0; ; {
@@ -618,7 +619,7 @@ func TestReadOnlyRegions_ReportedAsLeaks(t *testing.T) {
 		},
 	}
 
-	_, report, err := New(tagAnonymizer(fullNameRecognizer{})).ProcessWithReport(w)
+	_, report, err := New(tagAnonymizer(fullNameRecognizer{})).ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -652,7 +653,7 @@ func TestReadOnlyRegions_AlwaysScanned(t *testing.T) {
 
 	for _, opts := range [][]Option{nil, {WithMultiViewDetection()}, {WithDocumentVerification()}} {
 		_, report, err := New(tagAnonymizer(fullNameRecognizer{}), opts...).
-			ProcessWithReport(newWalker())
+			ProcessWithReport(context.Background(), newWalker())
 		if err != nil {
 			t.Fatalf("ProcessWithReport : %v", err)
 		}
@@ -671,7 +672,7 @@ func TestReadOnlyRegions_StrictFails(t *testing.T) {
 	}
 
 	_, _, err := New(tagAnonymizer(fullNameRecognizer{}), WithStrictDocumentVerification()).
-		ProcessWithReport(w)
+		ProcessWithReport(context.Background(), w)
 	if err == nil {
 		t.Fatal("le mode strict aurait dû refuser le document")
 	}
@@ -688,7 +689,7 @@ func TestReadOnlyRegions_CleanRegionIsSilent(t *testing.T) {
 		regions:     []ReadOnlyRegion{{Label: "page 1 (OCR)", Text: "facture acquittée"}},
 	}
 
-	_, report, err := New(tagAnonymizer(fullNameRecognizer{})).ProcessWithReport(w)
+	_, report, err := New(tagAnonymizer(fullNameRecognizer{})).ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -706,7 +707,7 @@ type visualWalker struct {
 	seen   string // chemin passé à VisualText
 }
 
-func (w *visualWalker) VisualText(path string) ([]ReadOnlyRegion, error) {
+func (w *visualWalker) VisualText(_ context.Context, path string) ([]ReadOnlyRegion, error) {
 	w.seen = path
 	return w.visual, nil
 }
@@ -722,7 +723,7 @@ func TestVerifyOutput_DetectsSurvivingSurface(t *testing.T) {
 	}
 
 	proc := New(anon)
-	session, _, err := proc.ProcessWithReport(w)
+	session, _, err := proc.ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -733,7 +734,7 @@ func TestVerifyOutput_DetectsSurvivingSurface(t *testing.T) {
 	// Le rendu relu porte encore le nom : le caviardage a raté sa cible.
 	w.visual = []ReadOnlyRegion{{Label: "page 1 (relecture)", Text: "signé Jean Dupont"}}
 
-	leaks, err := proc.VerifyOutput(w, "/tmp/sortie.pdf", session)
+	leaks, err := proc.VerifyOutput(context.Background(), w, "/tmp/sortie.pdf", session)
 	if err != nil {
 		t.Fatalf("VerifyOutput : %v", err)
 	}
@@ -754,7 +755,7 @@ func TestVerifyOutput_IgnoresPlaceholders(t *testing.T) {
 	w := &visualWalker{sliceWalker: sliceWalker{segments: []string{"contacter ALPHABET ici"}}}
 
 	proc := New(anon)
-	session, _, err := proc.ProcessWithReport(w)
+	session, _, err := proc.ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -765,7 +766,7 @@ func TestVerifyOutput_IgnoresPlaceholders(t *testing.T) {
 		t.Fatalf("prémisse invalide : pas de capitales dans %q", w.replaced[0])
 	}
 
-	leaks, err := proc.VerifyOutput(w, "out.pdf", session)
+	leaks, err := proc.VerifyOutput(context.Background(), w, "out.pdf", session)
 	if err != nil {
 		t.Fatalf("VerifyOutput : %v", err)
 	}
@@ -787,12 +788,12 @@ func TestVerifyOutput_DetectsNeverSeenEntity(t *testing.T) {
 	}
 
 	proc := New(anon)
-	session, _, err := proc.ProcessWithReport(w)
+	session, _, err := proc.ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
 
-	leaks, err := proc.VerifyOutput(w, "out.pdf", session)
+	leaks, err := proc.VerifyOutput(context.Background(), w, "out.pdf", session)
 	if err != nil {
 		t.Fatalf("VerifyOutput : %v", err)
 	}
@@ -817,8 +818,8 @@ func TestVerifyOutput_CleanDocumentIsSilent(t *testing.T) {
 	}
 
 	proc := New(anon)
-	session, _, _ := proc.ProcessWithReport(w)
-	leaks, err := proc.VerifyOutput(w, "out.pdf", session)
+	session, _, _ := proc.ProcessWithReport(context.Background(), w)
+	leaks, err := proc.VerifyOutput(context.Background(), w, "out.pdf", session)
 	if err != nil {
 		t.Fatalf("VerifyOutput : %v", err)
 	}
@@ -832,9 +833,9 @@ func TestVerifyOutput_CleanDocumentIsSilent(t *testing.T) {
 func TestVerifyOutput_SkipsWalkersWithoutSupport(t *testing.T) {
 	w := &sliceWalker{segments: []string{"Jean Dupont"}}
 	proc := New(tagAnonymizer(fullNameRecognizer{}))
-	session, _, _ := proc.ProcessWithReport(w)
+	session, _, _ := proc.ProcessWithReport(context.Background(), w)
 
-	leaks, err := proc.VerifyOutput(w, "out.pdf", session)
+	leaks, err := proc.VerifyOutput(context.Background(), w, "out.pdf", session)
 	if err != nil || len(leaks) != 0 {
 		t.Errorf("leaks=%+v err=%v", leaks, err)
 	}
@@ -853,7 +854,7 @@ func TestReport_CountsEntitiesByType(t *testing.T) {
 		"rien à signaler",
 	}}
 
-	_, report, err := New(tagAnonymizer(fullNameRecognizer{})).ProcessWithReport(w)
+	_, report, err := New(tagAnonymizer(fullNameRecognizer{})).ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}
@@ -876,7 +877,7 @@ func TestReport_CountsRedactedZones(t *testing.T) {
 		},
 	}
 
-	_, report, err := New(tagAnonymizer(fullNameRecognizer{})).ProcessWithReport(w)
+	_, report, err := New(tagAnonymizer(fullNameRecognizer{})).ProcessWithReport(context.Background(), w)
 	if err != nil {
 		t.Fatalf("ProcessWithReport : %v", err)
 	}

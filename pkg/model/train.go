@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"log"
 	"math"
 	"math/rand"
@@ -53,7 +54,10 @@ type Trainer struct {
 // Train entraîne le CRF sur train, avec évaluation optionnelle sur dev.
 // Si dev != nil et EarlyStop > 0, retourne le meilleur modèle selon l'accuracy dev.
 // Si dev == nil, retourne le modèle après Epochs époques.
-func (tr *Trainer) Train(train, dev []corpus.Sentence) (*CRF, error) {
+//
+// ctx est vérifié avant chaque phrase : un entraînement annulé s'arrête
+// à la suivante et renvoie l'erreur du contexte, sans modèle.
+func (tr *Trainer) Train(ctx context.Context, train, dev []corpus.Sentence) (*CRF, error) {
 	crf := newCRF(collectLabels(train))
 	crf.L2Lambda = tr.Config.L2Lambda
 
@@ -101,7 +105,10 @@ func (tr *Trainer) Train(train, dev []corpus.Sentence) (*CRF, error) {
 		}
 
 		if workers > 1 {
-			tr.trainParallel(crf, train, workers, epochLR)
+			tr.trainParallel(ctx, crf, train, workers, epochLR)
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 		} else {
 			// Mini-batch accumulation
 			var batchFeats [][]map[string]float64
@@ -109,6 +116,9 @@ func (tr *Trainer) Train(train, dev []corpus.Sentence) (*CRF, error) {
 			var batchGoldIndices [][]int
 
 			for i, sent := range train {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
 				if len(sent) == 0 {
 					continue
 				}
@@ -429,7 +439,7 @@ func (tr *Trainer) applyAdamUpdate(crf *CRF, gradE map[uint64]float64, gradT [][
 // le corpus est partitionné en n sous-listes, chaque goroutine applique
 // des mises à jour SGD indépendantes sur le modèle partagé.
 // Les accès concurrents aux poids sont protégés par les mutex existants.
-func (tr *Trainer) trainParallel(crf *CRF, train []corpus.Sentence, n int, lr float64) {
+func (tr *Trainer) trainParallel(ctx context.Context, crf *CRF, train []corpus.Sentence, n int, lr float64) {
 	size := len(train)
 	if size == 0 || n <= 1 {
 		return
@@ -453,6 +463,9 @@ func (tr *Trainer) trainParallel(crf *CRF, train []corpus.Sentence, n int, lr fl
 		go func(sentences []corpus.Sentence) {
 			defer wg.Done()
 			for _, sent := range sentences {
+				if ctx.Err() != nil {
+					return
+				}
 				if len(sent) == 0 {
 					continue
 				}

@@ -1,6 +1,7 @@
 package docprocessor
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -61,7 +62,7 @@ func SampleStream(walker StreamWalker, maxChars int) (string, error) {
 // En mode strict (WithStrictVerification, WithStrictDocumentVerification), la
 // première fuite interrompt le parcours : les lots précédents sont déjà
 // écrits, et l'appelant doit détruire la sortie.
-func (p *Processor) ProcessStream(walker StreamWalker, opts ...anonymizer.AnonymizeOption) (*anonymizer.Session, *Report, error) {
+func (p *Processor) ProcessStream(ctx context.Context, walker StreamWalker, opts ...anonymizer.AnonymizeOption) (*anonymizer.Session, *Report, error) {
 	session := anonymizer.NewSession()
 	allOpts := append([]anonymizer.AnonymizeOption{anonymizer.WithSession(session)}, opts...)
 	report := &Report{}
@@ -76,7 +77,7 @@ func (p *Processor) ProcessStream(walker StreamWalker, opts ...anonymizer.Anonym
 			for i, seg := range batch {
 				texts[i] = seg.Text
 			}
-			found, err := p.detectViews(nil, texts)
+			found, err := p.detectViews(ctx, nil, texts)
 			if err != nil {
 				return err
 			}
@@ -85,7 +86,7 @@ func (p *Processor) ProcessStream(walker StreamWalker, opts ...anonymizer.Anonym
 
 		var outputs, replacements []string
 		for i, seg := range batch {
-			out, err := p.anonymizeSegment(base+i, seg, extras[i], allOpts, report)
+			out, err := p.anonymizeSegment(ctx, base+i, seg, extras[i], allOpts, report)
 			if err != nil {
 				return err
 			}
@@ -99,7 +100,7 @@ func (p *Processor) ProcessStream(walker StreamWalker, opts ...anonymizer.Anonym
 		if !p.verifyDoc {
 			return nil
 		}
-		leaks, err := p.verifyDocument(outputs, replacements)
+		leaks, err := p.verifyDocument(ctx, outputs, replacements)
 		if err != nil {
 			return err
 		}

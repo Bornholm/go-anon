@@ -1,6 +1,7 @@
 package ner
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -277,7 +278,10 @@ func configWarnings(cfg model.FeatureConfig, rec *Recognizer) []string {
 // dans des valeurs locales. Un même Recognizer peut donc être partagé entre
 // goroutines sans course ni contamination inter-requêtes — le texte de chaque
 // appel ne vit que dans cet appel, et les post-filtres le reçoivent en argument.
-func (r *Recognizer) Recognize(text string) ([]Entity, error) {
+//
+// ctx est vérifié avant chaque ligne : un appel annulé s'arrête à la ligne
+// suivante et renvoie l'erreur du contexte.
+func (r *Recognizer) Recognize(ctx context.Context, text string) ([]Entity, error) {
 	if text == "" {
 		return []Entity{}, nil
 	}
@@ -287,6 +291,9 @@ func (r *Recognizer) Recognize(text string) ([]Entity, error) {
 
 	offset := 0
 	for _, line := range strings.Split(text, "\n") {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		lineLen := len(line)
 		entities := r.recognizeLine(line, offset, labelIndex)
 		allEntities = append(allEntities, entities...)
