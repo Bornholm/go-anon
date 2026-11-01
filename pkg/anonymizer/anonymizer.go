@@ -132,6 +132,9 @@ func (a *Anonymizer) Detect(ctx context.Context, text string) ([]ner.Entity, err
 // ctx est transmis au recognizer ; un contexte déjà terminé fait échouer
 // l'appel avant la reconnaissance.
 func (a *Anonymizer) Anonymize(ctx context.Context, text string, opts ...AnonymizeOption) (*Result, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	params := &anonymizeParams{}
 	for _, opt := range opts {
 		opt(params)

@@ -279,9 +279,12 @@ func configWarnings(cfg model.FeatureConfig, rec *Recognizer) []string {
 // goroutines sans course ni contamination inter-requêtes — le texte de chaque
 // appel ne vit que dans cet appel, et les post-filtres le reçoivent en argument.
 //
-// ctx est vérifié avant chaque ligne : un appel annulé s'arrête à la ligne
-// suivante et renvoie l'erreur du contexte.
+// ctx est vérifié à l'entrée, texte vide compris, puis avant chaque ligne : un
+// appel annulé s'arrête à la ligne suivante et renvoie l'erreur du contexte.
 func (r *Recognizer) Recognize(ctx context.Context, text string) ([]Entity, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if text == "" {
 		return []Entity{}, nil
 	}

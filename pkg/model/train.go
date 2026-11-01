@@ -55,8 +55,9 @@ type Trainer struct {
 // Si dev != nil et EarlyStop > 0, retourne le meilleur modèle selon l'accuracy dev.
 // Si dev == nil, retourne le modèle après Epochs époques.
 //
-// ctx est vérifié avant chaque phrase : un entraînement annulé s'arrête
-// à la suivante et renvoie l'erreur du contexte, sans modèle.
+// ctx est vérifié avant chaque époque et chaque phrase, évaluation sur dev et
+// collecte des features comprises : un entraînement annulé s'arrête à la
+// suivante et renvoie l'erreur du contexte, sans modèle.
 func (tr *Trainer) Train(ctx context.Context, train, dev []corpus.Sentence) (*CRF, error) {
 	crf := newCRF(collectLabels(train))
 	crf.L2Lambda = tr.Config.L2Lambda
@@ -94,6 +95,9 @@ func (tr *Trainer) Train(ctx context.Context, train, dev []corpus.Sentence) (*CR
 	}
 
 	for epoch := 0; epoch < tr.Config.Epochs; epoch++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if tr.Config.Shuffle {
 			shuffle(train)
 		}
@@ -141,7 +145,10 @@ func (tr *Trainer) Train(ctx context.Context, train, dev []corpus.Sentence) (*CR
 		}
 
 		if dev != nil {
-			m := tr.evaluate(crf, dev)
+			m, err := tr.evaluate(ctx, crf, dev)
+			if err != nil {
+				return nil, err
+			}
 			improved := ""
 			if m.F1 > bestF1 {
 				bestF1 = m.F1
@@ -169,7 +176,15 @@ func (tr *Trainer) Train(ctx context.Context, train, dev []corpus.Sentence) (*CR
 	// Passe dédiée sans dropout : le dropout des époques ne garantit pas
 	// d'avoir vu chaque feature, et Save doit couvrir tous les poids.
 	log.Printf("collecte des bases de features pour la sérialisation v3…")
-	result.featureBases = tr.collectFeatureBases(train)
+	bases, err := tr.collectFeatureBases(ctx, train)
+	if err != nil {
+		return nil, err
+	}
+	result.featureBases = bases
+	// Un corpus vide ne passe par aucun des contrôles des boucles.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	log.Printf("bases de features collectées : %d features uniques", len(result.featureBases))
 
 	return result, nil
@@ -177,9 +192,12 @@ func (tr *Trainer) Train(ctx context.Context, train, dev []corpus.Sentence) (*CR
 
 // collectFeatureBases énumère les hachés de base (hashFeatureBase) de toutes
 // les features extraites du corpus, sans dropout.
-func (tr *Trainer) collectFeatureBases(train []corpus.Sentence) []uint64 {
+func (tr *Trainer) collectFeatureBases(ctx context.Context, train []corpus.Sentence) ([]uint64, error) {
 	seen := make(map[uint64]struct{}, 1<<20)
 	for _, sent := range train {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if len(sent) == 0 {
 			continue
 		}
@@ -194,7 +212,7 @@ func (tr *Trainer) collectFeatureBases(train []corpus.Sentence) []uint64 {
 	for b := range seen {
 		bases = append(bases, b)
 	}
-	return bases
+	return bases, nil
 }
 
 // sgdUpdate effectue une mise à jour SGD sur une phrase.
@@ -483,9 +501,12 @@ func (tr *Trainer) trainParallel(ctx context.Context, crf *CRF, train []corpus.S
 
 // evaluate calcule le F1 entity-level sur un ensemble de données.
 // C'est l'objectif réel de l'entraînement : utilisé pour l'early stopping.
-func (tr *Trainer) evaluate(crf *CRF, sentences []corpus.Sentence) Metrics {
+func (tr *Trainer) evaluate(ctx context.Context, crf *CRF, sentences []corpus.Sentence) (Metrics, error) {
 	tp, fp, fn := 0, 0, 0
 	for _, sent := range sentences {
+		if err := ctx.Err(); err != nil {
+			return Metrics{}, err
+		}
 		if len(sent) == 0 {
 			continue
 		}
@@ -514,7 +535,7 @@ func (tr *Trainer) evaluate(crf *CRF, sentences []corpus.Sentence) Metrics {
 	}
 
 	if tp+fp == 0 && tp+fn == 0 {
-		return Metrics{}
+		return Metrics{}, nil
 	}
 	var prec, rec float64
 	if tp+fp > 0 {
@@ -527,7 +548,7 @@ func (tr *Trainer) evaluate(crf *CRF, sentences []corpus.Sentence) Metrics {
 	if prec+rec > 0 {
 		f1 = 2 * prec * rec / (prec + rec)
 	}
-	return Metrics{Accuracy: prec, F1: f1}
+	return Metrics{Accuracy: prec, F1: f1}, nil
 }
 
 // entitySpan représente un span d'entité nommée par ses indices token (start, end inclusif) et son type.

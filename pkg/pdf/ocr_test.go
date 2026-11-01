@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -484,5 +485,23 @@ func TestRunOCR_Cancelled(t *testing.T) {
 	}
 	if len(ras.rendered) != 1 {
 		t.Errorf("pages rendues = %v, attendu la première seulement", ras.rendered)
+	}
+}
+
+// Un enregistrement annulé n'écrit pas de document, même sans caviardage.
+func TestSaveTo_Cancelled(t *testing.T) {
+	path := buildPDF(t, pageObjects([]string{drawText(400)}))
+	wr, err := NewWalkerFromFile(path)
+	if err != nil {
+		t.Fatalf("NewWalkerFromFile: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	out := filepath.Join(t.TempDir(), "out.pdf")
+	if err := wr.(*Walker).SaveTo(ctx, out); !errors.Is(err, context.Canceled) {
+		t.Fatalf("SaveTo = %v, want context.Canceled", err)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Errorf("a cancelled save wrote %s", out)
 	}
 }

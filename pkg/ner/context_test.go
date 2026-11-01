@@ -53,3 +53,32 @@ func TestEvaluate_Cancelled(t *testing.T) {
 		t.Errorf("Evaluate = %v, want context.Canceled", err)
 	}
 }
+
+// cancellingRecognizer annule son contexte pendant la reconnaissance, et
+// renvoie l'erreur du contexte comme un recognizer qui s'arrête.
+type cancellingRecognizer struct{ cancel context.CancelFunc }
+
+func (r cancellingRecognizer) Recognize(ctx context.Context, text string) ([]Entity, error) {
+	r.cancel()
+	return nil, ctx.Err()
+}
+
+// Une annulation pendant la dernière phrase fait échouer Evaluate : des
+// métriques sans cette phrase passeraient pour complètes.
+func TestEvaluate_CancelledDuringTheLastSentence(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sentences := []corpus.Sentence{{{Word: "Jean", Tag: "B-PER"}}}
+	if m, err := Evaluate(ctx, cancellingRecognizer{cancel}, sentences); !errors.Is(err, context.Canceled) {
+		t.Errorf("Evaluate = %v, %v; want context.Canceled", m, err)
+	}
+}
+
+func TestRecognizer_EmptyTextWithEndedContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rec := &Recognizer{tok: &tokenizer.UnicodeTokenizer{}, extractor: &features.FeatureExtractor{WindowSize: 2}, crf: newTestCRF()}
+	if _, err := rec.Recognize(ctx, ""); !errors.Is(err, context.Canceled) {
+		t.Errorf("Recognize = %v, want context.Canceled", err)
+	}
+}

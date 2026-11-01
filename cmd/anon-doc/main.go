@@ -486,6 +486,10 @@ func runOCR(ctx context.Context, walker docprocessor.Walker, mode, lang string, 
 	}
 
 	if err := capable.RunOCR(ctx, opts); err != nil {
+		// Une annulation n'est pas un OCR indisponible : le traitement s'arrête.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if mode == "on" {
 			return err
 		}

@@ -61,6 +61,9 @@ func TestAnonymize_EndedContextStopsBeforeRecognition(t *testing.T) {
 	if _, err := anon.Detect(ctx, "John Doe"); !errors.Is(err, context.Canceled) {
 		t.Errorf("Detect = %v, want context.Canceled", err)
 	}
+	if _, err := anon.Anonymize(ctx, ""); !errors.Is(err, context.Canceled) {
+		t.Errorf("Anonymize of an empty text = %v, want context.Canceled", err)
+	}
 	if rec.calls != 0 {
 		t.Errorf("the recognizer was called %d times on an ended context", rec.calls)
 	}

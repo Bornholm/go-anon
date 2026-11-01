@@ -72,6 +72,11 @@ func Evaluate(ctx context.Context, rec RecognizerEvalInterface, testSet []corpus
 		}
 		predictedEntities, err := rec.Recognize(ctx, text)
 		if err != nil {
+			// Une phrase en échec est écartée, sauf si l'échec vient de
+			// l'annulation : des métriques sans elle passeraient pour complètes.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
 			continue
 		}
 
