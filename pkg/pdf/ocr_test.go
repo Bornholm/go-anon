@@ -40,11 +40,21 @@ func (s *stubRasterizer) Render(_ context.Context, _ string, pageNr, _ int) (ima
 type stubEngine struct {
 	words       []ocr.Word
 	unavailable error
+	// cancel et err, s'ils sont donnés, simulent un processus tué par
+	// l'annulation : le contexte se termine et le moteur rend son erreur.
+	cancel context.CancelFunc
+	err    error
 }
 
 func (s *stubEngine) Name() string     { return "stub" }
 func (s *stubEngine) Available() error { return s.unavailable }
 func (s *stubEngine) Recognize(context.Context, image.Image, string) ([]ocr.Word, error) {
+	if s.cancel != nil {
+		s.cancel()
+	}
+	if s.err != nil {
+		return nil, s.err
+	}
 	return s.words, nil
 }
 
@@ -503,5 +513,25 @@ func TestSaveTo_Cancelled(t *testing.T) {
 	}
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		t.Errorf("a cancelled save wrote %s", out)
+	}
+}
+
+// TestRunOCR_KilledEngineReportsTheCancellation : un moteur dont le processus
+// est tué par l'annulation rend « signal: killed » ; RunOCR rend l'erreur du
+// contexte, que l'appelant sait reconnaître.
+func TestRunOCR_KilledEngineReportsTheCancellation(t *testing.T) {
+	path := buildPDF(t, pageObjects([]string{drawImage(0, 0, pageW, pageH)}))
+	wr, err := NewWalkerFromFile(path)
+	if err != nil {
+		t.Fatalf("NewWalkerFromFile: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	opts := OCROptions{
+		Engine:     &stubEngine{cancel: cancel, err: errors.New("signal: killed")},
+		Rasterizer: &stubRasterizer{},
+	}
+	if err := wr.(*Walker).RunOCR(ctx, opts); !errors.Is(err, context.Canceled) {
+		t.Errorf("RunOCR = %v, want context.Canceled", err)
 	}
 }

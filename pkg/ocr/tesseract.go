@@ -91,6 +91,11 @@ func (e *TesseractExec) Recognize(ctx context.Context, img image.Image, lang str
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		// Un processus tué par l'annulation rend « signal: killed » : c'est
+		// l'erreur du contexte qui dit pourquoi.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("ocr: %s : %w : %s", e.Name(), err,
 			strings.TrimSpace(stderr.String()))
 	}

@@ -74,6 +74,11 @@ func (r *PdftoppmRasterizer) Render(ctx context.Context, path string, pageNr, dp
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		// Un processus tué par l'annulation rend « signal: killed » : c'est
+		// l'erreur du contexte qui dit pourquoi.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("pdf: rendu page %d avec %s : %w : %s",
 			pageNr, r.Name(), err, strings.TrimSpace(stderr.String()))
 	}

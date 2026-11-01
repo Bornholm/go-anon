@@ -54,6 +54,9 @@ func fBeta(precision, recall, beta float64) float64 {
 // ctx est transmis au recognizer ; un appel annulé s'arrête à la phrase
 // suivante et renvoie l'erreur du contexte.
 func Evaluate(ctx context.Context, rec RecognizerEvalInterface, testSet []corpus.Sentence) (*Metrics, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if len(testSet) == 0 {
 		return &Metrics{
 			PerType: make(map[EntityType]*Metrics),

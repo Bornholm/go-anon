@@ -63,6 +63,9 @@ func SampleStream(walker StreamWalker, maxChars int) (string, error) {
 // première fuite interrompt le parcours : les lots précédents sont déjà
 // écrits, et l'appelant doit détruire la sortie.
 func (p *Processor) ProcessStream(ctx context.Context, walker StreamWalker, opts ...anonymizer.AnonymizeOption) (*anonymizer.Session, *Report, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	session := anonymizer.NewSession()
 	allOpts := append([]anonymizer.AnonymizeOption{anonymizer.WithSession(session)}, opts...)
 	report := &Report{}

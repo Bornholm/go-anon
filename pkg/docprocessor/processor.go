@@ -207,6 +207,10 @@ func (p *Processor) Process(ctx context.Context, walker Walker, opts ...anonymiz
 // parcours et retourne une erreur : l'appelant ne doit alors pas écrire de
 // document de sortie, sous peine de produire un fichier partiellement anonymisé.
 func (p *Processor) ProcessWithReport(ctx context.Context, walker Walker, opts ...anonymizer.AnonymizeOption) (*anonymizer.Session, *Report, error) {
+	// Un document sans segment n'atteint jamais l'anonymiseur.
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	session := anonymizer.NewSession()
 	allOpts := append([]anonymizer.AnonymizeOption{anonymizer.WithSession(session)}, opts...)
 

@@ -112,7 +112,7 @@ func (w *Walker) applyRedactions(ctx context.Context, pdfCtx *model.Context, src
 		}
 		img, err := w.rasterizer.Render(ctx, src, pageNr, w.ocrDPI)
 		if err != nil {
-			return err
+			return canceledOr(ctx, err)
 		}
 		if err := flattenPage(pdfCtx, pageNr, blacken(img, boxes[pageNr])); err != nil {
 			return fmt.Errorf("pdf: caviardage page %d : %w", pageNr, err)
@@ -269,11 +269,11 @@ func (w *Walker) VisualText(ctx context.Context, path string) ([]docprocessor.Re
 		}
 		img, err := w.rasterizer.Render(ctx, path, pageNr, w.ocrDPI)
 		if err != nil {
-			return nil, err
+			return nil, canceledOr(ctx, err)
 		}
 		words, err := w.verifyEngine.Recognize(ctx, img, w.ocrLang)
 		if err != nil {
-			return nil, fmt.Errorf("pdf: relecture page %d : %w", pageNr, err)
+			return nil, canceledOr(ctx, fmt.Errorf("pdf: relecture page %d : %w", pageNr, err))
 		}
 
 		page := ocrPage{pageNr: pageNr, lines: ocr.Lines(words)}

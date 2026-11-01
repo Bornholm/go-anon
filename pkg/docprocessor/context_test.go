@@ -23,3 +23,18 @@ func TestProcess_Cancelled(t *testing.T) {
 		t.Errorf("a cancelled process walked %d segments and rewrote %v", w.walked, w.replaced)
 	}
 }
+
+// Un document sans segment n'atteint jamais l'anonymiseur : l'annulation est
+// tout de même constatée.
+func TestProcess_EmptyDocumentWithEndedContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	proc := New(anonymizer.New(emailRecognizer{}, anonymizer.Config{Strategy: anonymizer.TagReplace}))
+
+	if _, err := proc.Process(ctx, &sliceWalker{}); !errors.Is(err, context.Canceled) {
+		t.Errorf("Process = %v, want context.Canceled", err)
+	}
+	if _, _, err := proc.ProcessStream(ctx, &batchWalker{}); !errors.Is(err, context.Canceled) {
+		t.Errorf("ProcessStream = %v, want context.Canceled", err)
+	}
+}

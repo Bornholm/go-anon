@@ -84,3 +84,11 @@ func TestRecognizer_EmptyTextWithEndedContext(t *testing.T) {
 		t.Errorf("Recognize = %v, want context.Canceled", err)
 	}
 }
+
+func TestEvaluate_EmptySetWithEndedContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if m, err := Evaluate(ctx, &mockEvalRecognizer{}, nil); !errors.Is(err, context.Canceled) {
+		t.Errorf("Evaluate = %v, %v; want context.Canceled", m, err)
+	}
+}
