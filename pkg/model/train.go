@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"log"
 	"math"
 	"math/rand"
@@ -53,7 +54,11 @@ type Trainer struct {
 // Train entraîne le CRF sur train, avec évaluation optionnelle sur dev.
 // Si dev != nil et EarlyStop > 0, retourne le meilleur modèle selon l'accuracy dev.
 // Si dev == nil, retourne le modèle après Epochs époques.
-func (tr *Trainer) Train(train, dev []corpus.Sentence) (*CRF, error) {
+//
+// ctx est vérifié avant chaque époque et chaque phrase, évaluation sur dev et
+// collecte des features comprises : un entraînement annulé s'arrête à la
+// suivante et renvoie l'erreur du contexte, sans modèle.
+func (tr *Trainer) Train(ctx context.Context, train, dev []corpus.Sentence) (*CRF, error) {
 	crf := newCRF(collectLabels(train))
 	crf.L2Lambda = tr.Config.L2Lambda
 
@@ -90,6 +95,9 @@ func (tr *Trainer) Train(train, dev []corpus.Sentence) (*CRF, error) {
 	}
 
 	for epoch := 0; epoch < tr.Config.Epochs; epoch++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if tr.Config.Shuffle {
 			shuffle(train)
 		}
@@ -101,7 +109,10 @@ func (tr *Trainer) Train(train, dev []corpus.Sentence) (*CRF, error) {
 		}
 
 		if workers > 1 {
-			tr.trainParallel(crf, train, workers, epochLR)
+			tr.trainParallel(ctx, crf, train, workers, epochLR)
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
 		} else {
 			// Mini-batch accumulation
 			var batchFeats [][]map[string]float64
@@ -109,6 +120,9 @@ func (tr *Trainer) Train(train, dev []corpus.Sentence) (*CRF, error) {
 			var batchGoldIndices [][]int
 
 			for i, sent := range train {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
 				if len(sent) == 0 {
 					continue
 				}
@@ -131,7 +145,10 @@ func (tr *Trainer) Train(train, dev []corpus.Sentence) (*CRF, error) {
 		}
 
 		if dev != nil {
-			m := tr.evaluate(crf, dev)
+			m, err := tr.evaluate(ctx, crf, dev)
+			if err != nil {
+				return nil, err
+			}
 			improved := ""
 			if m.F1 > bestF1 {
 				bestF1 = m.F1
@@ -159,7 +176,15 @@ func (tr *Trainer) Train(train, dev []corpus.Sentence) (*CRF, error) {
 	// Passe dédiée sans dropout : le dropout des époques ne garantit pas
 	// d'avoir vu chaque feature, et Save doit couvrir tous les poids.
 	log.Printf("collecte des bases de features pour la sérialisation v3…")
-	result.featureBases = tr.collectFeatureBases(train)
+	bases, err := tr.collectFeatureBases(ctx, train)
+	if err != nil {
+		return nil, err
+	}
+	result.featureBases = bases
+	// Un corpus vide ne passe par aucun des contrôles des boucles.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	log.Printf("bases de features collectées : %d features uniques", len(result.featureBases))
 
 	return result, nil
@@ -167,9 +192,12 @@ func (tr *Trainer) Train(train, dev []corpus.Sentence) (*CRF, error) {
 
 // collectFeatureBases énumère les hachés de base (hashFeatureBase) de toutes
 // les features extraites du corpus, sans dropout.
-func (tr *Trainer) collectFeatureBases(train []corpus.Sentence) []uint64 {
+func (tr *Trainer) collectFeatureBases(ctx context.Context, train []corpus.Sentence) ([]uint64, error) {
 	seen := make(map[uint64]struct{}, 1<<20)
 	for _, sent := range train {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if len(sent) == 0 {
 			continue
 		}
@@ -184,7 +212,7 @@ func (tr *Trainer) collectFeatureBases(train []corpus.Sentence) []uint64 {
 	for b := range seen {
 		bases = append(bases, b)
 	}
-	return bases
+	return bases, nil
 }
 
 // sgdUpdate effectue une mise à jour SGD sur une phrase.
@@ -429,7 +457,7 @@ func (tr *Trainer) applyAdamUpdate(crf *CRF, gradE map[uint64]float64, gradT [][
 // le corpus est partitionné en n sous-listes, chaque goroutine applique
 // des mises à jour SGD indépendantes sur le modèle partagé.
 // Les accès concurrents aux poids sont protégés par les mutex existants.
-func (tr *Trainer) trainParallel(crf *CRF, train []corpus.Sentence, n int, lr float64) {
+func (tr *Trainer) trainParallel(ctx context.Context, crf *CRF, train []corpus.Sentence, n int, lr float64) {
 	size := len(train)
 	if size == 0 || n <= 1 {
 		return
@@ -453,6 +481,9 @@ func (tr *Trainer) trainParallel(crf *CRF, train []corpus.Sentence, n int, lr fl
 		go func(sentences []corpus.Sentence) {
 			defer wg.Done()
 			for _, sent := range sentences {
+				if ctx.Err() != nil {
+					return
+				}
 				if len(sent) == 0 {
 					continue
 				}
@@ -470,9 +501,12 @@ func (tr *Trainer) trainParallel(crf *CRF, train []corpus.Sentence, n int, lr fl
 
 // evaluate calcule le F1 entity-level sur un ensemble de données.
 // C'est l'objectif réel de l'entraînement : utilisé pour l'early stopping.
-func (tr *Trainer) evaluate(crf *CRF, sentences []corpus.Sentence) Metrics {
+func (tr *Trainer) evaluate(ctx context.Context, crf *CRF, sentences []corpus.Sentence) (Metrics, error) {
 	tp, fp, fn := 0, 0, 0
 	for _, sent := range sentences {
+		if err := ctx.Err(); err != nil {
+			return Metrics{}, err
+		}
 		if len(sent) == 0 {
 			continue
 		}
@@ -501,7 +535,7 @@ func (tr *Trainer) evaluate(crf *CRF, sentences []corpus.Sentence) Metrics {
 	}
 
 	if tp+fp == 0 && tp+fn == 0 {
-		return Metrics{}
+		return Metrics{}, nil
 	}
 	var prec, rec float64
 	if tp+fp > 0 {
@@ -514,7 +548,7 @@ func (tr *Trainer) evaluate(crf *CRF, sentences []corpus.Sentence) Metrics {
 	if prec+rec > 0 {
 		f1 = 2 * prec * rec / (prec + rec)
 	}
-	return Metrics{Accuracy: prec, F1: f1}
+	return Metrics{Accuracy: prec, F1: f1}, nil
 }
 
 // entitySpan représente un span d'entité nommée par ses indices token (start, end inclusif) et son type.

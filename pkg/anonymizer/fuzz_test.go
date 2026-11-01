@@ -1,6 +1,7 @@
 package anonymizer
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -19,7 +20,7 @@ func newRegexRecognizer() *regexRecognizer {
 	return &regexRecognizer{patterns: append(patterns, ner.SecretPatterns()...)}
 }
 
-func (r *regexRecognizer) Recognize(text string) ([]ner.Entity, error) {
+func (r *regexRecognizer) Recognize(_ context.Context, text string) ([]ner.Entity, error) {
 	return ner.RegexEntityFilter(r.patterns)(text, nil), nil
 }
 
@@ -68,7 +69,7 @@ func FuzzAnonymizeInvariants(f *testing.F) {
 	anon := New(rec, Config{Strategy: TagReplace, ConsistentMap: true})
 
 	f.Fuzz(func(t *testing.T, input string) {
-		res, err := anon.Anonymize(input, WithStrictVerification())
+		res, err := anon.Anonymize(context.Background(), input, WithStrictVerification())
 		if err != nil {
 			// Le fail-closed est un résultat acceptable : c'est même l'issue
 			// attendue sur une entrée qui contient déjà un placeholder.
@@ -136,7 +137,7 @@ func FuzzRoundTrip(f *testing.F) {
 	})
 
 	f.Fuzz(func(t *testing.T, input string) {
-		res, err := anon.Anonymize(input)
+		res, err := anon.Anonymize(context.Background(), input)
 		if err != nil {
 			return
 		}

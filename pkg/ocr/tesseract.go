@@ -74,7 +74,7 @@ func (e *TesseractExec) Available() error {
 }
 
 // Recognize encode l'image en PNG, la pousse dans tesseract et décode le TSV.
-func (e *TesseractExec) Recognize(img image.Image, lang string) ([]Word, error) {
+func (e *TesseractExec) Recognize(ctx context.Context, img image.Image, lang string) ([]Word, error) {
 	var encoded bytes.Buffer
 	if err := png.Encode(&encoded, img); err != nil {
 		return nil, fmt.Errorf("ocr: encodage PNG : %w", err)
@@ -84,13 +84,18 @@ func (e *TesseractExec) Recognize(img image.Image, lang string) ([]Word, error) 
 	args = append(args, e.ExtraArgs...)
 	args = append(args, "tsv")
 
-	cmd := exec.CommandContext(context.Background(), e.binary(), args...)
+	cmd := exec.CommandContext(ctx, e.binary(), args...)
 	cmd.Stdin = &encoded
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		// Un processus tué par l'annulation rend « signal: killed » : c'est
+		// l'erreur du contexte qui dit pourquoi.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("ocr: %s : %w : %s", e.Name(), err,
 			strings.TrimSpace(stderr.String()))
 	}

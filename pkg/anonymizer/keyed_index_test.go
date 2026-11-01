@@ -1,6 +1,7 @@
 package anonymizer
 
 import (
+	"context"
 	"errors"
 	"regexp"
 	"strconv"
@@ -34,7 +35,7 @@ func anonymizeWithIndexKey(t *testing.T, names ...string) *Result {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := New(rec, Config{Strategy: TagReplace}).Anonymize(text, WithSession(sess), WithIndexKey(testIndexKey))
+	res, err := New(rec, Config{Strategy: TagReplace}).Anonymize(context.Background(), text, WithSession(sess), WithIndexKey(testIndexKey))
 	if err != nil {
 		t.Fatalf("Anonymize: %v", err)
 	}
@@ -125,7 +126,7 @@ func TestWithIndexKey_AnIndexTakenInTheSessionGoesToTheNextOne(t *testing.T) {
 	anon := New(rec, Config{Strategy: TagReplace})
 
 	for call := 1; call <= 2; call++ {
-		res, err := anon.Anonymize(text, WithSession(sess), WithIndexKey(testIndexKey))
+		res, err := anon.Anonymize(context.Background(), text, WithSession(sess), WithIndexKey(testIndexKey))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -148,7 +149,7 @@ func TestWithoutIndexKey_SkipsAnIndexTakenInTheSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec, text := persons("Marie Martin")
-	res, err := New(rec, Config{Strategy: TagReplace}).Anonymize(text, WithSession(sess))
+	res, err := New(rec, Config{Strategy: TagReplace}).Anonymize(context.Background(), text, WithSession(sess))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +164,7 @@ func TestWithoutIndexKey_SkipsAnIndexTakenInTheSession(t *testing.T) {
 func TestWithIndexKey_AnEmptyKeyFails(t *testing.T) {
 	for _, text := range []string{"", "Jean Dupont"} {
 		rec, _ := persons()
-		_, err := New(rec, Config{Strategy: TagReplace}).Anonymize(text, WithIndexKey(nil))
+		_, err := New(rec, Config{Strategy: TagReplace}).Anonymize(context.Background(), text, WithIndexKey(nil))
 		if !errors.Is(err, ErrHashKeyTooShort) {
 			t.Errorf("texte %q : err = %v, attendu ErrHashKeyTooShort plutôt que la numérotation séquentielle", text, err)
 		}
@@ -172,7 +173,7 @@ func TestWithIndexKey_AnEmptyKeyFails(t *testing.T) {
 
 func TestWithIndexKey_RequiresAValidKey(t *testing.T) {
 	rec, text := persons("Jean Dupont")
-	_, err := New(rec, Config{Strategy: TagReplace}).Anonymize(text, WithIndexKey(HashKey("short")))
+	_, err := New(rec, Config{Strategy: TagReplace}).Anonymize(context.Background(), text, WithIndexKey(HashKey("short")))
 	if !errors.Is(err, ErrHashKeyTooShort) {
 		t.Errorf("err = %v, attendu ErrHashKeyTooShort", err)
 	}
@@ -180,7 +181,7 @@ func TestWithIndexKey_RequiresAValidKey(t *testing.T) {
 
 func TestWithoutIndexKey_IndexesFollowTheOrderOfAppearance(t *testing.T) {
 	rec, text := persons("Jean Dupont", "Marie Martin")
-	res, err := New(rec, Config{Strategy: TagReplace}).Anonymize(text)
+	res, err := New(rec, Config{Strategy: TagReplace}).Anonymize(context.Background(), text)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,11 +192,11 @@ func TestWithoutIndexKey_IndexesFollowTheOrderOfAppearance(t *testing.T) {
 
 func TestWithIndexKey_LeavesTheHashStrategyAlone(t *testing.T) {
 	rec, text := persons("Jean Dupont")
-	plain, err := New(rec, Config{Strategy: Hash}).Anonymize(text, WithHashKey(testIndexKey))
+	plain, err := New(rec, Config{Strategy: Hash}).Anonymize(context.Background(), text, WithHashKey(testIndexKey))
 	if err != nil {
 		t.Fatal(err)
 	}
-	keyed, err := New(rec, Config{Strategy: Hash}).Anonymize(text, WithHashKey(testIndexKey), WithIndexKey(testIndexKey))
+	keyed, err := New(rec, Config{Strategy: Hash}).Anonymize(context.Background(), text, WithHashKey(testIndexKey), WithIndexKey(testIndexKey))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +218,7 @@ func TestWithoutIndexKey_AReplacementWithoutIndexIsNotSkipped(t *testing.T) {
 			sess := NewSession()
 			done := make(chan error, 1)
 			go func() {
-				_, err := New(rec, cfg).Anonymize(text, WithSession(sess))
+				_, err := New(rec, cfg).Anonymize(context.Background(), text, WithSession(sess))
 				done <- err
 			}()
 			select {
@@ -234,7 +235,7 @@ func TestWithoutIndexKey_AReplacementWithoutIndexIsNotSkipped(t *testing.T) {
 
 func TestWithIndexKey_IsNotValidatedByAStrategyWithoutIndex(t *testing.T) {
 	rec, text := persons("Jean Dupont")
-	if _, err := New(rec, Config{Strategy: Redact}).Anonymize(text, WithIndexKey(nil)); err != nil {
+	if _, err := New(rec, Config{Strategy: Redact}).Anonymize(context.Background(), text, WithIndexKey(nil)); err != nil {
 		t.Errorf("err = %v, attendu aucune erreur : Redact ne se sert pas de la clé d'index", err)
 	}
 }
@@ -246,7 +247,7 @@ func TestWithIndexKey_WithoutSessionOnlyTheIndexIsStable(t *testing.T) {
 
 	var indexes, nonces []string
 	for range 2 {
-		res, err := anon.Anonymize(text, WithIndexKey(testIndexKey))
+		res, err := anon.Anonymize(context.Background(), text, WithIndexKey(testIndexKey))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -18,6 +18,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -92,6 +93,10 @@ func main() {
 	skipVerify := flag.Bool("insecure-skip-verify", false, "désactiver la vérification de signature du manifeste de modèles (manifests custom non signés)")
 
 	flag.Parse()
+
+	// Ctrl-C annule le traitement en cours.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
 	insecureSkipModelVerify = *skipVerify
 
@@ -305,7 +310,7 @@ func main() {
 	var session *anonymizer.Session
 	var report *docprocessor.Report
 	if streamed {
-		session, report = processStream(proc, openStream, *inputPath, *outputPath, anonOpts)
+		session, report = processStream(ctx, proc, openStream, *inputPath, *outputPath, anonOpts)
 		reportLeaks(report)
 	} else {
 		// --- Walker ---
@@ -321,11 +326,11 @@ func main() {
 		if ocrLanguage == "" {
 			ocrLanguage = lang
 		}
-		if err := runOCR(walker, *ocrMode, ocrLanguage, *ocrDPI, *ocrMinConf); err != nil {
+		if err := runOCR(ctx, walker, *ocrMode, ocrLanguage, *ocrDPI, *ocrMinConf); err != nil {
 			log.Fatalf("OCR : %v", err)
 		}
 
-		session, report, err = proc.ProcessWithReport(walker, anonOpts...)
+		session, report, err = proc.ProcessWithReport(ctx, walker, anonOpts...)
 		if err != nil {
 			// En mode strict, l'échec doit précéder toute écriture : le document de
 			// sortie n'est jamais créé, pas même partiellement anonymisé.
@@ -353,8 +358,8 @@ func main() {
 		}
 
 		// --- Sauvegarde du document ---
-		if saver, ok := walker.(interface{ SaveTo(string) error }); ok {
-			if err := saver.SaveTo(*outputPath); err != nil {
+		if saver, ok := walker.(docprocessor.Saver); ok {
+			if err := saver.SaveTo(ctx, *outputPath); err != nil {
 				log.Fatalf("sauvegarde %q : %v", *outputPath, err)
 			}
 		} else {
@@ -366,7 +371,7 @@ func main() {
 		// rendu puis océrisé. Le fail-closed prend donc ici la forme d'une
 		// destruction — un document dont on sait qu'il expose une donnée
 		// personnelle ne doit pas subsister sur le disque.
-		visualLeaks, err := proc.VerifyOutput(walker, *outputPath, session)
+		visualLeaks, err := proc.VerifyOutput(ctx, walker, *outputPath, session)
 		if err != nil {
 			log.Fatalf("vérification visuelle : %v", err)
 		}
@@ -410,7 +415,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("%v (ou -save-mapping-insecure pour écrire en clair, en connaissance de cause)", err)
 		}
-		if err := store.Save(context.Background(), *saveMappingID, session); err != nil {
+		if err := store.Save(ctx, *saveMappingID, session); err != nil {
 			log.Fatalf("sauvegarde du mapping : %v", err)
 		}
 		fmt.Printf("Mapping chiffré enregistré : %s (store %s)\n", *saveMappingID, *mappingDir)
@@ -446,7 +451,7 @@ func main() {
 // ocrCapable est implémentée par les Walkers sachant océriser leur contenu
 // bitmap. Seul le PDF le fait aujourd'hui.
 type ocrCapable interface {
-	RunOCR(pkgpdf.OCROptions) error
+	RunOCR(context.Context, pkgpdf.OCROptions) error
 }
 
 // runOCR déclenche la reconnaissance optique selon le mode demandé.
@@ -456,7 +461,7 @@ type ocrCapable interface {
 // par la sanitisation. En mode « on », c'est une erreur — l'utilisateur a
 // demandé la couverture, la lui donner à moitié sans le dire serait pire que
 // de refuser.
-func runOCR(walker docprocessor.Walker, mode, lang string, dpi int, minConf float64) error {
+func runOCR(ctx context.Context, walker docprocessor.Walker, mode, lang string, dpi int, minConf float64) error {
 	if mode == "off" {
 		return nil
 	}
@@ -480,7 +485,11 @@ func runOCR(walker docprocessor.Walker, mode, lang string, dpi int, minConf floa
 		MinConfidence: minConf,
 	}
 
-	if err := capable.RunOCR(opts); err != nil {
+	if err := capable.RunOCR(ctx, opts); err != nil {
+		// Une annulation n'est pas un OCR indisponible : le traitement s'arrête.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if mode == "on" {
 			return err
 		}
@@ -621,7 +630,7 @@ func sampleStream(open streamFactory, path string) (string, error) {
 // outputPath. Une erreur détruit la sortie : partielle, elle contiendrait des
 // lignes écrites avant la fuite qui a interrompu le traitement, et rien
 // au-delà.
-func processStream(proc *docprocessor.Processor, open streamFactory, inputPath, outputPath string, opts []anonymizer.AnonymizeOption) (*anonymizer.Session, *docprocessor.Report) {
+func processStream(ctx context.Context, proc *docprocessor.Processor, open streamFactory, inputPath, outputPath string, opts []anonymizer.AnonymizeOption) (*anonymizer.Session, *docprocessor.Report) {
 	in, err := os.Open(inputPath)
 	if err != nil {
 		log.Fatalf("ouverture %q : %v", inputPath, err)
@@ -640,7 +649,7 @@ func processStream(proc *docprocessor.Processor, open streamFactory, inputPath, 
 	if err != nil {
 		fail("ouverture %q : %v", inputPath, err)
 	}
-	session, report, err := proc.ProcessStream(walker, opts...)
+	session, report, err := proc.ProcessStream(ctx, walker, opts...)
 	if err != nil {
 		fail("anonymisation : %v — document de sortie détruit", err)
 	}

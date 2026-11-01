@@ -10,6 +10,7 @@
 package ocr
 
 import (
+	"context"
 	"image"
 	"sort"
 	"strings"
@@ -63,8 +64,8 @@ type Engine interface {
 	Available() error
 	// Recognize reconnaît le texte de img. lang est un code ISO 639-1
 	// (« fr », « en », « es ») ; au moteur de le traduire dans sa propre
-	// nomenclature.
-	Recognize(img image.Image, lang string) ([]Word, error)
+	// nomenclature. Un appel annulé par ctx s'arrête et renvoie son erreur.
+	Recognize(ctx context.Context, img image.Image, lang string) ([]Word, error)
 }
 
 // Line est une ligne reconstituée à partir des mots d'un moteur.

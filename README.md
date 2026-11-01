@@ -34,21 +34,23 @@ import goanon "github.com/bornholm/go-anon"
 f, _ := os.Open("model_fr.crf.gz")
 m, _ := goanon.LoadModel(f)
 
-// Reconnaître des entités
+// Reconnaître des entités. Chaque traitement prend un context.Context et
+// s'arrête quand il est annulé.
+ctx := context.Background()
 r, _ := goanon.NewRecognizer(m, goanon.WithLanguage("fr"))
-entities, _ := r.Recognize("Jean Dupont habite à Paris.")
+entities, _ := r.Recognize(ctx, "Jean Dupont habite à Paris.")
 // → [{Text:"Jean Dupont", Type:"PER"}, {Text:"Paris", Type:"LOC"}]
 
 // Anonymiser
 anon := goanon.NewAnonymizer(r, goanon.Config{Strategy: goanon.TagReplace})
-result, _ := anon.Anonymize("Jean Dupont habite à Paris.")
+result, _ := anon.Anonymize(ctx, "Jean Dupont habite à Paris.")
 // result.Text → "⟦PERSON_1_a3f9c2⟧ habite à ⟦LOCATION_1_a3f9c2⟧."
 
 // Restaurer le texte original
 restored, _ := goanon.Deanonymize(result.Text, result.Mapping)
 
 // Mode fail-closed : aucune sortie si une entité subsiste dans le texte anonymisé
-result, err := anon.Anonymize(texte, goanon.WithStrictVerification())
+result, err := anon.Anonymize(ctx, texte, goanon.WithStrictVerification())
 
 // Détection des identifiants structurés (e-mail, IP, IBAN…) et des secrets
 r, _ = goanon.NewRecognizer(m,

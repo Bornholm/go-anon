@@ -1,6 +1,7 @@
 package pdf
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bornholm/go-anon/pkg/docprocessor"
@@ -77,7 +78,9 @@ func (p ocrPage) regionText() (string, [][2]int) {
 // Les erreurs de rendu ou de reconnaissance d'une page sont **remontées**, pas
 // avalées : une page qu'on n'a pas su lire est une page dont on ignore le
 // contenu, ce qui est exactement la situation que ce chantier corrige.
-func (w *Walker) RunOCR(opts OCROptions) error {
+//
+// Un appel annulé par ctx s'arrête à la page en cours et renvoie son erreur.
+func (w *Walker) RunOCR(ctx context.Context, opts OCROptions) error {
 	if opts.Engine == nil {
 		return fmt.Errorf("pdf: OCR demandé sans moteur")
 	}
@@ -100,14 +103,17 @@ func (w *Walker) RunOCR(opts OCROptions) error {
 
 	w.ocrPages = nil
 	for pageNr := 1; pageNr <= w.ctx.PageCount; pageNr++ {
-		img, err := opts.Rasterizer.Render(w.inputPath, pageNr, opts.DPI)
-		if err != nil {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
-
-		words, err := opts.Engine.Recognize(img, opts.Lang)
+		img, err := opts.Rasterizer.Render(ctx, w.inputPath, pageNr, opts.DPI)
 		if err != nil {
-			return fmt.Errorf("pdf: OCR page %d : %w", pageNr, err)
+			return canceledOr(ctx, err)
+		}
+
+		words, err := opts.Engine.Recognize(ctx, img, opts.Lang)
+		if err != nil {
+			return canceledOr(ctx, fmt.Errorf("pdf: OCR page %d : %w", pageNr, err))
 		}
 
 		lines := ocr.Lines(ocr.FilterConfidence(words, opts.MinConfidence))
@@ -118,6 +124,16 @@ func (w *Walker) RunOCR(opts OCROptions) error {
 	}
 
 	return nil
+}
+
+// canceledOr rend l'erreur de ctx s'il est terminé, err sinon : un moteur ou
+// un rastériseur tiers peut rendre l'erreur de son processus tué plutôt que
+// celle du contexte, et l'appelant doit pouvoir reconnaître l'annulation.
+func canceledOr(ctx context.Context, err error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	return err
 }
 
 // OCRLines retourne les lignes reconnues sur une page (base 1), ou nil si la

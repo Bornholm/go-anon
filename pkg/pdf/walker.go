@@ -2,6 +2,7 @@ package pdf
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -170,8 +171,15 @@ func (w *Walker) Walk(fn func(docprocessor.Segment) error) error {
 	return nil
 }
 
+// Walker écrit le document qu'il parcourt.
+var _ docprocessor.Saver = (*Walker)(nil)
+
 // SaveTo rewrites modified content streams and writes the PDF to outputPath.
-func (w *Walker) SaveTo(outputPath string) error {
+// With redactions, it renders the redacted pages again: ctx cancels that.
+func (w *Walker) SaveTo(ctx context.Context, outputPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	modByPage := make(map[int][]int)
 	for i, seg := range w.segments {
 		if seg.modified {
@@ -243,7 +251,10 @@ func (w *Walker) SaveTo(outputPath string) error {
 	}
 
 	if len(w.redactions) > 0 {
-		return w.saveWithRedactions(outputPath)
+		return w.saveWithRedactions(ctx, outputPath)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	return pdfapi.WriteContextFile(w.ctx, outputPath)
 }

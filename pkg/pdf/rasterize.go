@@ -27,7 +27,8 @@ type Rasterizer interface {
 	// Available rapporte si le rastériseur est utilisable ici.
 	Available() error
 	// Render rend la page pageNr (base 1) du fichier path à la résolution dpi.
-	Render(path string, pageNr, dpi int) (image.Image, error)
+	// Un appel annulé par ctx s'arrête et renvoie son erreur.
+	Render(ctx context.Context, path string, pageNr, dpi int) (image.Image, error)
 }
 
 // PdftoppmRasterizer pilote pdftoppm (poppler-utils) par exec.
@@ -59,13 +60,13 @@ func (r *PdftoppmRasterizer) Available() error {
 	return nil
 }
 
-func (r *PdftoppmRasterizer) Render(path string, pageNr, dpi int) (image.Image, error) {
+func (r *PdftoppmRasterizer) Render(ctx context.Context, path string, pageNr, dpi int) (image.Image, error) {
 	if dpi <= 0 {
 		dpi = DefaultDPI
 	}
 	page := strconv.Itoa(pageNr)
 
-	cmd := exec.CommandContext(context.Background(), r.binary(),
+	cmd := exec.CommandContext(ctx, r.binary(),
 		"-r", strconv.Itoa(dpi), "-png", "-f", page, "-l", page, path)
 
 	var stdout, stderr bytes.Buffer
@@ -73,6 +74,11 @@ func (r *PdftoppmRasterizer) Render(path string, pageNr, dpi int) (image.Image, 
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		// Un processus tué par l'annulation rend « signal: killed » : c'est
+		// l'erreur du contexte qui dit pourquoi.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		return nil, fmt.Errorf("pdf: rendu page %d avec %s : %w : %s",
 			pageNr, r.Name(), err, strings.TrimSpace(stderr.String()))
 	}

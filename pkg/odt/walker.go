@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/flate"
+	"context"
 	"encoding/xml"
 	"fmt"
 	"hash/crc32"
@@ -93,10 +94,16 @@ func (w *Walker) Walk(fn func(docprocessor.Segment) error) error {
 	return walkParagraphs(w.contentXML, fn)
 }
 
+// Walker écrit le document qu'il parcourt.
+var _ docprocessor.Saver = (*Walker)(nil)
+
 // SaveTo recrée le fichier ODT avec le content.xml modifié.
 // Utilise CreateRaw avec CRC32 et tailles pré-calculés pour éviter les
 // data descriptors (flag bit 3), rejetés par LibreOffice.
-func (w *Walker) SaveTo(outputPath string) error {
+func (w *Walker) SaveTo(ctx context.Context, outputPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	var xmlBuf bytes.Buffer
 	if err := serializeXML(&xmlBuf, w.contentXML); err != nil {
 		return fmt.Errorf("sérialisation content.xml : %w", err)

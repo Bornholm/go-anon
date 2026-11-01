@@ -20,12 +20,14 @@ func computeEmissions(crf *CRF, feats []map[string]float64) [][]float64 {
 // en log-space, ainsi que la fonction de partition Z = log P(x).
 //
 // Définitions :
-//   alpha[t][l] = log P(x[0..t], y_t = l)
-//   beta[t][l]  = log P(x[t+1..T-1] | y_t = l)
-//   Z           = logSumExp(alpha[n-1][:]) = log P(x)
+//
+//	alpha[t][l] = log P(x[0..t], y_t = l)
+//	beta[t][l]  = log P(x[t+1..T-1] | y_t = l)
+//	Z           = logSumExp(alpha[n-1][:]) = log P(x)
 //
 // Les probabilités marginales se calculent ensuite via :
-//   P(y_t = l | x) = exp(alpha[t][l] + beta[t][l] - Z)
+//
+//	P(y_t = l | x) = exp(alpha[t][l] + beta[t][l] - Z)
 //
 // Travailler en log-space est **obligatoire** pour éviter les underflows
 // numériques sur les longues phrases (exp de scores négatifs → 0 en float64).

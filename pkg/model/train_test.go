@@ -1,6 +1,7 @@
 package model_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/bornholm/go-anon/pkg/corpus"
@@ -91,7 +92,7 @@ func TestTrainConvergesOnToyCorpus(t *testing.T) {
 	train := toyCorpus()
 	tr := newDefaultTrainer()
 
-	crf, err := tr.Train(train, nil)
+	crf, err := tr.Train(context.Background(), train, nil)
 	if err != nil {
 		t.Fatalf("Train: %v", err)
 	}
@@ -106,7 +107,7 @@ func TestTrainReturnsCorrectLabels(t *testing.T) {
 	train := toyCorpus()
 	tr := newDefaultTrainer()
 
-	crf, err := tr.Train(train, nil)
+	crf, err := tr.Train(context.Background(), train, nil)
 	if err != nil {
 		t.Fatalf("Train: %v", err)
 	}
@@ -126,7 +127,7 @@ func TestTrainPredictCorrectLength(t *testing.T) {
 	train := toyCorpus()
 	tr := newDefaultTrainer()
 
-	crf, err := tr.Train(train, nil)
+	crf, err := tr.Train(context.Background(), train, nil)
 	if err != nil {
 		t.Fatalf("Train: %v", err)
 	}
@@ -161,7 +162,7 @@ func TestTrainEarlyStop(t *testing.T) {
 		Extractor: &features.FeatureExtractor{WindowSize: 1},
 	}
 
-	crf, err := tr.Train(train, dev)
+	crf, err := tr.Train(context.Background(), train, dev)
 	if err != nil {
 		t.Fatalf("Train avec early stop: %v", err)
 	}
@@ -180,7 +181,7 @@ func TestTrainEmptySentencesIgnored(t *testing.T) {
 		Config:    model.TrainConfig{Epochs: 5, LearningRate: 0.1},
 		Extractor: &features.FeatureExtractor{WindowSize: 0},
 	}
-	_, err := tr.Train(train, nil)
+	_, err := tr.Train(context.Background(), train, nil)
 	if err != nil {
 		t.Fatalf("Train avec phrases vides: %v", err)
 	}

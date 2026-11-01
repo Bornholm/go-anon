@@ -1,6 +1,7 @@
 package csv
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -75,8 +76,14 @@ func (w *Walker) Walk(fn func(docprocessor.Segment) error) error {
 	return nil
 }
 
+// Walker écrit le document qu'il parcourt.
+var _ docprocessor.Saver = (*Walker)(nil)
+
 // SaveTo écrit le CSV anonymisé vers outputPath en conservant le séparateur d'origine.
-func (w *Walker) SaveTo(outputPath string) error {
+func (w *Walker) SaveTo(ctx context.Context, outputPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f, err := os.Create(outputPath)
 	if err != nil {
 		return fmt.Errorf("création %q : %w", outputPath, err)

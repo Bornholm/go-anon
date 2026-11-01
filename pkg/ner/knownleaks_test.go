@@ -2,6 +2,7 @@ package ner_test
 
 import (
 	"bufio"
+	"context"
 	"os"
 	"strings"
 	"testing"
@@ -73,7 +74,7 @@ func TestGuarantee_KnownLeaksRecall(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		entities, err := rec.Recognize(tc.text)
+		entities, err := rec.Recognize(context.Background(), tc.text)
 		if err != nil {
 			t.Errorf("Recognize(%q) : %v", tc.text, err)
 			continue

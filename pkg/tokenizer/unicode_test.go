@@ -146,7 +146,7 @@ func TestFrenchAccents(t *testing.T) {
 	text := "Ça va très bien"
 	got := defaultTok.Tokenize(text)
 	assertTokens(t, got, []tokenizer.Token{
-		tok("Ça", 0, 3, true),    // Ç=2 bytes, a=1 byte
+		tok("Ça", 0, 3, true), // Ç=2 bytes, a=1 byte
 		tok("va", 4, 6, true),
 		tok("très", 7, 12, true), // t=1 r=1 è=2 s=1 → 5 bytes
 		tok("bien", 13, 17, true),

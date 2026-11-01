@@ -2,6 +2,7 @@ package ner
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log"
 	"strings"
@@ -51,7 +52,7 @@ func buildBenchRecognizer(tb testing.TB) *Recognizer {
 		},
 		Extractor: &features.FeatureExtractor{WindowSize: 3},
 	}
-	crf, err := trainer.Train(sents, nil)
+	crf, err := trainer.Train(context.Background(), sents, nil)
 	if err != nil {
 		tb.Fatalf("entraînement du CRF de benchmark : %v", err)
 	}
@@ -84,7 +85,7 @@ func BenchmarkRecognize(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, err := rec.Recognize(benchText); err != nil {
+		if _, err := rec.Recognize(context.Background(), benchText); err != nil {
 			b.Fatal(err)
 		}
 	}

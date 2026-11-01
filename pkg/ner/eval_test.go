@@ -1,6 +1,7 @@
 package ner
 
 import (
+	"context"
 	"testing"
 
 	"github.com/bornholm/go-anon/pkg/corpus"
@@ -95,7 +96,13 @@ func TestEvaluate_SampleCorpus(t *testing.T) {
 		},
 	}
 
-	metrics := Evaluate(rec, sentences)
+	metrics, err := Evaluate(context.Background(), rec, sentences)
+
+	if err != nil {
+
+		t.Fatalf("Evaluate: %v", err)
+
+	}
 
 	if metrics.TotalGold == 0 {
 		t.Error("expected non-zero TotalGold")
@@ -119,7 +126,13 @@ func TestEvaluate_NoEntities(t *testing.T) {
 		predicted: []Entity{},
 	}
 
-	metrics := Evaluate(rec, sentences)
+	metrics, err := Evaluate(context.Background(), rec, sentences)
+
+	if err != nil {
+
+		t.Fatalf("Evaluate: %v", err)
+
+	}
 
 	if metrics.TotalGold != 1 {
 		t.Errorf("expected TotalGold=1, got %d", metrics.TotalGold)
@@ -145,7 +158,13 @@ func TestEvaluate_EmptyCorpus(t *testing.T) {
 		predicted: []Entity{},
 	}
 
-	metrics := Evaluate(rec, sentences)
+	metrics, err := Evaluate(context.Background(), rec, sentences)
+
+	if err != nil {
+
+		t.Fatalf("Evaluate: %v", err)
+
+	}
 
 	if metrics.TotalGold != 0 {
 		t.Errorf("expected TotalGold=0, got %d", metrics.TotalGold)
@@ -203,7 +222,7 @@ type mockEvalRecognizer struct {
 	predicted []Entity
 }
 
-func (m *mockEvalRecognizer) Recognize(text string) ([]Entity, error) {
+func (m *mockEvalRecognizer) Recognize(_ context.Context, text string) ([]Entity, error) {
 	return m.predicted, nil
 }
 

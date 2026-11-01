@@ -1,6 +1,7 @@
 package pdf
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/draw"
@@ -89,8 +90,8 @@ func (w *Walker) RedactedPages() []int {
 }
 
 // applyRedactions rend chaque page concernée depuis src, noircit les zones et
-// remplace la page par l'image obtenue dans ctx.
-func (w *Walker) applyRedactions(ctx *model.Context, src string) error {
+// remplace la page par l'image obtenue dans pdfCtx.
+func (w *Walker) applyRedactions(ctx context.Context, pdfCtx *model.Context, src string) error {
 	boxes := w.redactionBoxes()
 	if len(boxes) == 0 {
 		return nil
@@ -106,11 +107,14 @@ func (w *Walker) applyRedactions(ctx *model.Context, src string) error {
 	sort.Ints(pages)
 
 	for _, pageNr := range pages {
-		img, err := w.rasterizer.Render(src, pageNr, w.ocrDPI)
-		if err != nil {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := flattenPage(ctx, pageNr, blacken(img, boxes[pageNr])); err != nil {
+		img, err := w.rasterizer.Render(ctx, src, pageNr, w.ocrDPI)
+		if err != nil {
+			return canceledOr(ctx, err)
+		}
+		if err := flattenPage(pdfCtx, pageNr, blacken(img, boxes[pageNr])); err != nil {
 			return fmt.Errorf("pdf: caviardage page %d : %w", pageNr, err)
 		}
 	}
@@ -221,7 +225,7 @@ func imageXObject(ctx *model.Context, img *image.RGBA) (*types.IndirectRef, erro
 // rendue depuis l'original y réinjecterait le texte en clair que le pipeline
 // venait de remplacer. D'où le fichier intermédiaire, relu dans un contexte
 // neuf — réécrire deux fois le même contexte pdfcpu n'est pas un usage prévu.
-func (w *Walker) saveWithRedactions(outputPath string) error {
+func (w *Walker) saveWithRedactions(ctx context.Context, outputPath string) error {
 	tmp, err := os.CreateTemp("", "go-anon-*.pdf")
 	if err != nil {
 		return fmt.Errorf("pdf: fichier intermédiaire : %w", err)
@@ -236,15 +240,15 @@ func (w *Walker) saveWithRedactions(outputPath string) error {
 		return err
 	}
 
-	ctx, err := pdfapi.ReadContextFile(tmpPath)
+	pdfCtx, err := pdfapi.ReadContextFile(tmpPath)
 	if err != nil {
 		return fmt.Errorf("pdf: relecture intermédiaire : %w", err)
 	}
-	if err := w.applyRedactions(ctx, tmpPath); err != nil {
+	if err := w.applyRedactions(ctx, pdfCtx, tmpPath); err != nil {
 		return err
 	}
 
-	return pdfapi.WriteContextFile(ctx, outputPath)
+	return pdfapi.WriteContextFile(pdfCtx, outputPath)
 }
 
 // VisualText implémente docprocessor.VisualVerifier : il relit un document PDF
@@ -253,20 +257,23 @@ func (w *Walker) saveWithRedactions(outputPath string) error {
 // Contrairement à ReadOnlyText, qui expose ce que l'OCR avait lu de l'entrée, ce
 // chemin repart du **fichier produit** : c'est ce qui lui permet de constater
 // une boîte de caviardage mal placée, ou un remplacement qui n'a pas pris.
-func (w *Walker) VisualText(path string) ([]docprocessor.ReadOnlyRegion, error) {
+func (w *Walker) VisualText(ctx context.Context, path string) ([]docprocessor.ReadOnlyRegion, error) {
 	if w.verifyEngine == nil || w.rasterizer == nil {
 		return nil, nil
 	}
 
 	var regions []docprocessor.ReadOnlyRegion
 	for pageNr := 1; pageNr <= w.ctx.PageCount; pageNr++ {
-		img, err := w.rasterizer.Render(path, pageNr, w.ocrDPI)
-		if err != nil {
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		words, err := w.verifyEngine.Recognize(img, w.ocrLang)
+		img, err := w.rasterizer.Render(ctx, path, pageNr, w.ocrDPI)
 		if err != nil {
-			return nil, fmt.Errorf("pdf: relecture page %d : %w", pageNr, err)
+			return nil, canceledOr(ctx, err)
+		}
+		words, err := w.verifyEngine.Recognize(ctx, img, w.ocrLang)
+		if err != nil {
+			return nil, canceledOr(ctx, fmt.Errorf("pdf: relecture page %d : %w", pageNr, err))
 		}
 
 		page := ocrPage{pageNr: pageNr, lines: ocr.Lines(words)}

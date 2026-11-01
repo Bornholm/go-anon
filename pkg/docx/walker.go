@@ -1,6 +1,7 @@
 package docx
 
 import (
+	"context"
 	"github.com/bornholm/go-anon/pkg/docprocessor"
 	godocx "github.com/gomutex/godocx"
 	gdocx "github.com/gomutex/godocx/docx"
@@ -89,7 +90,13 @@ func (w *Walker) walkParagraph(ct *ctypes.Paragraph, fn func(docprocessor.Segmen
 	return fn(seg)
 }
 
+// Walker écrit le document qu'il parcourt.
+var _ docprocessor.Saver = (*Walker)(nil)
+
 // SaveTo sauvegarde le document modifié vers le chemin indiqué.
-func (w *Walker) SaveTo(outputPath string) error {
+func (w *Walker) SaveTo(ctx context.Context, outputPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	return w.rootDoc.SaveTo(outputPath)
 }

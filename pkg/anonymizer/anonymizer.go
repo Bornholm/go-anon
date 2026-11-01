@@ -1,6 +1,7 @@
 package anonymizer
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -75,9 +76,11 @@ type Config struct {
 // entity est l'entité détectée, index est le numéro séquentiel pour ce type.
 type ReplacerFunc func(entity ner.Entity, index int) string
 
-// Recognizer définit l'interface pour la reconnaissance d'entités.
+// Recognizer définit l'interface pour la reconnaissance d'entités. ctx est
+// celui de l'appel : un recognizer lent (modèle à inférence coûteuse, file
+// d'attente partagée) s'arrête quand l'appelant abandonne.
 type Recognizer interface {
-	Recognize(text string) ([]ner.Entity, error)
+	Recognize(ctx context.Context, text string) ([]ner.Entity, error)
 }
 
 // Anonymizer anonymise les entités nommées dans un texte.
@@ -109,18 +112,29 @@ func New(recognizer Recognizer, config Config) *Anonymizer {
 	}
 }
 
-// Anonymize anonymise les entités dans le texte.
-// Accepte des AnonymizeOption optionnelles, notamment WithSession pour partager
-// l'état (compteurs, cache de cohérence) entre plusieurs appels.
 // Detect expose la détection sous-jacente, sans rien remplacer ni toucher à
 // une session. Sert aux contrôles qui doivent repasser le recognizer sur une
 // sortie déjà anonymisée — notamment la vérification au niveau document, qui
 // recompose le texte pour retrouver les entités coupées par la segmentation.
-func (a *Anonymizer) Detect(text string) ([]ner.Entity, error) {
-	return a.recognizer.Recognize(text)
+//
+// Un contexte déjà terminé renvoie son erreur sans appeler le recognizer.
+func (a *Anonymizer) Detect(ctx context.Context, text string) ([]ner.Entity, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return a.recognizer.Recognize(ctx, text)
 }
 
-func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, error) {
+// Anonymize anonymise les entités dans le texte.
+// Accepte des AnonymizeOption optionnelles, notamment WithSession pour partager
+// l'état (compteurs, cache de cohérence) entre plusieurs appels.
+//
+// ctx est transmis au recognizer ; un contexte déjà terminé fait échouer
+// l'appel avant la reconnaissance.
+func (a *Anonymizer) Anonymize(ctx context.Context, text string, opts ...AnonymizeOption) (*Result, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	params := &anonymizeParams{}
 	for _, opt := range opts {
 		opt(params)
@@ -169,7 +183,7 @@ func (a *Anonymizer) Anonymize(text string, opts ...AnonymizeOption) (*Result, e
 		return nil, err
 	}
 
-	entities, err := a.recognizer.Recognize(text)
+	entities, err := a.Detect(ctx, text)
 	if err != nil {
 		return nil, fmt.Errorf("recognition failed: %w", err)
 	}

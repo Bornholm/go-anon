@@ -2,6 +2,7 @@ package csv
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"errors"
 	"strings"
@@ -16,7 +17,7 @@ import (
 // assez pour tester le flux sans modèle.
 type regexRecognizer struct{}
 
-func (regexRecognizer) Recognize(text string) ([]ner.Entity, error) {
+func (regexRecognizer) Recognize(_ context.Context, text string) ([]ner.Entity, error) {
 	return ner.RegexEntityFilter(ner.BuiltinRegexPatterns)(text, nil), nil
 }
 
@@ -28,7 +29,7 @@ func processStream(t *testing.T, in string, opts ...StreamOption) (string, *Stre
 		t.Fatal(err)
 	}
 	anon := anonymizer.New(regexRecognizer{}, anonymizer.Config{Strategy: anonymizer.TagReplace, ConsistentMap: true})
-	session, report, err := docprocessor.New(anon).ProcessStream(s, anonymizer.WithVerification())
+	session, report, err := docprocessor.New(anon).ProcessStream(context.Background(), s, anonymizer.WithVerification())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package docx
 
 import (
 	"archive/zip"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -139,7 +140,7 @@ func TestGuarantee_DOCXStrictOutputHasNoHiddenName(t *testing.T) {
 	}
 
 	out := filepath.Join(t.TempDir(), "out.docx")
-	if err := w.SaveTo(out); err != nil {
+	if err := w.SaveTo(context.Background(), out); err != nil {
 		t.Fatalf("SaveTo: %v", err)
 	}
 
