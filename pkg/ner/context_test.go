@@ -33,12 +33,14 @@ func TestRecognizer_StopsBetweenLines(t *testing.T) {
 		crf:       newTestCRF(),
 	}
 
-	ctx := &countdownContext{Context: context.Background(), n: 1}
+	// Un contrôle à l'entrée, puis un par ligne : le contexte se termine
+	// après la première ligne.
+	ctx := &countdownContext{Context: context.Background(), n: 2}
 	if _, err := rec.Recognize(ctx, "première ligne\ndeuxième ligne\ntroisième ligne"); !errors.Is(err, context.Canceled) {
 		t.Errorf("Recognize = %v, want context.Canceled", err)
 	}
 
-	ctx = &countdownContext{Context: context.Background(), n: 3}
+	ctx = &countdownContext{Context: context.Background(), n: 4}
 	if _, err := rec.Recognize(ctx, "première ligne\ndeuxième ligne\ntroisième ligne"); err != nil {
 		t.Errorf("Recognize with time for every line = %v", err)
 	}
